@@ -1,0 +1,74 @@
+menu "WiFi Configuration"
+    config WIFI_AP_INACTIVITY_TIMEOUT_MINUTES
+        int "WiFi AP inactivity timeout (minutes)"
+        default 1
+        range 1 60
+        help
+            Timeout in minutes before disabling AP if no clients are connected.
+
+    config WIFI_STA_RETRY_INITIAL_MS
+        int "WiFi STA retry initial interval (ms)"
+        default 60000
+        range 1000 600000
+        help
+            Initial delay before retrying WiFi STA connection after a burst of failed attempts.
+            Used for exponential backoff. Typical: 60000 (1 min).
+
+    config WIFI_STA_RETRY_MAX_MS
+        int "WiFi STA retry maximum interval (ms)"
+        default 600000
+        range 1000 3600000
+        help
+            Maximum delay between WiFi STA connection retry bursts (exponential backoff upper limit).
+            Typical: 600000 (10 min).
+
+    config WIFI_STA_BURST_RETRY_COUNT
+        int "WiFi STA burst retry count"
+        default 5
+        range 1 20
+        help
+            Number of immediate retry attempts in a burst before increasing the retry interval.
+            Typical: 5.
+
+    config WIFI_STA_BURST_RETRY_DELAY_MS
+        int "WiFi STA burst retry delay (ms)"
+        default 5000
+        range 100 60000
+        help
+            Delay between individual attempts within a burst of WiFi STA connection retries.
+            Typical: 5000 (5 sec).
+
+
+    config WIFI_STA_CONNECTION_TASK_STACK_SIZE
+        int "WiFi STA connection task stack size"
+        default 2048
+        range 1024 8192
+        help
+            Stack size (in bytes) for the WiFi STA connection management task.
+            Typical: 2048.
+
+    config WIFI_STA_CONNECTION_TASK_PRIORITY
+        int "WiFi STA connection task priority"
+        default 1
+        range 0 10
+        help
+            Priority for the WiFi STA connection management task.
+            Typical: 1.
+
+    config WIFI_AP_TIMEOUT_TASK_STACK_SIZE
+        int "WiFi AP timeout task stack size"
+        default 3072
+        range 1024 8192
+        help
+            Stack size (in bytes) for the WiFi AP timeout management task.
+            Typical: 3072.
+
+    config WIFI_AP_TIMEOUT_TASK_PRIORITY
+        int "WiFi AP timeout task priority"
+        default 1
+        range 0 10
+        help
+            Priority for the WiFi AP timeout management task.
+            Typical: 1.
+
+endmenu

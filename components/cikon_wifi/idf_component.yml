@@ -1,0 +1,10 @@
+name: cikon/cikon_wifi
+version: "0.1.0"
+description: "Cikon Wi-Fi helper for ESP-IDF (STA/AP)"
+license: MIT
+dependencies:
+  idf: ">=5.0"
+  cikon/cikon_wifi:
+    git: "git@github.com:pwilga/cikon-iot-solution.git"
+    version: "v0.1.0"
+    path: components/cikon_wifi
