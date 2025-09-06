@@ -1,0 +1,23 @@
+// Example config_fields_private.h (do NOT commit your real config_fields_private.h)
+// Copy this file as config_fields_private.h and fill with your own values.
+
+#define CONFIG_FIELDS(STR, U8, U16)                                                                \
+    STR(dev_name, 16, "cikonesp")                                                                  \
+    STR(http_auth, 32, "Basic <Authorization>")                                                    \
+    STR(mdns_host, 32, "")                                                                         \
+    STR(mdns_instance, 64, "Cikon Systems ESP32 device template")                                  \
+    STR(mqtt_broker, 128, "mqtts://skynet.cikon.eu:8883")                                          \
+    STR(mqtt_disc_pref, 32, "homeassistant")                                                       \
+    U8(mqtt_mtls_en, 1)                                                                            \
+    STR(mqtt_node, 32, "idfnode")                                                                  \
+    STR(mqtt_pass, 32, "")                                                                         \
+    U8(mqtt_max_retry, 5)                                                                          \
+    STR(mqtt_user, 32, "mqttuser")                                                                 \
+    U16(ota_tcp_port, 5555)                                                                        \
+    STR(wifi_ap_ssid, 32, "")                                                                      \
+    STR(wifi_pass, 32, "")                                                                         \
+    STR(wifi_ssid, 32, "")                                                                         \
+    U16(udp_mon_port, 5005)                                                                        \
+    STR(sntp1, 64, "pool.ntp.org")                                                                 \
+    STR(sntp2, 64, "time.google.com")                                                              \
+    STR(sntp3, 64, "time.cloudflare.com")

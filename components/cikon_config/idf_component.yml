@@ -1,0 +1,7 @@
+name: cikon_config
+version: "0.1.0"
+description: "Cikon Config Manager for ESP-IDF"
+license: MIT
+targets: [esp32, esp32c3]
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
