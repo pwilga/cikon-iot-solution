@@ -3,6 +3,8 @@ idf_component_register(
         "config_manager.c"
     INCLUDE_DIRS
         "include"
+    PRIV_REQUIRES
+        nvs_flash
     REQUIRES
-        nvs_flash json
+        json
 )

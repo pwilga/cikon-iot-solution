@@ -25,3 +25,4 @@ __pycache__/
 main/certs/
 
 config_fields_private.h
+.DS_Store

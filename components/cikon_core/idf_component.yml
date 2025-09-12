@@ -1,0 +1,10 @@
+name: cikon_core
+version: "0.1.0"
+description: "Cikon IoT Solution - Core components like mDNS, NVS, boot time, etc."
+license: MIT
+targets: [esp32, esp32c3]
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  espressif/mdns: '*'
