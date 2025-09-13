@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "mqtt.c"
+        "ha.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_REQUIRES
+        mqtt
+    REQUIRES
+        json
+    EMBED_TXTFILES
+        "certs/ca.crt"
+        "certs/c3node.crt"
+        "certs/c3node.key"
+)

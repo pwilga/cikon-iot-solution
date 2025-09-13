@@ -1,0 +1,44 @@
+menu "Cikon MQTT Configuration"
+    config MQTT_TELEMETRY_INTERVAL_MS
+        int "Telemetry interval (ms)"
+        default 5000
+        range 1000 60000
+        help
+            Interval for publishing telemetry data.
+            Typical: 5000 (5 sec).
+
+    config MQTT_RX_BUFFER_SIZE
+        int "MQTT RX buffer size"
+        default 1024
+        range 256 8192
+        help
+            Size of the MQTT receive buffer.
+            Typical: 1024.
+
+    config MQTT_QOS
+        int "MQTT Quality of Service"
+        default 0
+        range 0 2
+        help
+            MQTT Quality of Service level.
+            0: At most once (fire and forget)
+            1: At least once (acknowledged)
+            2: Exactly once (guaranteed delivery)
+
+    config MQTT_COMMAND_TASK_STACK_SIZE
+        int "MQTT command task stack size"
+        default 4096
+
+    config MQTT_COMMAND_TASK_PRIORITY
+        int "MQTT command task priority"
+        default 10
+
+    config MQTT_TELEMETRY_TASK_STACK_SIZE
+        int "MQTT telemetry task stack size"
+        default 4096
+
+    config MQTT_TELEMETRY_TASK_PRIORITY
+        int "MQTT telemetry task priority"
+        default 5
+
+endmenu

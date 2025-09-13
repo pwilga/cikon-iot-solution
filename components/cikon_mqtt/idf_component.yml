@@ -1,0 +1,7 @@
+name: cikon_mqtt
+version: "0.1.0"
+description: "Cikon MQTT helper for ESP-IDF"
+license: MIT
+targets: [esp32, esp32c3]
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
