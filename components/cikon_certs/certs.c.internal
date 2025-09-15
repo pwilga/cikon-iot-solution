@@ -7,23 +7,33 @@ extern const uint8_t client_pem_end[] asm("_binary_@CLIENT_NAME@_pem_end");
 extern const uint8_t client_key_start[] asm("_binary_@CLIENT_NAME@_key_start");
 extern const uint8_t client_key_end[] asm("_binary_@CLIENT_NAME@_key_end");
 
-const uint8_t* get_ca_pem_start(void) {
-	return ca_pem_start;
+const char* get_ca_pem_start(void) {
+	return (const char*)ca_pem_start;
 }
+
 size_t get_ca_pem_size(void) {
 	return ca_pem_end - ca_pem_start;
 }
 
-const uint8_t* get_client_pem_start(void) {
-	return client_pem_start;
+const char* get_client_pem_start(void) {
+	return (const char*)client_pem_start;
 }
 size_t get_client_pem_size(void) {
 	return client_pem_end - client_pem_start;
 }
 
-const uint8_t* get_client_key_start(void) {
-	return client_key_start;
+const char* get_client_key_start(void) {
+	return (const char*)client_key_start;
 }
 size_t get_client_key_size(void) {
 	return client_key_end - client_key_start;
+}
+
+bool certs_available(void) {
+	if (get_ca_pem_size() == 0 ||
+		get_client_pem_size() == 0 ||
+		get_client_key_size() == 0) {
+		return false;
+	}
+	return true;
 }

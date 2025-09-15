@@ -5,3 +5,9 @@ license: MIT
 targets: [esp32, esp32c3]
 maintainers:
   - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  cikon_certs:
+      git: "git@github.com:pwilga/cikon-iot-solution.git"
+      path: components/cikon_certs
+      # path: ../../cikon-iot-solution/components/cikon_certs

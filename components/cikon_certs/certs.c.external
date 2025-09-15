@@ -1,0 +1,25 @@
+
+/**
+ * @file certs.c.external
+ * @brief Implementation of certificate getters (currently empty).
+ *
+ * This file is currently empty, but may be used in the future for further certificate handling.
+ * You can implement an alternative method for loading certificates
+ * (e.g. from a filesystem, LittleFS, SPIFFS, etc.), as long as the same API interface is preserved.
+ *
+ * The calling code should not depend on the certificate source.
+ */
+#include "certs.h"
+
+const char* get_ca_pem_start(void) { return NULL; }
+size_t get_ca_pem_size(void) { return 0; }
+
+const char* get_client_pem_start(void) { return NULL; }
+size_t get_client_pem_size(void) { return 0; }
+
+const char* get_client_key_start(void) { return NULL; }
+size_t get_client_key_size(void) { return 0; }
+
+bool certs_available(void) {
+	return false;
+}

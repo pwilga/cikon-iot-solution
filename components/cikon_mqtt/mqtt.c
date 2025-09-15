@@ -8,6 +8,7 @@
 #include "cJSON.h"
 
 #include "mqtt.h"
+#include "certs.h"
 
 #define TAG "cikon-mqtt"
 #define TOPIC_BUF_SIZE 128
@@ -25,10 +26,6 @@ static EventGroupHandle_t mqtt_event_group;
 static QueueHandle_t mqtt_queue;
 
 static bool mqtt_skip_current_msg = false;
-
-extern const uint8_t ca_pem_start[] asm("_binary_ca_pem_start");
-extern const uint8_t cikonesp_pem_start[] asm("_binary_cikonesp_pem_start");
-extern const uint8_t cikonesp_key_start[] asm("_binary_cikonesp_key_start");
 
 void mqtt_command_topic(char *buf, size_t buf_size) {
     snprintf(buf, buf_size, "%s/%s/cmnd", mqtt_config.mqtt_node, mqtt_config.client_id);
@@ -337,8 +334,6 @@ void mqtt_init() {
         return;
     }
 
-    bool secure = mqtt_config.mqtt_mtls_en;
-
     static char avail_topic_buf[TOPIC_BUF_SIZE];
     mqtt_availability_topic(avail_topic_buf, sizeof(avail_topic_buf));
 
@@ -346,17 +341,17 @@ void mqtt_init() {
         .broker =
             {
                 .address.uri = mqtt_config.mqtt_broker,
-                .verification.certificate = secure ? (const char *)ca_pem_start : NULL,
+                .verification.certificate = get_ca_pem_start(),
             },
         .credentials =
             {
                 .client_id = mqtt_config.client_id,
-                .username = secure ? NULL : mqtt_config.mqtt_user,
+                .username = mqtt_config.mqtt_user,
                 .authentication =
                     {
-                        .password = secure ? NULL : mqtt_config.mqtt_pass,
-                        .certificate = secure ? (const char *)cikonesp_pem_start : NULL,
-                        .key = secure ? (const char *)cikonesp_key_start : NULL,
+                        .password = mqtt_config.mqtt_pass,
+                        .certificate = get_client_pem_start(),
+                        .key = get_client_key_start(),
                     },
             },
         .buffer.size = CONFIG_MQTT_RX_BUFFER_SIZE,

@@ -5,11 +5,8 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
+        cikon_certs
         mqtt
     REQUIRES
         json
-    EMBED_TXTFILES
-        "certs/ca.crt"
-        "certs/c3node.crt"
-        "certs/c3node.key"
 )

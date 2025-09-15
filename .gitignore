@@ -22,7 +22,12 @@ Makefile
 __pycache__/
 *.pyc
 .env/
-main/certs/
+
+# Certificates
+*.pem
+*.key
+*.crt
+*.srl
 
 config_fields_private.h
 .DS_Store
