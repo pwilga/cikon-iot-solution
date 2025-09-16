@@ -1,11 +1,11 @@
 #ifndef PLATFORM_SERVICES_H
 #define PLATFORM_SERVICES_H
 
+#include <esp_netif_sntp.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include <esp_netif_sntp.h>
 
 void core_system_init(void);
 

@@ -1,16 +1,17 @@
 #ifndef CONFIG_MANAGER_H
 #define CONFIG_MANAGER_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdint.h>
 #include <stdbool.h>
 
 #include "esp_err.h"
-#include "config_fields_private.h"
 #include "cJSON.h"
+
+#include "config_fields_private.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * @file config_manager.h
