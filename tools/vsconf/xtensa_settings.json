@@ -1,0 +1,15 @@
+{
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "clangd.path": "/Users/pil/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--compile-commands-dir=/Users/pil/repos/esptest/build",
+    "--query-driver=/Users/pil/.espressif/tools/xtensa-esp-elf/**/bin/xtensa-esp32-elf-*",
+  ],
+  "editor.formatOnSave": true,
+  "[c]": {
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+  "[cpp]": {
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+}

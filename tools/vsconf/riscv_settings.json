@@ -1,0 +1,14 @@
+{
+  "C_Cpp.intelliSenseEngine": "disabled",
+  "clangd.path": "/opt/homebrew/opt/llvm/bin/clangd",
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build",
+  ],
+  "editor.formatOnSave": true,
+  "[c]": {
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+  "[cpp]": {
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+}
