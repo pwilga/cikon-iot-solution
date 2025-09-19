@@ -1,19 +1,14 @@
-#include "sdkconfig.h"
-
-#if CONFIG_MQTT_ENABLE && CONFIG_HOME_ASSISTANT_MQTT_DISCOVERY_ENABLE
-
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
 
 #include "cJSON.h"
 
-#include "config_manager.h"
 #include "ha.h"
 #include "json_parser.h"
-#include "platform_services.h"
-#include "supervisor.h"
+#include "mqtt.h"
 
 #define TAG "home-assistant"
 
@@ -22,10 +17,9 @@ static bool empty_payload = false;
 
 cJSON *build_ha_device(void) {
 
-    const char *cliend_id = get_client_id();
     cJSON *device = cJSON_CreateObject();
 
-    cJSON_AddStringToObject(device, "ids", cliend_id);
+    cJSON_AddStringToObject(device, "ids", mqtt_get_config()->client_id);
 
     if (has_sent_full_dev) {
         return device;
@@ -53,10 +47,10 @@ void build_ha_entity(ha_entity_t *entity, const char *entity_type, const char *n
     const size_t BUF_LEN = 128;
 
     char unique_id[64];
-    snprintf(unique_id, sizeof(unique_id), "%.6s_%s", get_client_id(), sanitized_name);
+    snprintf(unique_id, sizeof(unique_id), "%.6s_%s", mqtt_get_config()->client_id, sanitized_name);
 
     snprintf(entity->ha_config_topic, sizeof(entity->ha_config_topic), "%s/%s/%s/config",
-             config_get()->mqtt_disc_pref, entity_type, unique_id);
+             mqtt_get_config()->mqtt_disc_pref, entity_type, unique_id);
 
     if (empty_payload) {
         entity->ha_config_payload = NULL;
@@ -70,7 +64,7 @@ void build_ha_entity(ha_entity_t *entity, const char *entity_type, const char *n
     cJSON_AddStringToObject(json_root, "name", name);
     cJSON_AddStringToObject(json_root, "uniq_id", unique_id);
 
-    snprintf(buf, sizeof(buf), "%s/%s", config_get()->mqtt_node, get_client_id());
+    snprintf(buf, sizeof(buf), "%s/%s", mqtt_get_config()->mqtt_node, mqtt_get_config()->client_id);
     cJSON_AddStringToObject(json_root, "~", buf);
 
     cJSON_AddStringToObject(json_root, "stat_t", "~/tele");
@@ -118,7 +112,7 @@ void submit_ha_entity(ha_entity_t *entity) {
     ESP_LOGI(TAG, "Topic: %s", entity->ha_config_topic);
     ESP_LOGI(TAG, "Payload: %s", payload);
 
-    supervisor_publish_mqtt(entity->ha_config_topic, payload, 0, true);
+    mqtt_publish(entity->ha_config_topic, payload, 0, true);
 
     cJSON_free(payload);
     free_ha_entity(entity);
@@ -211,5 +205,3 @@ void publish_ha_mqtt_discovery(bool force_empty_payload) {
     register_ha_button("Restart");
     register_ha_tasks_dict_sensor("Tasks Dict");
 }
-
-#endif // CONFIG_MQTT_ENABLE && CONFIG_HOME_ASSISTANT_MQTT_DISCOVERY_ENABLE

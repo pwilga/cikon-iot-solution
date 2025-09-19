@@ -2,12 +2,13 @@
 #ifndef HA_H
 #define HA_H
 
+#include "stdbool.h"
+
+#include "cJSON.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include "cJSON.h"
-#include "stdbool.h"
 
 typedef struct {
     char ha_config_topic[128];
