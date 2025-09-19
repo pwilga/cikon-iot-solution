@@ -6,6 +6,7 @@ idf_component_register(
         "include"
     PRIV_REQUIRES
         cikon_certs
+        cikon_helpers
         mqtt
     REQUIRES
         json

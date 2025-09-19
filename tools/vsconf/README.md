@@ -19,6 +19,21 @@ This README describes how to configure Visual Studio Code for ESP-IDF developmen
 - Place the global clangd configuration file at `~/Library/Preferences/clangd/config.yaml`.
 - Use this file to customize clangd behavior, such as removing unsupported compiler flags, configuring diagnostics, code style, and inlay hints.
 - This configuration applies to all projects on your system that use clangd.
+- Setting Up Global clangd Configuration
+```sh
+ln -s /Users/pil/repos/cikon-iot-solution/tools/vsconf/config.yaml ~/Library/Preferences/clangd/config.yaml
+```
+## 4. Global .clang-format Configuration
+
+The `.clang-format` file defines code formatting rules for C/C++ and related languages, ensuring consistent style across your project and editor tools.
+
+To enable a global formatting configuration, create a symbolic link to your preferred config file in your home directory:
+
+```sh
+ln -s /Users/pil/repos/cikon-iot-solution/tools/vsconf/.clang-format ~/.clang-format
+```
+
+This will apply the formatting rules system-wide for all supported editors and tools that use clang-format.
 
 ## Notes
 

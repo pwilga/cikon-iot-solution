@@ -1,6 +1,10 @@
 #ifndef MQTT_H
 #define MQTT_H
 
+#include "stdint.h"
+
+#include "cJSON.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,6 +18,7 @@ typedef struct {
     const char *mqtt_broker;
     const char *mqtt_user;
     const char *mqtt_pass;
+    const char *mqtt_disc_pref;
     uint8_t mqtt_mtls_en;
     uint8_t mqtt_max_retry;
     mqtt_command_callback_t command_cb;
@@ -27,6 +32,7 @@ void mqtt_shutdown(void);
 void mqtt_publish(const char *topic, const char *payload, int qos, bool retain);
 void mqtt_publish_offline_state(void);
 void mqtt_trigger_telemetry(void);
+const mqtt_config_t *mqtt_get_config(void);
 
 void mqtt_log_event_group_bits(void);
 

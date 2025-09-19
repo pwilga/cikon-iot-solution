@@ -7,8 +7,8 @@
 
 #include "cJSON.h"
 
-#include "mqtt.h"
 #include "certs.h"
+#include "mqtt.h"
 
 #define TAG "cikon-mqtt"
 #define TOPIC_BUF_SIZE 128
@@ -39,6 +39,8 @@ void mqtt_telemetry_topic(char *buf, size_t buf_size) {
 void mqtt_availability_topic(char *buf, size_t buf_size) {
     snprintf(buf, buf_size, "%s/%s/aval", mqtt_config.mqtt_node, mqtt_config.client_id);
 }
+
+const mqtt_config_t *mqtt_get_config(void) { return &mqtt_config; }
 
 static void mqtt_shutdown_task(void *args) {
     mqtt_shutdown();
