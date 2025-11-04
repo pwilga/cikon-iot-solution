@@ -1,3 +1,6 @@
+#ifndef CONFIG_FIELDS_PRIVATE_H
+#define CONFIG_FIELDS_PRIVATE_H
+
 // Example config_fields_private.h (do NOT commit your real config_fields_private.h)
 // Copy this file as config_fields_private.h and fill with your own values.
 
@@ -21,3 +24,5 @@
     STR(sntp1, 64, "pool.ntp.org")                                                                 \
     STR(sntp2, 64, "time.google.com")                                                              \
     STR(sntp3, 64, "time.cloudflare.com")
+
+#endif // CONFIG_FIELDS_PRIVATE_H

@@ -10,4 +10,7 @@ dependencies:
   cikon_certs:
       git: "git@github.com:pwilga/cikon-iot-solution.git"
       path: components/cikon_certs
-      # path: ../../cikon-iot-solution/components/cikon_certs
+
+  cikon_helpers:
+      git: "git@github.com:pwilga/cikon-iot-solution.git"
+      path: components/cikon_helpers
