@@ -189,7 +189,7 @@ void publish_ha_mqtt_discovery(bool force_empty_payload) {
 
     ha_entity_t entity;
 
-    build_ha_entity(&entity, "sensor", "Tempreture");
+    build_ha_entity(&entity, "sensor", "Temperature");
     cJSON_AddStringToObject(entity.ha_config_payload, "dev_cla", "temperature");
     submit_ha_entity(&entity);
 
