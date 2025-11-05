@@ -1,4 +1,4 @@
-menu "Cikon MQTT Configuration"
+menu "Cikon IoT MQTT Configuration"
     config MQTT_TELEMETRY_INTERVAL_MS
         int "Telemetry interval (ms)"
         default 5000
