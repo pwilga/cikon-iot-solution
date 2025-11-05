@@ -1,7 +1,7 @@
 #ifndef PLATFORM_SERVICES_H
 #define PLATFORM_SERVICES_H
 
-#include <esp_netif_sntp.h>
+#include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,27 +27,6 @@ void esp_safe_restart();
  * result in Wi-Fi startup failure.
  */
 esp_err_t nvs_flash_safe_init();
-
-void mdns_service_configure(const char *hostname, const char *instance_name);
-void mdns_service_init();
-
-/**
- * @brief Configure SNTP servers and synchronization callback.
- *
- * This function sets the SNTP server addresses and the callback for time synchronization.
- *
- * @param servers Array of pointers to NTP server address strings.
- *                Must be of length CONFIG_LWIP_SNTP_MAX_SERVERS.
- *                @warning The array must contain at least one valid,
- *                         non-NULL server address string.
- *
- * @param cb      Callback function to be called on time sync (can be NULL).
- *
- * @note The strings pointed to by servers[] must remain valid for the lifetime of SNTP usage.
- *       Do not free or overwrite them while SNTP is active.
- */
-void sntp_service_configure(const char **servers, esp_sntp_time_cb_t cb);
-void sntp_service_init();
 
 /**
  * @brief Returns the built-in (factory) MAC address from eFUSE as a portable 12-character uppercase
