@@ -1,6 +1,6 @@
 name: cikon_wifi
 version: "0.1.0"
-description: "Cikon Wi-Fi helper for ESP-IDF (STA/AP)"
+description: "Cikon IoT Wi-Fi helper for ESP-IDF (STA/AP)"
 license: MIT
 targets: [esp32, esp32c3]
 maintainers:
