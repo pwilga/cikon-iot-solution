@@ -37,27 +37,6 @@ static wifi_ap_timeout_callback_t ap_timeout_callback = NULL;
 
 static EventGroupHandle_t wifi_event_group = NULL;
 
-const char *wifi_disconnect_reason_str(uint8_t reason) {
-    switch (reason) {
-    case WIFI_REASON_AUTH_EXPIRE:
-        return "AUTH_EXPIRE";
-    case WIFI_REASON_AUTH_LEAVE:
-        return "AUTH_LEAVE";
-    case WIFI_REASON_ASSOC_EXPIRE:
-        return "ASSOC_EXPIRE";
-    case WIFI_REASON_AUTH_FAIL:
-        return "AUTH_FAIL";
-    case WIFI_REASON_NO_AP_FOUND:
-        return "NO_AP_FOUND";
-    case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
-        return "4WAY_HANDSHAKE_TIMEOUT";
-    case WIFI_REASON_BEACON_TIMEOUT:
-        return "BEACON_TIMEOUT";
-    default:
-        return "UNKNOWN";
-    }
-}
-
 /**
  * @brief WiFi STA connection retry task with exponential backoff.
  *
@@ -184,8 +163,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
             xEventGroupClearBits(wifi_event_group, WIFI_STA_CONNECTED_BIT);
 
             wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)event_data;
-            ESP_LOGI(TAG_STA, "Disconnected, reason: %d (%s)", disconn->reason,
-                     wifi_disconnect_reason_str(disconn->reason));
+            ESP_LOGI(TAG_STA, "Disconnected, reason: %d", disconn->reason);
 
             if (ignore_sta_disconnect_event) {
                 // ESP_LOGW(TAG_STA,
