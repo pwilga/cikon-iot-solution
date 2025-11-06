@@ -9,5 +9,5 @@ idf_component_register(
         cikon_helpers
         mqtt
     REQUIRES
-        json
+        cjson
 )
