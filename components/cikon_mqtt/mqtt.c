@@ -230,7 +230,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_DISCONNECTED:
 
         xEventGroupClearBits(mqtt_event_group, MQTT_CONNECTED_BIT);
-        xEventGroupSetBits(mqtt_event_group, MQTT_TASKS_SHUTDOWN_BIT);
 
         if (mqtt_retry_counter < mqtt_config.mqtt_max_retry) {
             ESP_LOGW(TAG, "MQTT disconnected, retrying connection (%d/%d)", mqtt_retry_counter + 1,

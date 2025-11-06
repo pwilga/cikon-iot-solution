@@ -1,4 +1,4 @@
-menu "Cikon WiFi Configuration"
+menu "Cikon IoT WiFi Configuration"
     config WIFI_AP_INACTIVITY_TIMEOUT_MINUTES
         int "WiFi AP inactivity timeout (minutes)"
         default 1
@@ -32,11 +32,11 @@ menu "Cikon WiFi Configuration"
 
     config WIFI_STA_BURST_RETRY_DELAY_MS
         int "WiFi STA burst retry delay (ms)"
-        default 5000
+        default 10000
         range 100 60000
         help
             Delay between individual attempts within a burst of WiFi STA connection retries.
-            Typical: 5000 (5 sec).
+            Typical: 10000 (10 sec).
 
 
     config WIFI_STA_CONNECTION_TASK_STACK_SIZE
