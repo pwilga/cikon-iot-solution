@@ -309,6 +309,12 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     }
 }
 
+bool mqtt_is_secure(const char *uri) {
+    if (uri == NULL)
+        return false;
+    return (strncmp(uri, "mqtts://", 8) == 0 || strncmp(uri, "wss://", 6) == 0);
+}
+
 void mqtt_init() {
 
     if (!mqtt_config.mqtt_broker || strlen(mqtt_config.mqtt_broker) == 0) {
@@ -340,11 +346,14 @@ void mqtt_init() {
     static char avail_topic_buf[TOPIC_BUF_SIZE];
     mqtt_availability_topic(avail_topic_buf, sizeof(avail_topic_buf));
 
+    bool is_secure = mqtt_is_secure(mqtt_config.mqtt_broker);
+
     esp_mqtt_client_config_t esp_mqtt_cfg = {
         .broker =
             {
                 .address.uri = mqtt_config.mqtt_broker,
-                .verification.certificate = get_ca_pem_start(),
+                .verification.certificate = is_secure ? get_ca_pem_start() : NULL,
+
             },
         .credentials =
             {
@@ -353,8 +362,8 @@ void mqtt_init() {
                 .authentication =
                     {
                         .password = mqtt_config.mqtt_pass,
-                        .certificate = get_client_pem_start(),
-                        .key = get_client_key_start(),
+                        .certificate = is_secure ? get_client_pem_start() : NULL,
+                        .key = is_secure ? get_client_key_start() : NULL,
                     },
             },
         .buffer.size = CONFIG_MQTT_RX_BUFFER_SIZE,
