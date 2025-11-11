@@ -195,6 +195,22 @@ void mqtt_publish(const char *topic, const char *payload, int qos, bool retain) 
     }
 }
 
+void shutdown_mqtt_tasks(void) {
+    xEventGroupSetBits(mqtt_event_group, MQTT_TASKS_SHUTDOWN_BIT);
+
+    // Wait for tasks to finish (max 2 seconds)
+    uint8_t timeout = 200; // 200 × 10ms = 2s
+    while ((mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) && timeout--) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    if (mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) {
+        ESP_LOGW(TAG, "MQTT tasks did not exit in time!");
+    }
+
+    xEventGroupClearBits(mqtt_event_group, MQTT_TASKS_SHUTDOWN_BIT);
+}
+
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id,
                                void *event_data) {
 
@@ -206,13 +222,13 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         mqtt_retry_counter = 0;
         xEventGroupSetBits(mqtt_event_group, MQTT_CONNECTED_BIT);
 
-        mqtt_queue = xQueueCreate(8, sizeof(void *));
-        assert(mqtt_queue != NULL);
+        if (mqtt_queue == NULL) {
+            mqtt_queue = xQueueCreate(8, sizeof(void *));
+        }
 
-        uint8_t timeout = 100;
-        while ((mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) &&
-               timeout--) {
-            vTaskDelay(pdMS_TO_TICKS(10));
+        if (mqtt_queue == NULL) {
+            ESP_LOGE(TAG, "Failed to create MQTT queue!");
+            return;
         }
 
         xTaskCreate(mqtt_command_task, "mqtt_command", CONFIG_MQTT_COMMAND_TASK_STACK_SIZE, NULL,
@@ -230,6 +246,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     case MQTT_EVENT_DISCONNECTED:
 
         xEventGroupClearBits(mqtt_event_group, MQTT_CONNECTED_BIT);
+
+        if (mqtt_command_task_handle != NULL && mqtt_telemetry_task_handle != NULL) {
+            shutdown_mqtt_tasks();
+        }
 
         if (mqtt_retry_counter < mqtt_config.mqtt_max_retry) {
             ESP_LOGW(TAG, "MQTT disconnected, retrying connection (%d/%d)", mqtt_retry_counter + 1,
@@ -335,7 +355,7 @@ void mqtt_init() {
         mqtt_event_group = xEventGroupCreateStatic(&mqtt_event_group_storage);
     }
 
-    if (!mqtt_event_group) {
+    if (mqtt_event_group == NULL) {
         ESP_LOGE(TAG, "Failed to create MQTT event group!");
         return;
     }
@@ -390,17 +410,7 @@ void mqtt_shutdown() {
     if (mqtt_client == NULL)
         return;
 
-    xEventGroupSetBits(mqtt_event_group, MQTT_TASKS_SHUTDOWN_BIT);
-
-    // Wait for tasks to finish (max 2 seconds)
-    uint8_t timeout = 200; // 200 × 10ms = 2s
-    while ((mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) && timeout--) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-
-    if (mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) {
-        ESP_LOGW(TAG, "MQTT tasks did not exit in time!");
-    }
+    shutdown_mqtt_tasks();
 
     ESP_ERROR_CHECK(esp_mqtt_client_stop(mqtt_client));
     ESP_ERROR_CHECK(esp_mqtt_client_destroy(mqtt_client));
