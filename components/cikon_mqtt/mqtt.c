@@ -256,7 +256,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                      mqtt_config.mqtt_max_retry);
             mqtt_retry_counter++;
         } else {
-            ESP_LOGE(TAG,
+            ESP_LOGW(TAG,
                      "Failed to connect to MQTT Broker '%s' after %d retries, shutting down MQTT "
                      "subsystem...",
                      mqtt_config.mqtt_broker, mqtt_config.mqtt_max_retry);
