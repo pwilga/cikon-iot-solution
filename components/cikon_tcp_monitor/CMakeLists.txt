@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS
+       "tcp_monitor.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_REQUIRES
+        esp_ringbuf
+        cikon_helpers
+)

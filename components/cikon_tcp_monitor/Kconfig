@@ -1,0 +1,22 @@
+menu "Cikon IoT TCP Monitor Configuration"
+
+        config TCP_MONITOR_TASK_STACK_SIZE
+            int "TCP Monitor task stack size"
+            default 3072
+
+        config TCP_MONITOR_TASK_PRIORITY
+            int "TCP Monitor task priority"
+            default 3
+
+        config RING_BUFFER_SIZE
+            int "Ring buffer size"
+            default 4096
+            help
+                Size of the ring buffer in bytes.
+
+        config MAX_LOG_SIZE
+            int "Maximum log size"
+            default 128
+            help
+                Maximum size of a single log entry (e.g. one ESP_LOG* call) in bytes.
+endmenu
