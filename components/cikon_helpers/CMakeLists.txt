@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "json_parser.c"
+        "task_helpers.c"
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
