@@ -2,60 +2,42 @@
 #ifndef HA_H
 #define HA_H
 
-#include "stdbool.h"
-
 #include "cJSON.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct {
-    char ha_config_topic[128];
-    cJSON *ha_config_payload;
-} ha_entity_t;
+// Entity types
+typedef enum {
+    HA_SENSOR,
+    HA_SWITCH,
+    HA_BUTTON,
+} ha_entity_type_t;
+
+// Custom builder callback type
+typedef void (*ha_custom_builder_t)(cJSON *payload, const char *sanitized_name);
 
 /**
- * @brief Builds a generic Home Assistant (HA) entity configuration for MQTT
- * Discovery.
+ * @brief Register a Home Assistant entity.
  *
- * This function prepares a generic HA entity by:
- * - Constructing the appropriate MQTT discovery topic based on the entity name
- * and type.
- * - Creating the JSON payload with required fields for Home Assistant
- * auto-discovery.
- *
- * The entity structure (ha_entity_t) will be populated with the generated topic
- * and payload.
- *
- * @param entity Pointer to the ha_entity_t structure where the generated topic
- * and payload will be stored.
- * @param entity_type Type of the entity (e.g., "sensor", "switch",
- * "binary_sensor").
- * @param name Name of the entity (e.g., "living_room_light" or
- * "sensor_temperature").
+ * @param type Entity type (HA_SENSOR, HA_SWITCH, HA_BUTTON, ...)
+ * @param name Human-readable entity name
+ * @param device_class Device class (e.g., "temperature", "duration") or NULL
+ * @param custom_builder Optional custom payload builder callback or NULL
  */
-void build_ha_entity(ha_entity_t *entity, const char *entity_type, const char *name);
-/**
- * @brief Frees the dynamically allocated Home Assistant entity configuration
- * payload.
- */
-void free_ha_entity(ha_entity_t *entity);
+void ha_register_entity(ha_entity_type_t type, const char *name, const char *device_class,
+                        ha_custom_builder_t custom_builder);
 
 /**
- * @brief Builds the Home Assistant MQTT Discovery "device" object.
+ * @brief Publishes all registered Home Assistant entities via MQTT Discovery.
  *
- * On the first call, returns the full device metadata including name,
- * model, software and hardware version, and configuration URL.
- * On subsequent calls, only the minimal "ids" field is returned.
+ * Default entities are auto-registered on first call. User can register
+ * additional entities before calling this function.
  *
- * This allows devices to avoid sending duplicate metadata after
- * the initial discovery message, while still including required identifiers.
- *
- * @return A cJSON object representing the "device" field of the ha payload.
- *         Caller is responsible for freeing the object with cJSON_Delete().
+ * @param force_empty_payload If true, publishes empty payloads to remove entities
  */
-cJSON *build_ha_device(void);
 void publish_ha_mqtt_discovery(bool force_empty_payload);
 
 #ifdef __cplusplus

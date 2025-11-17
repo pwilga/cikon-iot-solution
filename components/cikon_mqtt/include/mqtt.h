@@ -1,6 +1,7 @@
 #ifndef MQTT_H
 #define MQTT_H
 
+#include "freertos/FreeRTOS.h"
 #include "stdint.h"
 
 #include "cJSON.h"
@@ -14,6 +15,12 @@ typedef void (*mqtt_telemetry_callback_t)(cJSON *json_root);
 
 typedef struct {
     const char *client_id;
+    const char *device_name;
+    const char *device_manufacturer;
+    const char *device_model;
+    const char *device_sw_version;
+    const char *device_hw_version;
+    const char *device_ip_address;
     const char *mqtt_node;
     const char *mqtt_broker;
     const char *mqtt_user;
