@@ -14,26 +14,18 @@ This README describes how to configure Visual Studio Code for ESP-IDF developmen
 - The `riscv_settings.json` file (**rename to `settings.json` and place in your project's `.vscode` directory**) should specify the path to the system clangd, set up the build directory, and enable code formatting.
 - The configuration is simpler than for Xtensa; no custom toolchain flags or binaries are required.
 
-## 3. Global clangd Configuration (`config.yaml`)
 
-- Place the global clangd configuration file at `~/Library/Preferences/clangd/config.yaml`.
-- Use this file to customize clangd behavior, such as removing unsupported compiler flags, configuring diagnostics, code style, and inlay hints.
-- This configuration applies to all projects on your system that use clangd.
-- Setting Up Global clangd Configuration
-```sh
-ln -s /Users/pil/repos/cikon-iot-solution/tools/vsconf/config.yaml ~/Library/Preferences/clangd/config.yaml
-```
-## 4. Global .clang-format Configuration
+## 3. Install following VS code extensions:
 
-The `.clang-format` file defines code formatting rules for C/C++ and related languages, ensuring consistent style across your project and editor tools.
+- ESP-IDF
+- clangd (LLVM)
+- Clang-Format (Xaver Heulluer)
 
-To enable a global formatting configuration, create a symbolic link to your preferred config file in your home directory:
+## 4. Drop those files in the Repo root direcotry
 
-```sh
-ln -s /Users/pil/repos/cikon-iot-solution/tools/vsconf/.clang-format ~/.clang-format
-```
+- .clang-format 
+- .clangd
 
-This will apply the formatting rules system-wide for all supported editors and tools that use clang-format.
 
 ## Notes
 
