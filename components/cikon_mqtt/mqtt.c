@@ -222,6 +222,12 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         mqtt_retry_counter = 0;
         xEventGroupSetBits(mqtt_event_group, MQTT_CONNECTED_BIT);
 
+        // Ensure old tasks are properly shut down before creating new ones
+        if (mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) {
+            ESP_LOGW(TAG, "MQTT tasks still exist, shutting them down before reconnection");
+            shutdown_mqtt_tasks();
+        }
+
         if (mqtt_queue == NULL) {
             mqtt_queue = xQueueCreate(8, sizeof(void *));
         }
@@ -247,7 +253,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
         xEventGroupClearBits(mqtt_event_group, MQTT_CONNECTED_BIT);
 
-        if (mqtt_command_task_handle != NULL && mqtt_telemetry_task_handle != NULL) {
+        if (mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) {
             shutdown_mqtt_tasks();
         }
 
