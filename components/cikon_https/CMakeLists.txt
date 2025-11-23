@@ -3,8 +3,10 @@ idf_component_register(
         "https_server.c"
     INCLUDE_DIRS
         "include"
+    REQUIRES
+        esp_https_server
     PRIV_REQUIRES
         cikon_certs
-        esp_https_server
+        cikon_helpers
         cjson
 )

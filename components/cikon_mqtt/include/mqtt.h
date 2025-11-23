@@ -1,7 +1,7 @@
 #ifndef MQTT_H
 #define MQTT_H
 
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "stdint.h"
 
 #include "cJSON.h"

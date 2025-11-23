@@ -9,37 +9,54 @@
  *
  * Security features:
  * - All communication is encrypted using TLS (HTTPS).
- * - Basic HTTP authentication (Basic Auth) is required for all operations. Credentials sent by the
- * client are compared to the reference value stored securely in NVS and accessed via config_manager
- * (config_get()->http_auth).
+ * - Basic HTTP authentication (Basic Auth) is optional. If http_auth is NULL or empty string,
+ *   authentication is disabled. When enabled, credentials sent by the client are compared to the
+ *   reference value provided via https_configure().
+ *
+ * Endpoint Configuration:
+ * - Endpoints are registered via https_configure() using https_endpoint_config_t array.
+ * - Array must be terminated with a sentinel entry where .uri = NULL.
+ * - POST endpoints use json_cmnd callback, GET endpoints use json_tele callback.
+ * - Each endpoint can have custom URI, method, and associated callback.
  *
  * Limitations & Notes:
  * - This code is experimental and not recommended for production use without further review and
  * testing.
  * - No HTTP keep-alive: each request is handled in a new connection for simplicity and to avoid RAM
  * leaks.
- * - Only one connection is allowed at a time.
- * - The server is automatically shut down after a configurable period of inactivity.
+ * - Maximum number of open sockets is configurable (default: 1).
+ * - The server is automatically shut down and restarted after a configurable period of inactivity.
  *
  * Usage:
+ * - Call https_configure() with endpoints array and optional http_auth string.
  * - Use https_init() to start the server.
- * - Use https_shutdown() to request a shutdown.
- * - All sensitive operations (e.g., password changes) should be performed via HTTPS POST requests
- * with Basic Auth.
+ * - Use https_shutdown() to request a shutdown (waits for graceful task termination).
  */
 
 #ifndef HTTPS_SERVER_H
 #define HTTPS_SERVER_H
 
+#include "cJSON.h"
+#include <esp_https_server.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void https_configure(const char *http_auth);
+typedef void (*https_json_cmnd_t)(const char *json_str);
+typedef void (*https_json_tele_t)(cJSON *json);
+
+typedef struct {
+    const char *uri;
+    httpd_method_t method;
+    https_json_cmnd_t json_cmnd; // POST
+    https_json_tele_t json_tele; // GET
+} https_endpoint_config_t;
+
+void https_configure(const https_endpoint_config_t *endpoints, const char *http_auth);
 
 void https_init(void);
 void https_shutdown(void);
-
 void https_server_task(void *args);
 
 #ifdef __cplusplus

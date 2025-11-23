@@ -1,0 +1,29 @@
+menu "Cikon IoT HTTPS Server Configuration"
+
+    config HTTPS_TASK_STACK_SIZE
+        int "HTTPS server task stack size"
+        default 4096
+        help
+            Stack size for the HTTPS server task in bytes.
+
+    config HTTPS_TASK_PRIORITY
+        int "HTTPS server task priority"
+        default 2
+        range 1 24
+        help
+            Priority for the HTTPS server task. Higher values indicate higher priority.
+
+    config HTTPS_INACTIVITY_TIMEOUT_MS
+        int "HTTPS server inactivity timeout (ms)"
+        default 60000
+        help
+            Time in milliseconds after which the HTTPS server will restart if no requests are received.
+
+    config HTTPS_MAX_OPEN_SOCKETS
+        int "Maximum number of open sockets"
+        default 1
+        range 1 16
+        help
+            Maximum number of simultaneous connections. Default is 1 for single-connection use.
+
+endmenu

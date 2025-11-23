@@ -4,38 +4,35 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 
-#include <esp_https_server.h>
+#include "cJSON.h"
 #include <esp_log.h>
 #include <esp_system.h>
-#include "cJSON.h"
 
-// #include "cmnd.h"
 #include "certs.h"
 #include "https_server.h"
-// #include "tele.h"
+#include "task_helpers.h"
 
 #define TAG "cikon-https"
-#define HTTPS_INACTIVITY_TIMEOUT_MS 60000
 
 #define HTTPS_SHUTDOWN_INITIATED_BIT BIT0
 #define HTTPS_SERVER_STARTED_BIT BIT1
 
-// extern const uint8_t ca_pem_start[] asm("_binary_ca_pem_start");
-// extern const uint8_t ca_pem_end[] asm("_binary_ca_pem_end");
-// extern const uint8_t https_pem_start[] asm("_binary_https_pem_start");
-// extern const uint8_t https_pem_end[] asm("_binary_https_pem_end");
-// extern const uint8_t https_key_start[] asm("_binary_https_key_start");
-// extern const uint8_t https_key_end[] asm("_binary_https_key_end");
-
 static TimerHandle_t https_inactivity_timer = NULL;
 static EventGroupHandle_t https_event_group = NULL;
 static httpd_handle_t https_server_handle = NULL;
+static volatile TaskHandle_t https_server_task_handle = NULL;
 
 static const char *http_auth_string = NULL;
+static const https_endpoint_config_t *registered_endpoints = NULL;
+
+void https_configure(const https_endpoint_config_t *endpoints, const char *http_auth) {
+    registered_endpoints = endpoints;
+    http_auth_string = http_auth;
+}
 
 static void https_inactivity_timer_callback(TimerHandle_t xTimer) {
     ESP_LOGW(TAG, "HTTPS inactivity timer: %.1f s timeout, restarting server",
-             HTTPS_INACTIVITY_TIMEOUT_MS / 1000.0f);
+             CONFIG_HTTPS_INACTIVITY_TIMEOUT_MS / 1000.0f);
     https_shutdown();
     https_init();
 }
@@ -53,12 +50,11 @@ static void https_inactivity_timer_callback(TimerHandle_t xTimer) {
 static void https_restart_inactivity_timer(void) {
     if (https_inactivity_timer) {
         xTimerStop(https_inactivity_timer, 0);
-        xTimerChangePeriod(https_inactivity_timer, pdMS_TO_TICKS(HTTPS_INACTIVITY_TIMEOUT_MS),
-                           0); // <--- Set your timeout here
+        xTimerChangePeriod(https_inactivity_timer,
+                           pdMS_TO_TICKS(CONFIG_HTTPS_INACTIVITY_TIMEOUT_MS), 0);
         xTimerStart(https_inactivity_timer, 0);
     }
 }
-void https_configure(const char *http_auth) { http_auth_string = http_auth; }
 
 void https_init(void) {
 
@@ -83,7 +79,8 @@ void https_init(void) {
         https_inactivity_timer =
             xTimerCreate("https_inact", 1, pdFALSE, NULL, https_inactivity_timer_callback);
     }
-    xTaskCreate(https_server_task, "https_serv", 4096, NULL, 2, NULL);
+    xTaskCreate(https_server_task, "https_serv", CONFIG_HTTPS_TASK_STACK_SIZE, NULL,
+                CONFIG_HTTPS_TASK_PRIORITY, (TaskHandle_t *)&https_server_task_handle);
 }
 
 void https_shutdown(void) {
@@ -93,16 +90,17 @@ void https_shutdown(void) {
 
     xEventGroupSetBits(https_event_group, HTTPS_SHUTDOWN_INITIATED_BIT);
 
-    uint8_t timeout = 100;
-    while (https_server_handle != NULL && timeout--)
-        vTaskDelay(pdMS_TO_TICKS(10));
-
-    if (https_server_handle != NULL) {
+    if (!task_wait_for_finish(&https_server_task_handle, 1000)) {
         ESP_LOGE(TAG, "HTTPS server error shutdown timeout");
     }
 }
 
 static bool https_check_basic_auth(httpd_req_t *req) {
+
+    if (http_auth_string == NULL || strlen(http_auth_string) == 0) {
+        return true;
+    }
+
     size_t auth_len = httpd_req_get_hdr_value_len(req, "Authorization");
     if (auth_len == 0) {
         goto unauthorized;
@@ -126,7 +124,7 @@ unauthorized:
     return false;
 }
 
-static esp_err_t tele_get_handler(httpd_req_t *req) {
+static esp_err_t https_get_handler(httpd_req_t *req) {
     if (!https_check_basic_auth(req)) {
         ESP_LOGW(TAG, "GET /tele: unauthorized");
         return ESP_FAIL;
@@ -136,7 +134,10 @@ static esp_err_t tele_get_handler(httpd_req_t *req) {
 
     cJSON *json = cJSON_CreateObject();
 
-    // tele_append_all(json);
+    https_json_tele_t json_tele = (https_json_tele_t)req->user_ctx;
+    if (json_tele) {
+        json_tele(json);
+    }
 
     char *json_str = cJSON_PrintUnformatted(json);
 
@@ -149,7 +150,7 @@ static esp_err_t tele_get_handler(httpd_req_t *req) {
     return ret;
 }
 
-static esp_err_t cmnd_post_handler(httpd_req_t *req) {
+static esp_err_t https_post_handler(httpd_req_t *req) {
 
     if (!https_check_basic_auth(req)) {
         ESP_LOGW(TAG, "POST /cmnd: unauthorized");
@@ -178,39 +179,27 @@ static esp_err_t cmnd_post_handler(httpd_req_t *req) {
     }
     buf[received] = '\0';
 
-    // cmnd_process_json(buf);
+    https_json_cmnd_t json_cmnd = (https_json_cmnd_t)req->user_ctx;
+    if (json_cmnd) {
+        json_cmnd(buf);
+    }
     free(buf);
 
     esp_err_t ret = httpd_resp_send(req, "OK", HTTPD_RESP_USE_STRLEN);
     return ret;
 }
 
-static const httpd_uri_t cmnd_post_uri = {
-    .uri = "/cmnd", .method = HTTP_POST, .handler = cmnd_post_handler, .user_ctx = NULL};
-
-static const httpd_uri_t tele_get_uri = {
-    .uri = "/tele", .method = HTTP_GET, .handler = tele_get_handler, .user_ctx = NULL};
-
 void https_server_start(void) {
     httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
 
-    conf.servercert = (const uint8_t*)get_client_pem_start();
+    conf.servercert = (const uint8_t *)get_client_pem_start();
     conf.servercert_len = get_client_pem_size();
-    conf.prvtkey_pem =(const uint8_t*)get_client_key_start();
+    conf.prvtkey_pem = (const uint8_t *)get_client_key_start();
     conf.prvtkey_len = get_client_key_size();
-
-    // conf.servercert = https_pem_start;
-    // conf.servercert_len = https_pem_end - https_pem_start;
-    // conf.prvtkey_pem = https_key_start;
-    // conf.prvtkey_len = https_key_end - https_key_start;
-
-
-    // conf.cacert_pem = ca_pem_start;
-    // conf.cacert_len = ca_pem_end - ca_pem_start;
 
     // Limit HTTPS server to only one connection at a time
     httpd_config_t httpd_conf = HTTPD_DEFAULT_CONFIG();
-    httpd_conf.max_open_sockets = 1;
+    httpd_conf.max_open_sockets = CONFIG_HTTPS_MAX_OPEN_SOCKETS;
     httpd_conf.lru_purge_enable = true; // Enable LRU purge to close old connections
     httpd_conf.close_fn = NULL;         // Use default close with SO_LINGER
     // httpd_conf.keep_alive_enable = true;
@@ -225,8 +214,20 @@ void https_server_start(void) {
         https_server_handle = NULL;
         return;
     }
-    httpd_register_uri_handler(https_server_handle, &tele_get_uri);
-    httpd_register_uri_handler(https_server_handle, &cmnd_post_uri);
+
+    if (registered_endpoints) {
+        for (size_t i = 0; registered_endpoints[i].uri != NULL; i++) {
+            httpd_uri_t uri = {.uri = registered_endpoints[i].uri,
+                               .method = registered_endpoints[i].method,
+                               .handler = (registered_endpoints[i].method == HTTP_POST)
+                                              ? https_post_handler
+                                              : https_get_handler,
+                               .user_ctx = (registered_endpoints[i].method == HTTP_POST)
+                                               ? (void *)registered_endpoints[i].json_cmnd
+                                               : (void *)registered_endpoints[i].json_tele};
+            httpd_register_uri_handler(https_server_handle, &uri);
+        }
+    }
 }
 
 void https_server_stop(void) {
@@ -256,5 +257,6 @@ void https_server_task(void *args) {
     xEventGroupClearBits(https_event_group,
                          HTTPS_SHUTDOWN_INITIATED_BIT | HTTPS_SERVER_STARTED_BIT);
     https_server_handle = NULL;
+    https_server_task_handle = NULL;
     vTaskDelete(NULL);
 }
