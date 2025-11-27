@@ -1,0 +1,29 @@
+menu "Cikon IoT TCP OTA Configuration"
+
+    config TCP_OTA_PORT
+        int "TCP OTA server port"
+        default 5555
+        range 1024 65535
+        help
+            TCP port for OTA firmware updates.
+            Default: 5555
+
+    config TCP_OTA_TASK_STACK_SIZE
+        int "TCP OTA task stack size"
+        default 4096
+        range 4096 16384
+        help
+            Stack size (in bytes) for the TCP OTA task.
+            OTA operations require significant stack for TLS and flash operations.
+            Default: 4096
+
+    config TCP_OTA_TASK_PRIORITY
+        int "TCP OTA task priority"
+        default 10
+        range 0 25
+        help
+            Priority of the TCP OTA task.
+            Lower priority to avoid blocking critical system tasks.
+            Default: 10
+
+endmenu

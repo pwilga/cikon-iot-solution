@@ -33,7 +33,7 @@ static volatile bool ota_shutdown_requested = false;
 static volatile bool ota_update_in_progress = false;
 
 static int ota_listen_sock = -1;
-static uint16_t ota_listen_port = 5555;
+static uint16_t ota_listen_port = CONFIG_TCP_OTA_PORT;
 
 static const char *ota_steps[] = {
     "Waiting for OTA magic header", "Receiving firmware metadata (version, size, MD5)",

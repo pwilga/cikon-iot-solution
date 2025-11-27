@@ -4,5 +4,8 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
-        lwip app_update mbedtls cikon_core
+        app_update
+        cikon_core
+        lwip
+        mbedtls
 )

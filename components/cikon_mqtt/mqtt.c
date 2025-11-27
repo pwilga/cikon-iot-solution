@@ -166,7 +166,6 @@ void mqtt_command_task(void *args) {
         if (mqtt_config.command_cb) {
             mqtt_config.command_cb(payload);
         }
-        xEventGroupSetBits(mqtt_event_group, MQTT_TELEMETRY_TRIGGER_BIT);
 
     cleanup:
         if (msg) {
