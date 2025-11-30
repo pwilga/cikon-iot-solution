@@ -1,0 +1,22 @@
+version: "1.0.0"
+description: "Supervisor RF433 adapter - 433MHz RF receiver integration"
+url: https://github.com/your-org/cikon-iot-solution
+
+dependencies:
+  idf: ">=5.0"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_rf433_receiver:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_rf433_receiver
+  cikon_mqtt:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_mqtt
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

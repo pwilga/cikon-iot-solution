@@ -1,0 +1,16 @@
+version: "1.0.0"
+description: "Supervisor Zigbee adapter - Zigbee coordinator (stub)"
+url: https://github.com/your-org/cikon-iot-solution
+
+dependencies:
+  idf: ">=5.0"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

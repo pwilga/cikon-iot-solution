@@ -2,6 +2,18 @@ name: cikon_tcp_ota
 version: "0.1.0"
 description: "Cikon IoT Solution - TCP OTA Update component"
 license: MIT
-targets: [esp32, esp32c3]
 maintainers:
   - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+  cikon_core:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_core
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

@@ -1,0 +1,56 @@
+menu "Cikon IoT RF433 Receiver"
+
+    config RF433_DEBOUNCE_MS
+        int "Debounce time in milliseconds"
+        default 120
+        range 0 500
+        help
+            Time to ignore duplicate codes after dispatching.
+            Prevents multiple triggers from a single button press.
+
+    config CONFIRMATION_WINDOW_MS
+        int "Confirmation window in milliseconds"
+        default 500
+        range 100 2000
+        help
+            Time window to confirm code reception by receiving the same code again.
+            Helps filter out noise and false positives.
+
+    config CONFIRMATION_COUNT
+        int "Confirmation count"
+        default 2
+        range 1 10
+        help
+            Require consecutive identical frames to filter out noise
+            Set to 1 to disable confirmation (fast but noisy)
+            Set to 2+ for noise rejection (requires longer button press)
+
+    config RF433_RMT_RESOLUTION_HZ
+        int "RMT resolution in Hz"
+        default 1000000
+        help
+            RMT peripheral resolution (typically 1MHz).
+
+    config RF433_RMT_MEM_BLOCK_SYMBOLS
+        int "RMT memory block symbols"
+        default 64
+        range 32 128
+        help
+            Number of symbols in RMT memory block.
+
+    config RF433_TASK_STACK_SIZE
+        int "RF433 receiver task stack size"
+        default 3072
+        range 2048 8192
+        help
+            Stack size for the RF433 receiver task.
+
+    config RF433_TASK_PRIORITY
+        int "RF433 receiver task priority"
+        default 10
+        range 1 24
+        help
+            Priority of the RF433 receiver task.
+
+
+endmenu

@@ -1,0 +1,13 @@
+version: "1.0.0"
+description: "433MHz RF receiver using RMT peripheral with RC Switch protocol support"
+url: https://github.com/your-org/cikon-iot-solution
+
+dependencies:
+  idf: ">=5.0"
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

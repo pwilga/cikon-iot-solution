@@ -1,0 +1,39 @@
+menu "Supervisor Core Configuration"
+
+    config SUPERVISOR_QUEUE_LENGTH
+        int "Supervisor command queue length"
+        default 8
+        range 1 20
+        help
+            Length of the supervisor command queue.
+            Typical: 8.
+
+    config MAX_COMMANDS
+        int "Maximum number of commands"
+        default 20
+        range 1 100
+        help
+            Maximum number of commands that can be queued for execution.
+
+    config MAX_TELE
+        int "Maximum number of telemetry appenders"
+        default 20
+        range 1 100
+        help
+            Maximum number of telemetry appenders that can be registered.
+
+    config SUPERVISOR_TASK_STACK_SIZE
+        int "Supervisor task stack size"
+        default 4096
+        range 2048 8192
+        help
+            Stack size for the main supervisor task.
+
+    config SUPERVISOR_TASK_PRIORITY
+        int "Supervisor task priority"
+        default 5
+        range 1 24
+        help
+            Priority of the supervisor task.
+
+endmenu

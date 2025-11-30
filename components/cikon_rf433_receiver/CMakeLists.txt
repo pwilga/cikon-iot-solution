@@ -1,0 +1,11 @@
+idf_component_register(
+    SRCS
+        "rf433_receiver.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        esp_event
+    PRIV_REQUIRES
+        driver
+        esp_driver_rmt
+)

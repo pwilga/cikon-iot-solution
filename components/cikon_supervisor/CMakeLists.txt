@@ -1,0 +1,21 @@
+idf_component_register(
+    SRCS
+        "supervisor.c"
+        "cmnd.c"
+        "tele.c"
+        "cmnd_core_handlers.c"
+        "tele_core_appenders.c"
+        "button_manager.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        cjson
+        esp_event
+        freertos
+        cikon_helpers
+        cikon_core
+        button
+        driver
+    PRIV_REQUIRES
+        spi_flash
+)

@@ -6,6 +6,8 @@ targets: [esp32, esp32c3]
 maintainers:
   - "Piotr Wilga <pwilga@gmail.com>"
 
-cikon_helpers:
-    git: "git@github.com:pwilga/cikon-iot-solution.git"
+dependencies:
+  idf: ">=5.0"
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers

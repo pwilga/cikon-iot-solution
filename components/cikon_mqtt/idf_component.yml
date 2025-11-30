@@ -8,9 +8,8 @@ maintainers:
 
 dependencies:
   cikon_certs:
-      git: "git@github.com:pwilga/cikon-iot-solution.git"
-      path: components/cikon_certs
-
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_certs
   cikon_helpers:
-      git: "git@github.com:pwilga/cikon-iot-solution.git"
-      path: components/cikon_helpers
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
