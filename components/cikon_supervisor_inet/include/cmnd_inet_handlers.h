@@ -1,5 +1,4 @@
-#ifndef CMND_INET_HANDLERS_H
-#define CMND_INET_HANDLERS_H
+#pragma once
 
 /**
  * @brief Register inet adapter command handlers
@@ -19,5 +18,3 @@ void inet_cmnd_handlers_register(void);
  * Removes all internet/network-specific commands from the registry
  */
 void inet_cmnd_handlers_unregister(void);
-
-#endif // CMND_INET_HANDLERS_H
