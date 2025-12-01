@@ -1,6 +1,10 @@
+name: cikon_supervisor_inet
 version: "1.0.0"
 description: "Supervisor INET adapter - WiFi, MQTT, Home Assistant integration"
-url: https://github.com/pwilga/cikon-iot-solution/components/cikon_supervisor_inet
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
   idf: ">=5.0"

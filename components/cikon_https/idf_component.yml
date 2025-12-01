@@ -2,14 +2,22 @@ name: cikon_https
 version: "0.1.0"
 description: "Cikon IoT https server helper for ESP-IDF"
 license: MIT
-targets: [esp32, esp32c3]
+url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
   - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
+  idf: ">=5.0"
   cikon_certs:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_certs
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

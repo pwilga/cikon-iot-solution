@@ -2,6 +2,7 @@ name: cikon_tcp_ota
 version: "0.1.0"
 description: "Cikon IoT Solution - TCP OTA Update component"
 license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
   - "Piotr Wilga <pwilga@gmail.com>"
 

@@ -2,6 +2,16 @@ name: cikon_core
 version: "0.1.0"
 description: "Cikon IoT Solution - Core components like mDNS, NVS, boot time, etc."
 license: MIT
-targets: [esp32, esp32c3]
+url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
   - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

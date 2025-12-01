@@ -1,6 +1,10 @@
+name: cikon_supervisor
 version: "1.0.0"
 description: "Supervisor core - command, telemetry, and platform adapter management"
+license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
   idf: ">=5.0"

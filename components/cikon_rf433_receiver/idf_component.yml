@@ -1,6 +1,10 @@
+name: cikon_rf433_receiver
 version: "1.0.0"
 description: "433MHz RF receiver using RMT peripheral with RC Switch protocol support"
-url: https://github.com/your-org/cikon-iot-solution
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
   idf: ">=5.0"

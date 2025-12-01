@@ -1,6 +1,10 @@
+name: cikon_supervisor_rf433
 version: "1.0.0"
 description: "Supervisor RF433 adapter - 433MHz RF receiver integration"
-url: https://github.com/your-org/cikon-iot-solution
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
   idf: ">=5.0"

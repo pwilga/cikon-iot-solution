@@ -1,6 +1,6 @@
-name: cikon_tcp_monitor
-version: "0.1.0"
-description: "Cikon IoT Solution - TCP Monitor component"
+name: cikon_certs
+version: "1.0.0"
+description: "Cikon IoT Solution - SSL/TLS certificates component"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
@@ -8,9 +8,6 @@ maintainers:
 
 dependencies:
   idf: ">=5.0"
-  cikon_helpers:
-    git: "https://github.com/pwilga/cikon-iot-solution.git"
-    path: components/cikon_helpers
 
 targets:
   - esp32

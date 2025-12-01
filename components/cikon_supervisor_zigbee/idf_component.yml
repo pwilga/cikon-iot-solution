@@ -1,6 +1,10 @@
+name: cikon_supervisor_zigbee
 version: "1.0.0"
 description: "Supervisor Zigbee adapter - Zigbee coordinator (stub)"
-url: https://github.com/your-org/cikon-iot-solution
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
   idf: ">=5.0"

@@ -1,6 +1,10 @@
+name: cikon_helpers
 version: "1.0.0"
 description: "Cikon IoT Solution - Helper utilities (button, debug, net, json, tasks)"
+license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
   idf: ">=5.0"
