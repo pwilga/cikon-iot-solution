@@ -2,7 +2,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#include "button_manager.h"
 #include "cmnd.h"
 #include "cmnd_core_handlers.h"
 #include "config_manager.h"
@@ -143,8 +142,6 @@ void supervisor_init(void) {
 
     tele_init();
     tele_core_appenders_register();
-
-    button_manager_init(0);
 
     xTaskCreate(debug_info_task, "debug_info", 4096, NULL, 0, NULL);
 

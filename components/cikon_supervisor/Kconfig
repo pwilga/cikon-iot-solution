@@ -1,5 +1,4 @@
-menu "Supervisor Core Configuration"
-
+menu "Cikon Supervisor Core Configuration"
     config SUPERVISOR_QUEUE_LENGTH
         int "Supervisor command queue length"
         default 8

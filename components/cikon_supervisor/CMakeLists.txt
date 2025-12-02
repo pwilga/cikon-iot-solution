@@ -5,7 +5,6 @@ idf_component_register(
         "tele.c"
         "cmnd_core_handlers.c"
         "tele_core_appenders.c"
-        "button_manager.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
@@ -14,8 +13,6 @@ idf_component_register(
         freertos
         cikon_helpers
         cikon_core
-        button
-        driver
     PRIV_REQUIRES
         spi_flash
 )
