@@ -20,6 +20,7 @@
 
 static mqtt_config_t mqtt_config = {NULL};
 static TaskHandle_t mqtt_command_task_handle, mqtt_telemetry_task_handle;
+static SemaphoreHandle_t mqtt_reconnect_mutex = NULL;
 
 static esp_mqtt_client_handle_t mqtt_client;
 static EventGroupHandle_t mqtt_event_group;
@@ -102,6 +103,14 @@ void mqtt_publish_offline_state(void) {
 }
 
 void mqtt_telemetry_task(void *args) {
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+
+    // Check if another instance is already running
+    if (mqtt_telemetry_task_handle != NULL && mqtt_telemetry_task_handle != current) {
+        ESP_LOGW(TAG, "Duplicate mqtt_telemetry_task detected, terminating");
+        vTaskDelete(NULL);
+        return;
+    }
 
     // Birth message
     {
@@ -130,11 +139,18 @@ void mqtt_telemetry_task(void *args) {
 
     ESP_LOGE(TAG, "telemetry_task: exiting");
     xEventGroupClearBits(mqtt_event_group, MQTT_TELEMETRY_TRIGGER_BIT);
-    mqtt_telemetry_task_handle = NULL;
     vTaskDelete(NULL);
 }
 
 void mqtt_command_task(void *args) {
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+
+    // Check if another instance is already running
+    if (mqtt_command_task_handle != NULL && mqtt_command_task_handle != current) {
+        ESP_LOGW(TAG, "Duplicate mqtt_command_task detected, terminating");
+        vTaskDelete(NULL);
+        return;
+    }
 
     // Command topic subscription
     {
@@ -174,14 +190,7 @@ void mqtt_command_task(void *args) {
         }
     }
 
-    ESP_LOGE(TAG, "command_task: exiting and cleaning mqtt_queue");
-
-    if (mqtt_queue) {
-        vQueueDelete(mqtt_queue);
-        mqtt_queue = NULL;
-    }
-
-    mqtt_command_task_handle = NULL;
+    ESP_LOGE(TAG, "command_task: exiting");
     vTaskDelete(NULL);
 }
 
@@ -195,18 +204,17 @@ void mqtt_publish(const char *topic, const char *payload, int qos, bool retain) 
 }
 
 void shutdown_mqtt_tasks(void) {
+    // Clear handles - new tasks can set them immediately
+    mqtt_command_task_handle = NULL;
+    mqtt_telemetry_task_handle = NULL;
+
+    // Signal old tasks to exit (they'll see this in next iteration)
     xEventGroupSetBits(mqtt_event_group, MQTT_TASKS_SHUTDOWN_BIT);
 
-    // Wait for tasks to finish (max 2 seconds)
-    uint8_t timeout = 200; // 200 × 10ms = 2s
-    while ((mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) && timeout--) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
+    // Give old tasks a moment to notice and exit
+    vTaskDelay(pdMS_TO_TICKS(100));
 
-    if (mqtt_command_task_handle != NULL || mqtt_telemetry_task_handle != NULL) {
-        ESP_LOGW(TAG, "MQTT tasks did not exit in time!");
-    }
-
+    // Clear shutdown bit for new tasks
     xEventGroupClearBits(mqtt_event_group, MQTT_TASKS_SHUTDOWN_BIT);
 }
 
@@ -218,6 +226,11 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     switch ((esp_mqtt_event_id_t)event_id) {
     case MQTT_EVENT_CONNECTED:
 
+        // Serialize CONNECTED events - wait if another reconnection is in progress
+        if (mqtt_reconnect_mutex != NULL) {
+            xSemaphoreTake(mqtt_reconnect_mutex, portMAX_DELAY);
+        }
+
         mqtt_retry_counter = 0;
         xEventGroupSetBits(mqtt_event_group, MQTT_CONNECTED_BIT);
 
@@ -227,15 +240,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             shutdown_mqtt_tasks();
         }
 
-        if (mqtt_queue == NULL) {
-            mqtt_queue = xQueueCreate(8, sizeof(void *));
-        }
-
-        if (mqtt_queue == NULL) {
-            ESP_LOGE(TAG, "Failed to create MQTT queue!");
-            return;
-        }
-
         xTaskCreate(mqtt_command_task, "mqtt_command", CONFIG_MQTT_COMMAND_TASK_STACK_SIZE, NULL,
                     CONFIG_MQTT_COMMAND_TASK_PRIORITY, &mqtt_command_task_handle);
 
@@ -243,6 +247,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                     NULL, CONFIG_MQTT_TELEMETRY_TASK_PRIORITY, &mqtt_telemetry_task_handle);
 
         ESP_LOGI(TAG, "Connected to MQTT Broker: %s", mqtt_config.mqtt_broker);
+
+        if (mqtt_reconnect_mutex != NULL) {
+            xSemaphoreGive(mqtt_reconnect_mutex);
+        }
 
         break;
     case MQTT_EVENT_ERROR:
@@ -354,6 +362,15 @@ void mqtt_init() {
 
     ESP_LOGI(TAG, "Initializing MQTT client...");
 
+    if (mqtt_reconnect_mutex == NULL) {
+        mqtt_reconnect_mutex = xSemaphoreCreateMutex();
+    }
+
+    if (mqtt_reconnect_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create MQTT reconnect mutex!");
+        return;
+    }
+
     static StaticEventGroup_t mqtt_event_group_storage;
 
     if (mqtt_event_group == NULL) {
@@ -367,6 +384,15 @@ void mqtt_init() {
 
     // Clear shutdown bit - allow tasks to run
     xEventGroupClearBits(mqtt_event_group, MQTT_TASKS_SHUTDOWN_BIT);
+
+    if (mqtt_queue == NULL) {
+        mqtt_queue = xQueueCreate(8, sizeof(void *));
+    }
+
+    if (mqtt_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create MQTT queue!");
+        return;
+    }
 
     static char avail_topic_buf[TOPIC_BUF_SIZE];
     mqtt_availability_topic(avail_topic_buf, sizeof(avail_topic_buf));
@@ -420,6 +446,16 @@ void mqtt_shutdown() {
     ESP_ERROR_CHECK(esp_mqtt_client_stop(mqtt_client));
     ESP_ERROR_CHECK(esp_mqtt_client_destroy(mqtt_client));
     mqtt_client = NULL;
+
+    if (mqtt_reconnect_mutex != NULL) {
+        vSemaphoreDelete(mqtt_reconnect_mutex);
+        mqtt_reconnect_mutex = NULL;
+    }
+
+    if (mqtt_queue != NULL) {
+        vQueueDelete(mqtt_queue);
+        mqtt_queue = NULL;
+    }
 
     xEventGroupClearBits(mqtt_event_group, MQTT_CONNECTED_BIT);
 }

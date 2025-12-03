@@ -8,15 +8,6 @@ maintainers:
 
 dependencies:
   idf: ">=5.0"
-  cikon_config:
-    git: "https://github.com/pwilga/cikon-iot-solution.git"
-    path: components/cikon_config
-  cikon_mqtt:
-    git: "https://github.com/pwilga/cikon-iot-solution.git"
-    path: components/cikon_mqtt
-  cikon_wifi:
-    git: "https://github.com/pwilga/cikon-iot-solution.git"
-    path: components/cikon_wifi
 
 targets:
   - esp32

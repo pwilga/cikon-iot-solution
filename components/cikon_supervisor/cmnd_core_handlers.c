@@ -3,7 +3,7 @@
 #include "cmnd.h"
 #include "cmnd_core_handlers.h"
 #include "config_manager.h"
-#include "debug.h"
+// #include "debug.h"
 #include "json_parser.h"
 #include "platform_services.h"
 
@@ -27,12 +27,12 @@ static void help_handler(const char *args_json_str) {
     ESP_LOGI(TAG, "=======================================");
 }
 
-static void log_handler(const char *args_json_str) {
-    (void)args_json_str;
+// static void log_handler(const char *args_json_str) {
+//     (void)args_json_str;
 
-    debug_print_sys_info();
-    debug_print_config_summary();
-}
+//     debug_print_sys_info();
+//     debug_print_config_summary();
+// }
 
 static void set_conf_handler(const char *args_json_str) {
     cJSON *json_args = json_str_as_object(args_json_str);
@@ -70,7 +70,7 @@ void cmnd_core_handlers_register(void) {
     // Basic system commands
     cmnd_register("restart", "Restart the device", restart_handler);
     cmnd_register("help", "Show available commands", help_handler);
-    cmnd_register("log", "Print debug information", log_handler);
+    // cmnd_register("log", "Print debug information", log_handler);
 
     // Configuration commands
     cmnd_register("setconf", "Set configuration from JSON", set_conf_handler);

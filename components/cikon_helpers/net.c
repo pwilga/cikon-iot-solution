@@ -1,11 +1,11 @@
-#include <sys/socket.h>
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <netdb.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
 // #include "platform_services.h"
-#include "config_manager.h"
+// #include "config_manager.h"
 #include "net.h"
 
 // bool is_network_connected(void) {
@@ -88,12 +88,12 @@ static bool parse_mqtt_broker_uri(const char *uri, char *host, size_t host_len, 
     return true;
 }
 
-bool is_mqtt_broker_reachable(void) {
-    char host[128];
-    uint16_t port;
-    const char *uri = config_get()->mqtt_broker;
-    if (!parse_mqtt_broker_uri(uri, host, sizeof(host), &port)) {
-        return false;
-    }
-    return is_tcp_port_reachable(host, port);
-}
+// bool is_mqtt_broker_reachable(void) {
+//     char host[128];
+//     uint16_t port;
+//     const char *uri = config_get()->mqtt_broker;
+//     if (!parse_mqtt_broker_uri(uri, host, sizeof(host), &port)) {
+//         return false;
+//     }
+//     return is_tcp_port_reachable(host, port);
+// }

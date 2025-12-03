@@ -5,7 +5,6 @@
 #include "cmnd.h"
 #include "cmnd_core_handlers.h"
 #include "config_manager.h"
-#include "debug.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
@@ -23,6 +22,7 @@ static uint8_t adapter_count = 0;
 // Interval timing configuration
 static const uint32_t supervisor_intervals_ms[SUPERVISOR_INTERVAL_COUNT] = {
     [SUPERVISOR_INTERVAL_1S] = 1000,
+    [SUPERVISOR_INTERVAL_2S] = 2000,
     [SUPERVISOR_INTERVAL_5S] = 5000,
     [SUPERVISOR_INTERVAL_60S] = 60000,
     [SUPERVISOR_INTERVAL_5M] = 5 * 60 * 1000,
@@ -142,8 +142,6 @@ void supervisor_init(void) {
 
     tele_init();
     tele_core_appenders_register();
-
-    xTaskCreate(debug_info_task, "debug_info", 4096, NULL, 0, NULL);
 
     ESP_LOGI(TAG, "Supervisor core initialized successfully");
 }

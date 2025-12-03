@@ -16,19 +16,4 @@ menu "Cikon Supervisor Button Adapter"
             Active level of the button:
             0 = Active low (button connects to GND when pressed)
             1 = Active high (button connects to VCC when pressed)
-
-    config BUTTON_SHORT_PRESS_TIME_MS
-        int "Short Press Time (ms)"
-        default 180
-        range 50 1000
-        help
-            Maximum duration for a short press in milliseconds
-
-    config BUTTON_LONG_PRESS_TIME_MS
-        int "Long Press Time (ms)"
-        default 1500
-        range 500 5000
-        help
-            Minimum duration for a long press in milliseconds
-
 endmenu

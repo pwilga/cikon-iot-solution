@@ -2,17 +2,9 @@ idf_component_register(
     SRCS
         "json_parser.c"
         "task_helpers.c"
-        "debug.c"
         "net.c"
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
         cjson
-        esp_driver_gpio
-        esp_wifi
-    REQUIRES
-        cikon_config
-        cikon_mqtt
-        cikon_wifi
-        spi_flash
 )

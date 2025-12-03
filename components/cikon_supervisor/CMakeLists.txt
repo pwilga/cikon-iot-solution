@@ -13,6 +13,5 @@ idf_component_register(
         freertos
         cikon_helpers
         cikon_core
-    PRIV_REQUIRES
-        spi_flash
+        cikon_config
 )
