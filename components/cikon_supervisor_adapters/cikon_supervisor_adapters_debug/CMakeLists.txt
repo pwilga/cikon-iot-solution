@@ -3,11 +3,6 @@ idf_component_register(
         "debug.c"
     INCLUDE_DIRS
         "include"
-    REQUIRES
-        cikon_supervisor
-        cikon_config
-        cikon_wifi
-        cikon_mqtt
     PRIV_REQUIRES
         spi_flash
 )

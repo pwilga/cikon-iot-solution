@@ -8,10 +8,6 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     REQUIRES
-        cjson
         esp_event
         freertos
-        cikon_helpers
-        cikon_core
-        cikon_config
 )

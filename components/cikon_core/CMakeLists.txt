@@ -4,5 +4,7 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
-        esp_driver_gpio nvs_flash esp_event
+        esp_driver_gpio
+        esp_event
+        nvs_flash
 )

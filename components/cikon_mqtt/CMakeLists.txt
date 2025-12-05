@@ -5,9 +5,5 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
-        cikon_certs
-        cikon_helpers
         mqtt
-    REQUIRES
-        cjson
 )

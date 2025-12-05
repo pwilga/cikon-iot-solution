@@ -5,8 +5,4 @@ idf_component_register(
         "include"
     REQUIRES
         esp_https_server
-    PRIV_REQUIRES
-        cikon_certs
-        cikon_helpers
-        cjson
 )

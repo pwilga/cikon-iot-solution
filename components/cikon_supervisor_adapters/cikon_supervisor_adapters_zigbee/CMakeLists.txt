@@ -1,8 +1,6 @@
 idf_component_register(
     SRCS
-       "tcp_monitor.c"
+        "zigbee.c"
     INCLUDE_DIRS
         "include"
-    PRIV_REQUIRES
-        esp_ringbuf
 )

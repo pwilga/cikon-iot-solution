@@ -3,8 +3,4 @@ idf_component_register(
         "rf433.c"
     INCLUDE_DIRS
         "include"
-    REQUIRES
-        cikon_supervisor
-        cikon_mqtt
-        cikon_rf433_receiver
 )

@@ -1,6 +1,6 @@
-name: cikon_supervisor_button
+name: cikon_supervisor_adapters_zigbee
 version: "1.0.0"
-description: "Supervisor Button adapter - physical button input handling"
+description: "Supervisor Zigbee adapter - Zigbee coordinator (stub)"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
@@ -11,7 +11,6 @@ dependencies:
   cikon_supervisor:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_supervisor
-  espressif/button: "*"
 
 targets:
   - esp32

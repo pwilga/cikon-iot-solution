@@ -5,7 +5,6 @@ idf_component_register(
         "include"
     PRIV_REQUIRES
         app_update
-        cikon_core
         lwip
         mbedtls
 )

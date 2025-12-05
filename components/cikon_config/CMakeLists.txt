@@ -32,9 +32,6 @@ idf_component_register(
         "include" "${PROJECT_CONFIG_DIR}"
     PRIV_REQUIRES
         nvs_flash
-    REQUIRES
-        cjson
-
 )
 
 message(STATUS "cikon_config: using private includes from ${PROJECT_CONFIG_DIR}")

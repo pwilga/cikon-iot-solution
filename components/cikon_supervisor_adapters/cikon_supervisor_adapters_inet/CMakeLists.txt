@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "inet.c"
+        "cmnd_inet_handlers.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_REQUIRES
+        esp_wifi
+        esp_netif_stack
+)

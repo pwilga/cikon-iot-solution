@@ -1,4 +1,4 @@
-name: cikon_supervisor_debug
+name: cikon_supervisor_adapters_debug
 version: 1.0.0
 description: Debug and monitoring adapter for Cikon Supervisor
 license: MIT

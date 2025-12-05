@@ -8,7 +8,6 @@ maintainers:
 
 dependencies:
   idf: ">=5.0"
-  espressif/button: "*"
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers
@@ -18,6 +17,8 @@ dependencies:
   cikon_config:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_config
+  espressif/button: "*"
+  espressif/cjson: "*"
 
 targets:
   - esp32

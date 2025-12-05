@@ -5,6 +5,4 @@ idf_component_register(
         "net.c"
     INCLUDE_DIRS
         "include"
-    PRIV_REQUIRES
-        cjson
 )

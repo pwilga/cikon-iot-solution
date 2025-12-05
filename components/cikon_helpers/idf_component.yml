@@ -8,6 +8,7 @@ maintainers:
 
 dependencies:
   idf: ">=5.0"
+  espressif/cjson: "*"
 
 targets:
   - esp32

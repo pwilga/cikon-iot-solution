@@ -11,6 +11,8 @@
 
 #define TAG "cikon-debug-adapter"
 
+static bool debug_enabled = true;
+
 static void debug_print_config_summary(void) {
     const config_t *cfg = config_get();
     ESP_LOGI(TAG, "| * CONFIG *");
@@ -83,6 +85,10 @@ static void debug_adapter_init(void) {
 }
 
 static void debug_adapter_on_event(EventBits_t bits) {
+
+    if (!debug_enabled) {
+        return;
+    }
     // Log all events
     ESP_LOGI(TAG, "Event received: 0x%08" PRIx32, (uint32_t)bits);
 
@@ -114,8 +120,6 @@ static void debug_adapter_on_event(EventBits_t bits) {
         ESP_LOGI(TAG, "  -> INET_EVENT_RESERVED");
     }
 }
-
-static bool debug_enabled = true;
 
 static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
     if (!debug_enabled) {

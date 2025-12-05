@@ -112,6 +112,8 @@ void mqtt_telemetry_task(void *args) {
         return;
     }
 
+    mqtt_telemetry_task_handle = current;
+
     // Birth message
     {
         char topic[TOPIC_BUF_SIZE];
@@ -121,6 +123,12 @@ void mqtt_telemetry_task(void *args) {
     }
 
     while (!(xEventGroupGetBits(mqtt_event_group) & MQTT_TASKS_SHUTDOWN_BIT)) {
+
+        // Check if we're still the active task
+        if (mqtt_telemetry_task_handle != current) {
+            ESP_LOGW(TAG, "telemetry_task: handle changed, terminating");
+            break;
+        }
 
         mqtt_publish_telemetry();
 
@@ -152,6 +160,8 @@ void mqtt_command_task(void *args) {
         return;
     }
 
+    mqtt_command_task_handle = current;
+
     // Command topic subscription
     {
         char topic[TOPIC_BUF_SIZE];
@@ -166,6 +176,12 @@ void mqtt_command_task(void *args) {
     char *msg = NULL; // ensure safe free() even if xQueueReceive fails
 
     while (!(xEventGroupGetBits(mqtt_event_group) & MQTT_TASKS_SHUTDOWN_BIT)) {
+
+        // Check if we're still the active task
+        if (mqtt_command_task_handle != current) {
+            ESP_LOGW(TAG, "command_task: handle changed, terminating");
+            break;
+        }
 
         if (xQueueReceive(mqtt_queue, &msg, pdMS_TO_TICKS(100)) == pdFALSE)
             goto cleanup;
