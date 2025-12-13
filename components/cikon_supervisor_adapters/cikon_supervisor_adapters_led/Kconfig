@@ -1,0 +1,44 @@
+menu "Cikon IoT LED Adapter Configuration"
+
+    config LED_ADAPTER_ENABLED
+        bool "Enable LED Adapter"
+        default y
+        help
+            Enable LED adapter for PWM control of analog LEDs.
+
+    if LED_ADAPTER_ENABLED
+
+        config LED_GPIO_LIST
+            string "LED GPIO List (gpio:name pairs, comma-separated)"
+            default "25:Left Strip,27:Right Strip"
+            help
+                Comma-separated list of GPIO:name pairs for LEDs.
+                Format: "gpio:name" or just "gpio" (auto-named as led0, led1, etc.)
+                Example: "2:main,4:status,18:alarm" or "2,4,18".
+                LEDC channels will be assigned automatically (0, 1, 2, 3...).
+
+        config LED_PWM_FREQUENCY
+            int "LED PWM Frequency (Hz)"
+            default 5000
+            range 100 40000
+            help
+                PWM frequency for LED control. Higher frequency = smoother dimming.
+                Typical values: 1000-10000 Hz.
+
+        config LED_FADE_TIME_MS
+            int "Default Fade Time (ms)"
+            default 1000
+            range 0 5000
+            help
+                Default fade duration when using led_fade command.
+
+        config LED_OUTPUT_INVERT
+            bool "Invert LED Output"
+            default n
+            help
+                Invert PWM output signal (for LEDs connected to VCC instead of GND).
+                When enabled: brightness 0 = GPIO HIGH, brightness 255 = GPIO LOW.
+
+    endif
+
+endmenu

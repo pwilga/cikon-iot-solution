@@ -1,0 +1,25 @@
+name: cikon_supervisor_adapters_led
+version: "1.0.0"
+description: "Supervisor LED adapter - PWM LED control with LEDC"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
+  espressif/cjson:
+    require: public
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

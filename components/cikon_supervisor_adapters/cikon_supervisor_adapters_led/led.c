@@ -1,0 +1,240 @@
+#include <stdlib.h>
+#include <string.h>
+
+#include "driver/ledc.h"
+#include "esp_log.h"
+#include "soc/gpio_num.h"
+
+#include "cmnd_led_handlers.h"
+#include "ha.h"
+#include "json_parser.h"
+#include "led_adapter.h"
+#include "supervisor.h"
+#include "tele_led_appenders.h"
+
+#define TAG "cikon-led-adapter"
+#define LED_ADAPTER_MAX_LEDS LEDC_CHANNEL_MAX
+
+typedef struct {
+    gpio_num_t gpio;
+    ledc_channel_t channel;
+    uint8_t brightness;
+    uint8_t last_brightness;
+    char name[16];
+} led_config_t;
+
+static led_config_t leds[LED_ADAPTER_MAX_LEDS + 1]; // +1 for sentinel
+static bool led_initialized = false;
+
+static void parse_gpio_list(void) {
+
+    const char *gpio_list = CONFIG_LED_GPIO_LIST;
+    char *str = strdup(gpio_list);
+    char *token = strtok(str, ",");
+    int index = 0;
+
+    // Initialize all with sentinel first
+    for (int i = 0; i <= LED_ADAPTER_MAX_LEDS; i++) {
+        leds[i].gpio = GPIO_NUM_NC;
+    }
+
+    while (token != NULL && index < LED_ADAPTER_MAX_LEDS) {
+        char *colon = strchr(token, ':');
+        int gpio;
+        const char *name = NULL;
+
+        if (colon) {
+            *colon = '\0';
+            gpio = atoi(token);
+            name = colon + 1;
+        } else {
+            gpio = atoi(token);
+        }
+
+        if (gpio >= 0 && gpio < SOC_GPIO_PIN_COUNT) {
+            leds[index].gpio = (gpio_num_t)gpio;
+            leds[index].channel = (ledc_channel_t)index;
+            leds[index].brightness = 0;
+            leds[index].last_brightness = 255;
+
+            if (name && strlen(name) > 0) {
+                strncpy(leds[index].name, name, sizeof(leds[index].name) - 1);
+                leds[index].name[sizeof(leds[index].name) - 1] = '\0';
+                ESP_LOGI(TAG, "Configured LED %d '%s' on GPIO %d", index, leds[index].name, gpio);
+            } else {
+                snprintf(leds[index].name, sizeof(leds[index].name), "led%d", index);
+                ESP_LOGI(TAG, "Configured LED %d on GPIO %d (auto-named '%s')", index, gpio,
+                         leds[index].name);
+            }
+            index++;
+        }
+        token = strtok(NULL, ",");
+    }
+
+    free(str);
+}
+
+static void led_init_channel(led_config_t *led) {
+
+    ledc_channel_config_t channel_config = {.gpio_num = led->gpio,
+                                            .speed_mode = LEDC_LOW_SPEED_MODE,
+                                            .channel = led->channel,
+                                            .timer_sel = LEDC_TIMER_0,
+                                            .duty = 0,
+                                            .hpoint = 0};
+#ifdef CONFIG_LED_OUTPUT_INVERT
+    channel_config.flags.output_invert = 1;
+#endif
+
+    esp_err_t ret = ledc_channel_config(&channel_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure LED channel %d on GPIO %d", led->channel, led->gpio);
+        return;
+    }
+
+    ESP_LOGI(TAG, "LED channel %d initialized on GPIO %d", led->channel, led->gpio);
+}
+
+static void led_ha_register_entities(void) {
+    for (uint8_t i = 0;; i++) {
+        const char *name = led_get_name(i);
+        if (!name) {
+            break;
+        }
+
+        ha_register_entity(HA_LIGHT, name, NULL, NULL, NULL);
+    }
+}
+
+static void led_adapter_init(void) {
+    if (led_initialized) {
+        return;
+    }
+
+    parse_gpio_list();
+
+    ledc_timer_config_t timer_config = {.speed_mode = LEDC_LOW_SPEED_MODE,
+                                        .duty_resolution = LEDC_TIMER_8_BIT,
+                                        .timer_num = LEDC_TIMER_0,
+                                        .freq_hz = CONFIG_LED_PWM_FREQUENCY,
+                                        .clk_cfg = LEDC_AUTO_CLK};
+
+    if (ledc_timer_config(&timer_config) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to configure LEDC timer");
+        return;
+    }
+
+    ledc_fade_func_install(0);
+
+    for (led_config_t *led = leds; led->gpio != GPIO_NUM_NC; led++) {
+        led_init_channel(led);
+    }
+
+    led_initialized = true;
+    led_cmnd_handlers_register();
+    led_tele_appenders_register();
+    led_ha_register_entities();
+    ESP_LOGI(TAG, "LED adapter initialized");
+}
+
+static void led_adapter_shutdown(void) {
+    if (!led_initialized) {
+        return;
+    }
+
+    for (led_config_t *led = leds; led->gpio != GPIO_NUM_NC; led++) {
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, led->channel, 0);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, led->channel);
+    }
+
+    led_cmnd_handlers_unregister();
+    // led_tele_appenders_unregister();
+    ledc_fade_func_uninstall();
+    led_initialized = false;
+    ESP_LOGI(TAG, "LED adapter shutdown");
+}
+
+void led_set_brightness(uint8_t led_index, uint8_t brightness) {
+    if (!led_initialized || led_index >= LED_ADAPTER_MAX_LEDS ||
+        leds[led_index].gpio == GPIO_NUM_NC) {
+        return;
+    }
+
+    if (brightness > 0) {
+        leds[led_index].last_brightness = brightness;
+    }
+
+    leds[led_index].brightness = brightness;
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, leds[led_index].channel, brightness);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, leds[led_index].channel);
+}
+
+void led_fade_to(uint8_t led_index, uint8_t target, uint32_t duration_ms) {
+    if (!led_initialized || led_index >= LED_ADAPTER_MAX_LEDS ||
+        leds[led_index].gpio == GPIO_NUM_NC) {
+        return;
+    }
+
+    if (target > 0) {
+        leds[led_index].last_brightness = target;
+    }
+
+    leds[led_index].brightness = target;
+    ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE, leds[led_index].channel, target, duration_ms);
+    ledc_fade_start(LEDC_LOW_SPEED_MODE, leds[led_index].channel, LEDC_FADE_NO_WAIT);
+}
+
+uint8_t led_get_brightness(uint8_t led_index) {
+    if (led_index >= LED_ADAPTER_MAX_LEDS || leds[led_index].gpio == GPIO_NUM_NC) {
+        return 0;
+    }
+    return leds[led_index].brightness;
+}
+
+void led_turn_on(uint8_t led_index) {
+    if (!led_initialized || led_index >= LED_ADAPTER_MAX_LEDS ||
+        leds[led_index].gpio == GPIO_NUM_NC) {
+        return;
+    }
+
+    uint8_t brightness = leds[led_index].last_brightness;
+    if (brightness == 0) {
+        brightness = 255;
+    }
+    led_set_brightness(led_index, brightness);
+}
+
+void led_turn_off(uint8_t led_index) { led_set_brightness(led_index, 0); }
+
+bool led_is_on(uint8_t led_index) { return led_get_brightness(led_index) > 0; }
+
+int8_t led_find_by_name(const char *name) {
+    if (!name || !led_initialized) {
+        return -1;
+    }
+
+    for (int i = 0; i < LED_ADAPTER_MAX_LEDS; i++) {
+        if (leds[i].gpio == GPIO_NUM_NC) {
+            break;
+        }
+        char *sanitized_stored = sanitize(leds[i].name);
+        int match = strcmp(sanitized_stored, name) == 0;
+        free(sanitized_stored);
+        if (match) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+const char *led_get_name(uint8_t led_index) {
+    if (led_index >= LED_ADAPTER_MAX_LEDS || leds[led_index].gpio == GPIO_NUM_NC) {
+        return NULL;
+    }
+    return leds[led_index].name;
+}
+
+supervisor_platform_adapter_t led_adapter = {
+    .init = led_adapter_init,
+    .shutdown = led_adapter_shutdown,
+};
