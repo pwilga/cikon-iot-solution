@@ -1,5 +1,4 @@
-#ifndef MQTT_H
-#define MQTT_H
+#pragma once
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "stdint.h"
@@ -46,5 +45,3 @@ void mqtt_log_event_group_bits(void);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // MQTT_H

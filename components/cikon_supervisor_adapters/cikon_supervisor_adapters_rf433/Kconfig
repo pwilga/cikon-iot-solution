@@ -1,4 +1,4 @@
-menu "Cikon Supervisor RF433 Adapter"
+menu "Cikon IoT Supervisor RF433 Adapter"
     config RF433_GPIO_PIN
         int "RF433 Receiver GPIO Pin"
         default 23 if IDF_TARGET_ESP32

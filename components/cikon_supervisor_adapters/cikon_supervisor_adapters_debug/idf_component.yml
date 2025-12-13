@@ -1,10 +1,11 @@
 name: cikon_supervisor_adapters_debug
 version: 1.0.0
-description: Debug and monitoring adapter for Cikon Supervisor
+description: Debug and monitoring adapter for Supervisor
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
   - Piotr Wilga
+
 dependencies:
   idf: ">=5.0"
   cikon_supervisor:
@@ -19,6 +20,7 @@ dependencies:
   cikon_mqtt:
     git: https://github.com/pwilga/cikon-iot-solution.git
     path: components/cikon_mqtt
+
 targets:
   - esp32
   - esp32s2

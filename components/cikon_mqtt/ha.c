@@ -10,7 +10,7 @@
 #include "json_parser.h"
 #include "mqtt.h"
 
-#define TAG "home-assistant"
+#define TAG "cikon-home-assistant"
 #define MAX_ENTITIES 32
 
 static bool has_sent_full_dev = false;
@@ -20,6 +20,7 @@ typedef struct {
     ha_entity_type_t type;
     const char *name;
     const char *device_class;
+    const char *entity_category;
     ha_custom_builder_t custom_builder;
 } ha_entity_def_t;
 
@@ -27,13 +28,6 @@ typedef struct {
 static ha_entity_def_t entities[MAX_ENTITIES];
 static size_t entity_count = 0;
 static bool default_registered = false;
-
-// Forward declarations
-static void build_switch(cJSON *payload, const char *sanitized_name);
-static void build_button(cJSON *payload, const char *sanitized_name);
-static void build_tasks_dict(cJSON *payload, const char *sanitized_name);
-static cJSON *create_ha_device(void);
-static void register_default_entities(void);
 
 static const char *get_type_str(ha_entity_type_t type) {
     switch (type) {
@@ -43,6 +37,8 @@ static const char *get_type_str(ha_entity_type_t type) {
         return "switch";
     case HA_BUTTON:
         return "button";
+    case HA_LIGHT:
+        return "light";
     default:
         return "unknown";
     }
@@ -103,8 +99,45 @@ static void build_tasks_dict(cJSON *payload, const char *sanitized_name) {
     cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
 }
 
+static void build_light(cJSON *payload, const char *sanitized_name) {
+
+    const char *topic_key = "pwm_led";
+    char buf[256];
+
+    // Use template schema
+    cJSON_AddStringToObject(payload, "schema", "template");
+
+    // Command on template - send brightness if available, otherwise "on" to restore last brightness
+    snprintf(buf, sizeof(buf),
+             "{\"%s\":{\"%s\":"
+             "{%% if brightness is defined %%}{{ brightness }}{%% else %%}\"on\"{%% endif %%}"
+             "}}",
+             topic_key, sanitized_name);
+    cJSON_AddStringToObject(payload, "cmd_on_tpl", buf);
+
+    // Command off template
+    snprintf(buf, sizeof(buf), "{\"%s\":{\"%s\":\"off\"}}", topic_key, sanitized_name);
+    cJSON_AddStringToObject(payload, "cmd_off_tpl", buf);
+
+    // State template - returns "on" or "off"
+    snprintf(buf, sizeof(buf), "{%% if value_json.%s.%s > 0 %%}on{%% else %%}off{%% endif %%}",
+             topic_key, sanitized_name);
+    cJSON_AddStringToObject(payload, "stat_tpl", buf);
+
+    // Brightness template - returns brightness value
+    snprintf(buf, sizeof(buf), "{{ value_json.%s.%s }}", topic_key, sanitized_name);
+    cJSON_AddStringToObject(payload, "bri_tpl", buf);
+
+    // Template schema uses stat_tpl/bri_tpl instead of val_tpl
+    cJSON_DeleteItemFromObject(payload, "val_tpl");
+
+    // Explicit off payload for proper state handling
+    snprintf(buf, sizeof(buf), "{\"%s\":{\"%s\":0}}", topic_key, sanitized_name);
+    cJSON_AddStringToObject(payload, "payload_off", buf);
+}
+
 void ha_register_entity(ha_entity_type_t type, const char *name, const char *device_class,
-                        ha_custom_builder_t custom_builder) {
+                        const char *entity_category, ha_custom_builder_t custom_builder) {
     if (entity_count >= MAX_ENTITIES) {
         ESP_LOGE(TAG, "Maximum entity limit (%d) reached", MAX_ENTITIES);
         return;
@@ -114,6 +147,7 @@ void ha_register_entity(ha_entity_type_t type, const char *name, const char *dev
         .type = type,
         .name = name,
         .device_class = device_class,
+        .entity_category = entity_category,
         .custom_builder = custom_builder,
     };
 }
@@ -125,12 +159,12 @@ static void register_default_entities(void) {
     }
     default_registered = true;
 
-    ha_register_entity(HA_SENSOR, "Temperature", "temperature", NULL);
-    ha_register_entity(HA_SENSOR, "Uptime", "duration", NULL);
-    ha_register_entity(HA_SENSOR, "Startup", "timestamp", NULL);
-    ha_register_entity(HA_SWITCH, "Onboard Led", NULL, build_switch);
-    ha_register_entity(HA_BUTTON, "Restart", NULL, build_button);
-    ha_register_entity(HA_SENSOR, "Tasks Dict", NULL, build_tasks_dict);
+    ha_register_entity(HA_SENSOR, "Temperature", "temperature", NULL, NULL);
+    ha_register_entity(HA_SENSOR, "Uptime", "duration", "diagnostic", NULL);
+    ha_register_entity(HA_SENSOR, "Startup", "timestamp", "diagnostic", NULL);
+    ha_register_entity(HA_SWITCH, "Onboard Led", NULL, NULL, NULL);
+    ha_register_entity(HA_BUTTON, "Restart", NULL, "diagnostic", NULL);
+    ha_register_entity(HA_SENSOR, "Tasks Dict", NULL, "diagnostic", build_tasks_dict);
 }
 
 static void publish_entity(const ha_entity_def_t *def, bool empty_payload) {
@@ -176,9 +210,20 @@ static void publish_entity(const ha_entity_def_t *def, bool empty_payload) {
         cJSON_AddStringToObject(payload, "dev_cla", def->device_class);
     }
 
-    // Call custom builder if present
+    // Add entity category if present
+    if (def->entity_category) {
+        cJSON_AddStringToObject(payload, "entity_category", def->entity_category);
+    }
+
+    // Call custom builder if present, or use default builders based on type
     if (def->custom_builder) {
         def->custom_builder(payload, sanitized_name);
+    } else if (def->type == HA_SWITCH) {
+        build_switch(payload, sanitized_name);
+    } else if (def->type == HA_BUTTON) {
+        build_button(payload, sanitized_name);
+    } else if (def->type == HA_LIGHT) {
+        build_light(payload, sanitized_name);
     }
 
     cJSON_AddItemToObject(payload, "dev", create_ha_device());

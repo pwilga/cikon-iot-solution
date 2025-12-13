@@ -1,4 +1,4 @@
-menu "Cikon Supervisor Button Adapter"
+menu "Cikon IoT Supervisor Button Adapter"
     config BUTTON_GPIO
         int "Button GPIO Pin"
         default 0 if IDF_TARGET_ESP32

@@ -11,7 +11,7 @@
 #include "tele_core_appenders.h"
 
 #define TAG "cikon-supervisor"
-#define SUPERVISOR_MAX_ADAPTERS 4
+#define SUPERVISOR_MAX_ADAPTERS 8
 
 static QueueHandle_t supervisor_queue;
 static EventGroupHandle_t supervisor_event_group;

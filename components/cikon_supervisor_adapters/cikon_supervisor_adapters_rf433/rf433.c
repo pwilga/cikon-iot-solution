@@ -58,7 +58,7 @@ void rf433_adapter_init(void) {
     rf433_receiver_init();
 
     tele_register("rf433", tele_rf433_code);
-    ha_register_entity(HA_SENSOR, "rf433_code", NULL, NULL);
+    ha_register_entity(HA_SENSOR, "rf433_code", NULL, NULL, NULL);
 }
 
 // void rf433_adapter_shutdown(void) {}
