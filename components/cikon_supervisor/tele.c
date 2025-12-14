@@ -51,6 +51,40 @@ void tele_register(const char *tele_id, tele_appender_t fn) {
     tele_count++;
 }
 
+void tele_register_group(const tele_entry_t *appenders) {
+    if (!appenders) {
+        ESP_LOGE(TAG, "Invalid telemetry group parameters");
+        return;
+    }
+
+    for (size_t i = 0; appenders[i].tele_id != NULL; i++) {
+        tele_register(appenders[i].tele_id, appenders[i].fn);
+    }
+}
+
+void tele_unregister_group(const tele_entry_t *appenders) {
+    if (!appenders) {
+        ESP_LOGE(TAG, "Invalid telemetry group parameters");
+        return;
+    }
+
+    for (size_t i = 0; appenders[i].tele_id != NULL; i++) {
+        const char *tele_id = appenders[i].tele_id;
+
+        for (size_t j = 0; j < tele_count; j++) {
+            if (strcmp(tele_registry[j].tele_id, tele_id) == 0) {
+                // Shift all appenders after this one down
+                for (size_t k = j; k < tele_count - 1; k++) {
+                    tele_registry[k] = tele_registry[k + 1];
+                }
+                tele_count--;
+                ESP_LOGI(TAG, "Telemetry '%s' unregistered", tele_id);
+                break;
+            }
+        }
+    }
+}
+
 const tele_t *tele_get_registry(size_t *out_count) {
     if (out_count) {
         *out_count = tele_initialized ? tele_count : 0;

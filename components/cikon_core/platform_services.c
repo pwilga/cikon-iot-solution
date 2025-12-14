@@ -1,4 +1,3 @@
-#include <string.h>
 #include <time.h>
 
 #include "driver/gpio.h"

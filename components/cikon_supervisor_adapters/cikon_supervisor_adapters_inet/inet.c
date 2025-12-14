@@ -8,10 +8,11 @@
 #include "mdns.h"
 
 #include "cmnd.h"
-#include "cmnd_inet_handlers.h"
 #include "config_manager.h"
+#include "ha.h"
 #include "https_server.h"
 #include "inet_adapter.h"
+#include "json_parser.h"
 #include "mqtt.h"
 #include "platform_services.h"
 #include "supervisor.h"
@@ -26,6 +27,9 @@
 #define INET_EVENT_STA_READY BIT5
 #define INET_EVENT_AP_READY BIT6
 #define INET_EVENT_RESERVED BIT7
+
+// Forward declaration for wifi command handler (used in inet_adapter_init)
+static void wifi_handler(const char *args_json_str);
 
 static const char *mdns_host = NULL;
 static const char *mdns_instance = NULL;
@@ -274,7 +278,11 @@ void inet_adapter_init(void) {
         IP_EVENT, IP_EVENT_STA_GOT_IP, &inet_netif_event_handler, NULL, &inet_ip_handler));
 
     wifi_init_sta_mode();
-    inet_cmnd_handlers_register();
+
+    // Register persistent wifi command (not unregistered with adapter shutdown)
+    if (!cmnd_find("wifi")) {
+        cmnd_register("wifi", "Control WiFi (on/off)", wifi_handler);
+    }
 }
 
 void inet_adapter_shutdown(void) {
@@ -293,7 +301,6 @@ void inet_adapter_shutdown(void) {
 
     inet_stop_services();
     mdns_free();
-    inet_cmnd_handlers_unregister();
 
     // Unregister callbacks
     set_restart_callback(NULL);
@@ -394,7 +401,107 @@ static void inet_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 }
 
-supervisor_platform_adapter_t inet_adapter = {.init = inet_adapter_init,
-                                              .shutdown = inet_adapter_shutdown,
-                                              .on_event = inet_adapter_on_event,
-                                              .on_interval = inet_adapter_on_interval};
+// ===== Command handlers =====
+
+static void set_ap_handler(const char *args_json_str) {
+    (void)args_json_str;
+    inet_switch_to_ap_mode();
+}
+
+static void set_sta_handler(const char *args_json_str) {
+    (void)args_json_str;
+    inet_switch_to_sta_mode();
+}
+
+static void https_handler(const char *args_json_str) {
+    logic_state_t https_state = json_str_as_logic_state(args_json_str);
+
+    if (https_state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting HTTPS server");
+        https_init();
+    } else if (https_state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping HTTPS server");
+        https_shutdown();
+    } else {
+        ESP_LOGW(TAG, "Invalid HTTPS state");
+    }
+}
+
+static void sntp_handler(const char *args_json_str) {
+    logic_state_t sntp_state = json_str_as_logic_state(args_json_str);
+
+    if (sntp_state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting SNTP service");
+        esp_netif_sntp_deinit();
+    } else if (sntp_state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping SNTP service");
+        esp_netif_sntp_deinit();
+    } else {
+        ESP_LOGW(TAG, "Invalid SNTP state");
+    }
+}
+
+static void ha_handler(const char *args_json_str) {
+    logic_state_t force_empty_payload = json_str_as_logic_state(args_json_str);
+    if (force_empty_payload == STATE_TOGGLE) {
+        ESP_LOGE(TAG, "Toggling is not permitted for HA discovery");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Triggering Home Assistant MQTT discovery");
+    publish_ha_mqtt_discovery(force_empty_payload == STATE_OFF);
+}
+
+static void ota_handler(const char *args_json_str) {
+    logic_state_t ota_state = json_str_as_logic_state(args_json_str);
+
+    if (ota_state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting OTA update");
+        tcp_ota_init();
+    } else if (ota_state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping OTA update");
+        tcp_ota_shutdown();
+    }
+}
+
+static void monitor_handler(const char *args_json_str) {
+    logic_state_t monitor_state = json_str_as_logic_state(args_json_str);
+
+    if (monitor_state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting TCP monitor");
+        tcp_monitor_init();
+    } else if (monitor_state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping TCP monitor");
+        tcp_monitor_shutdown();
+    }
+}
+
+static void wifi_handler(const char *args_json_str) {
+    logic_state_t wifi_state = json_str_as_logic_state(args_json_str);
+
+    if (wifi_state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting WiFi");
+        inet_adapter.init();
+    } else if (wifi_state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping WiFi");
+        inet_adapter.shutdown();
+    }
+}
+
+static const command_entry_t inet_commands[] = {
+    {"ap", "Switch to AP mode", set_ap_handler},
+    {"sta", "Switch to STA mode", set_sta_handler},
+    {"https", "Control HTTPS server (on/off)", https_handler},
+    {"sntp", "Control SNTP service (on/off)", sntp_handler},
+    {"ota", "Control OTA service (on/off)", ota_handler},
+    {"monitor", "Control TCP monitor (on/off)", monitor_handler},
+    {"ha", "Trigger Home Assistant MQTT discovery", ha_handler},
+    {NULL, NULL, NULL}};
+
+supervisor_platform_adapter_t inet_adapter = {
+    .init = inet_adapter_init,
+    .shutdown = inet_adapter_shutdown,
+    .on_event = inet_adapter_on_event,
+    .on_interval = inet_adapter_on_interval,
+    .cmnd_group = inet_commands,
+};

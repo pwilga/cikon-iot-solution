@@ -1,5 +1,4 @@
-#ifndef CMND_H
-#define CMND_H
+#pragma once
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/queue.h"
@@ -38,5 +37,3 @@ const command_t *cmnd_get_registry(size_t *out_count);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // CMND_H

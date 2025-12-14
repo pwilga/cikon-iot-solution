@@ -1,8 +1,6 @@
 idf_component_register(
     SRCS
         "led.c"
-        "cmnd_led_handlers.c"
-        "tele_led_appenders.c"
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES

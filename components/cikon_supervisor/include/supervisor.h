@@ -1,10 +1,12 @@
-#ifndef SUPERVISOR_H
-#define SUPERVISOR_H
+#pragma once
 
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
+
+#include "cmnd.h"
+#include "tele.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,6 +66,20 @@ typedef struct {
      */
     void (*on_interval)(supervisor_interval_stage_t stage);
 
+    /**
+     * @brief Telemetry appenders group (NULL-terminated)
+     * Array of tele_entry_t defining telemetry sources for this adapter.
+     * Supervisor automatically registers these during adapter registration.
+     */
+    const tele_entry_t *tele_group;
+
+    /**
+     * @brief Command handlers group (NULL-terminated)
+     * Array of command_entry_t defining commands for this adapter.
+     * Supervisor automatically registers these during adapter registration.
+     */
+    const command_entry_t *cmnd_group;
+
 } supervisor_platform_adapter_t;
 
 /**
@@ -107,5 +123,3 @@ void supervisor_notify_event(EventBits_t bits);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // SUPERVISOR_H

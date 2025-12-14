@@ -43,21 +43,15 @@ static void rf433_event_handler(void *arg, esp_event_base_t base, int32_t id, vo
 }
 
 static void tele_rf433_code(const char *tele_id, cJSON *json_root) {
-
     char hexbuf[9];
     snprintf(hexbuf, sizeof(hexbuf), "0x%06" PRIX32, last_rf_code);
-
-    cJSON_AddStringToObject(json_root, "rf433_code", hexbuf);
+    cJSON_AddStringToObject(json_root, tele_id, hexbuf);
 }
 
 void rf433_adapter_init(void) {
-
     esp_event_handler_register(RF433_EVENTS, RF433_CODE_RECEIVED, rf433_event_handler, NULL);
-
     rf433_receiver_configure(CONFIG_RF433_GPIO_PIN);
     rf433_receiver_init();
-
-    tele_register("rf433", tele_rf433_code);
     ha_register_entity(HA_SENSOR, "rf433_code", NULL, NULL, NULL);
 }
 
@@ -67,7 +61,9 @@ static void rf433_adapter_on_event(EventBits_t bits) {}
 
 static void rf433_adapter_on_interval(supervisor_interval_stage_t stage) {}
 
-supervisor_platform_adapter_t rf433_adapter = {.init = rf433_adapter_init,
-                                               .shutdown = rf433_receiver_shutdown,
-                                               .on_event = rf433_adapter_on_event,
-                                               .on_interval = rf433_adapter_on_interval};
+supervisor_platform_adapter_t rf433_adapter = {
+    .init = rf433_adapter_init,
+    .shutdown = rf433_receiver_shutdown,
+    .on_event = rf433_adapter_on_event,
+    .on_interval = rf433_adapter_on_interval,
+    .tele_group = (const tele_entry_t[]){{"rf433", tele_rf433_code}, {NULL, NULL}}};

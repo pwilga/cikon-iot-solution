@@ -3,8 +3,6 @@ idf_component_register(
         "supervisor.c"
         "cmnd.c"
         "tele.c"
-        "cmnd_core_handlers.c"
-        "tele_core_appenders.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
