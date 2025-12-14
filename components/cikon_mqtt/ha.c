@@ -10,7 +10,7 @@
 #include "json_parser.h"
 #include "mqtt.h"
 
-#define TAG "cikon-home-assistant"
+#define TAG "cikon:ha"
 #define MAX_ENTITIES 32
 
 static bool has_sent_full_dev = false;

@@ -9,7 +9,7 @@
 #include "wifi.h"
 #include <string.h>
 
-#define TAG "cikon-debug-adapter"
+#define TAG "cikon:adapter:debug"
 
 static bool debug_enabled = true;
 

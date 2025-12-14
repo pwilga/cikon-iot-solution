@@ -10,7 +10,7 @@
 #include "certs.h"
 #include "mqtt.h"
 
-#define TAG "cikon-mqtt"
+#define TAG "cikon:mqtt"
 #define TOPIC_BUF_SIZE 128
 
 #define MQTT_CONNECTED_BIT BIT0

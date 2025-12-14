@@ -1,14 +1,12 @@
 #include <string.h>
-#include <sdkconfig.h>
 
-#include "nvs_flash.h"
-#include "nvs.h"
-#include "esp_log.h"
 #include "cJSON.h"
+#include "esp_log.h"
+#include "nvs.h"
 
 #include "config_manager.h"
 
-#define TAG "cikon-config-manager"
+#define TAG "cikon:config"
 #define CONFIG_MANAGER_NAMESPACE "config_mgr"
 
 static config_t config_data;

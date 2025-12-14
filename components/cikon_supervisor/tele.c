@@ -5,7 +5,7 @@
 
 #include "tele.h"
 
-#define TAG "supervisor-tele"
+#define TAG "cikon:supervisor:tele"
 
 static tele_t tele_registry[CONFIG_MAX_TELE];
 static size_t tele_count = 0;

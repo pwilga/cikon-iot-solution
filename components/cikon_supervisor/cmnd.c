@@ -7,7 +7,7 @@
 
 #include "cmnd.h"
 
-#define TAG "supervisor-cmnd"
+#define TAG "cikon:supervisor:cmnd"
 
 static command_t command_registry[CONFIG_MAX_COMMANDS];
 static size_t command_count = 0;

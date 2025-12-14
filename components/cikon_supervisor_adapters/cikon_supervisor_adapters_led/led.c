@@ -14,7 +14,7 @@
 #include "supervisor.h"
 #include "tele.h"
 
-#define TAG "cikon-led-adapter"
+#define TAG "cikon:adapter:led"
 #define LED_ADAPTER_MAX_LEDS LEDC_CHANNEL_MAX
 
 typedef struct {

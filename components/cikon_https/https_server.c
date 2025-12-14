@@ -12,7 +12,7 @@
 #include "https_server.h"
 #include "task_helpers.h"
 
-#define TAG "cikon-https"
+#define TAG "cikon:https"
 
 #define HTTPS_SHUTDOWN_INITIATED_BIT BIT0
 #define HTTPS_SERVER_STARTED_BIT BIT1

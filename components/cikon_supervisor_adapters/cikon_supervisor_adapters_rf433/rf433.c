@@ -12,7 +12,7 @@
 #include "supervisor.h"
 #include "tele.h"
 
-#define TAG "cikon-rf433-adapter"
+#define TAG "cikon:adapter:rf433"
 
 static uint32_t last_rf_code = 0;
 

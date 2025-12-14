@@ -12,7 +12,7 @@
 
 ESP_EVENT_DEFINE_BASE(RF433_EVENTS);
 
-#define TAG "cikon-rf433-receiver"
+#define TAG "cikon:rf433"
 
 // RC Switch Protocol 1
 #define P1_SHORT_MIN 250

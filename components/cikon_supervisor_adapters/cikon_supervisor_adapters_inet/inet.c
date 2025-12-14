@@ -21,7 +21,7 @@
 #include "tele.h"
 #include "wifi.h"
 
-#define TAG "cikon-inet-adapter"
+#define TAG "cikon:adapter:inet"
 
 #define INET_EVENT_TIME_SYNCED BIT4
 #define INET_EVENT_STA_READY BIT5

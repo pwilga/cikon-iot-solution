@@ -4,16 +4,15 @@
 #include <unistd.h>
 
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/ringbuf.h"
 #include "freertos/task.h"
-#include "lwip/netdb.h"
 
 #include "sdkconfig.h"
 #include "task_helpers.h"
 #include "tcp_monitor.h"
 
-#define TAG "tcp_monitor"
+#define TAG "cikon:monitor"
 
 static uint16_t tcp_monitor_port = 6666;
 static int monitor_sock = -1;

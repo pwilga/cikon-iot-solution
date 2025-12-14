@@ -25,7 +25,7 @@
 #define MD5_SIZE 16
 #define SW_VERSION_SIZE 2
 
-#define TAG "ota-update"
+#define TAG "cikon:ota"
 
 static TaskHandle_t ota_task_handle = NULL;
 

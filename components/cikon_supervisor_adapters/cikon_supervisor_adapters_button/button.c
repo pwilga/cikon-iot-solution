@@ -7,7 +7,7 @@
 #include "supervisor.h"
 #include <stdint.h>
 
-#define TAG "cikon-button-adapter"
+#define TAG "cikon:adapter:button"
 #define MAX_BUTTONS 4
 
 static button_handle_t button_handles[MAX_BUTTONS] = {0};

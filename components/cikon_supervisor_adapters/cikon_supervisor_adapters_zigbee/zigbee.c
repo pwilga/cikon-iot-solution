@@ -3,7 +3,7 @@
 #include "supervisor.h"
 #include "zigbee_adapter.h"
 
-#define TAG "zigbee-adapter"
+#define TAG "cikon:adapter:zigbee"
 
 // Platform-specific event bits (for future use)
 #define ZIGBEE_EVENT_NETWORK_FORMED BIT2

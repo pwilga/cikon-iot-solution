@@ -12,7 +12,7 @@
 #include "supervisor.h"
 #include "tele.h"
 
-#define TAG "cikon-supervisor"
+#define TAG "cikon:supervisor"
 #define SUPERVISOR_MAX_ADAPTERS 8
 
 static QueueHandle_t supervisor_queue;

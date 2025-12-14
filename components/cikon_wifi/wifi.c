@@ -13,9 +13,9 @@
 #define WIFI_AP_CLIENT_CONNECTED_BIT BIT3
 #define WIFI_SHUTDOWN_INITIATED_BIT BIT4
 
-#define TAG "cikon-wifi"
-#define TAG_STA TAG "-sta"
-#define TAG_AP TAG "-ap"
+#define TAG "cikon:wifi"
+#define TAG_STA TAG ":sta"
+#define TAG_AP TAG ":ap"
 
 static wifi_credentials_t wifi_creds = {NULL};
 static esp_netif_t *sta_netif = NULL, *ap_netif = NULL;

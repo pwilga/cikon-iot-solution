@@ -11,7 +11,7 @@
 
 #include "platform_services.h"
 
-#define TAG "cikon-systems"
+#define TAG "cikon:platform"
 
 static void (*restart_callback)(void) = NULL;
 
