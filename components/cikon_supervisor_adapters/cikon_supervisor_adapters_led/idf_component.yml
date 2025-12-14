@@ -11,6 +11,9 @@ dependencies:
   cikon_supervisor:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_supervisor
+  cikon_config:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_config
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers

@@ -19,10 +19,15 @@ static void debug_print_config_summary(void) {
 #define PRINT_STR(field, size, defval) ESP_LOGI(TAG, "| %-16s | %-36.36s |", #field, cfg->field);
 #define PRINT_U8(field, defval) ESP_LOGI(TAG, "| %-16s | %-36u |", #field, (unsigned)cfg->field);
 #define PRINT_U16(field, defval) ESP_LOGI(TAG, "| %-16s | %-36u |", #field, (unsigned)cfg->field);
-    CONFIG_FIELDS(PRINT_STR, PRINT_U8, PRINT_U16)
+#define PRINT_U32(field, defval) ESP_LOGI(TAG, "| %-16s | %-36u |", #field, (unsigned)cfg->field);
+#define PRINT_U64(field, defval)                                                                   \
+    ESP_LOGI(TAG, "| %-16s | %-36llu |", #field, (unsigned long long)cfg->field);
+    CONFIG_FIELDS(PRINT_STR, PRINT_U8, PRINT_U16, PRINT_U32, PRINT_U64)
 #undef PRINT_STR
 #undef PRINT_U8
 #undef PRINT_U16
+#undef PRINT_U32
+#undef PRINT_U64
 }
 
 static void debug_print_tasks_summary(void) {

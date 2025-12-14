@@ -6,6 +6,7 @@
 extern "C" {
 #endif
 
+// NOLINTNEXTLINE(readability-identifier-naming)
 typedef struct cJSON cJSON;
 
 typedef void (*tele_appender_t)(const char *tele_id, cJSON *json_root);

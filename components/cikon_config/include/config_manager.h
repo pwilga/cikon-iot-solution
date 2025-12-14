@@ -1,11 +1,10 @@
-#ifndef CONFIG_MANAGER_H
-#define CONFIG_MANAGER_H
+#pragma once
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
-#include "esp_err.h"
 #include "cJSON.h"
+#include "esp_err.h"
 
 #include "config_fields_private.h"
 
@@ -33,10 +32,14 @@ typedef struct {
 #define STR(field, size, defval) char field[size];
 #define U8(field, defval) uint8_t field;
 #define U16(field, defval) uint16_t field;
-    CONFIG_FIELDS(STR, U8, U16)
+#define U32(field, defval) uint32_t field;
+#define U64(field, defval) uint64_t field;
+    CONFIG_FIELDS(STR, U8, U16, U32, U64)
 #undef STR
 #undef U8
 #undef U16
+#undef U32
+#undef U64
 } config_t;
 
 /**
@@ -53,10 +56,16 @@ typedef struct {
 #define GEN_SETTER_U8(field, defval) esp_err_t config_set_##field(uint8_t val);
 /** Set uint16_t field and save to NVS. */
 #define GEN_SETTER_U16(field, defval) esp_err_t config_set_##field(uint16_t val);
-CONFIG_FIELDS(GEN_SETTER_STR, GEN_SETTER_U8, GEN_SETTER_U16)
+/** Set uint32_t field and save to NVS. */
+#define GEN_SETTER_U32(field, defval) esp_err_t config_set_##field(uint32_t val);
+/** Set uint64_t field and save to NVS. */
+#define GEN_SETTER_U64(field, defval) esp_err_t config_set_##field(uint64_t val);
+CONFIG_FIELDS(GEN_SETTER_STR, GEN_SETTER_U8, GEN_SETTER_U16, GEN_SETTER_U32, GEN_SETTER_U64)
 #undef GEN_SETTER_STR
 #undef GEN_SETTER_U8
 #undef GEN_SETTER_U16
+#undef GEN_SETTER_U32
+#undef GEN_SETTER_U64
 ///@}
 
 /**
@@ -89,5 +98,3 @@ void config_manager_set_from_json(const cJSON *json);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // CONFIG_MANAGER_H

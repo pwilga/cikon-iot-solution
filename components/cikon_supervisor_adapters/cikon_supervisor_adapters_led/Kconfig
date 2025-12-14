@@ -19,7 +19,7 @@ menu "Cikon IoT LED Adapter Configuration"
 
         config LED_PWM_FREQUENCY
             int "LED PWM Frequency (Hz)"
-            default 5000
+            default 20000
             range 100 40000
             help
                 PWM frequency for LED control. Higher frequency = smoother dimming.

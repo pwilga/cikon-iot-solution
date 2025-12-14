@@ -68,10 +68,38 @@ static config_t config_data;
         NVS_COMMIT_AND_CLOSE();                                                                    \
         return ESP_OK;                                                                             \
     }
-CONFIG_FIELDS(GEN_SETTER_STR, GEN_SETTER_U8, GEN_SETTER_U16)
+#define GEN_SETTER_U32(field, defval)                                                              \
+    esp_err_t config_set_##field(uint32_t val) {                                                   \
+        config_data.field = val;                                                                   \
+        nvs_handle_t nvs;                                                                          \
+        NVS_OPEN_OR_RETURN();                                                                      \
+        esp_err_t err = nvs_set_u32(nvs, #field, config_data.field);                               \
+        if (err != ESP_OK) {                                                                       \
+            ESP_LOGE(TAG, "SAVE_U32: %s = %u, nvs_set_u32 err: %s", #field,                        \
+                     (unsigned)config_data.field, esp_err_to_name(err));                           \
+        }                                                                                          \
+        NVS_COMMIT_AND_CLOSE();                                                                    \
+        return ESP_OK;                                                                             \
+    }
+#define GEN_SETTER_U64(field, defval)                                                              \
+    esp_err_t config_set_##field(uint64_t val) {                                                   \
+        config_data.field = val;                                                                   \
+        nvs_handle_t nvs;                                                                          \
+        NVS_OPEN_OR_RETURN();                                                                      \
+        esp_err_t err = nvs_set_u64(nvs, #field, config_data.field);                               \
+        if (err != ESP_OK) {                                                                       \
+            ESP_LOGE(TAG, "SAVE_U64: %s = %llu, nvs_set_u64 err: %s", #field,                      \
+                     (unsigned long long)config_data.field, esp_err_to_name(err));                 \
+        }                                                                                          \
+        NVS_COMMIT_AND_CLOSE();                                                                    \
+        return ESP_OK;                                                                             \
+    }
+CONFIG_FIELDS(GEN_SETTER_STR, GEN_SETTER_U8, GEN_SETTER_U16, GEN_SETTER_U32, GEN_SETTER_U64)
 #undef GEN_SETTER_STR
 #undef GEN_SETTER_U8
 #undef GEN_SETTER_U16
+#undef GEN_SETTER_U32
+#undef GEN_SETTER_U64
 
 void config_manager_init(void) {
     nvs_handle_t nvs;
@@ -84,10 +112,14 @@ void config_manager_init(void) {
     config_data.field[size - 1] = '\0';
 #define U8(field, defval) config_data.field = defval;
 #define U16(field, defval) config_data.field = defval;
-        CONFIG_FIELDS(STR, U8, U16);
+#define U32(field, defval) config_data.field = defval;
+#define U64(field, defval) config_data.field = defval;
+        CONFIG_FIELDS(STR, U8, U16, U32, U64);
 #undef STR
 #undef U8
 #undef U16
+#undef U32
+#undef U64
         return;
     }
     size_t len;
@@ -127,10 +159,34 @@ void config_manager_init(void) {
             config_data.field = defval;                                                            \
         }                                                                                          \
     }
-    CONFIG_FIELDS(STR, U8, U16);
+#define U32(field, defval)                                                                         \
+    {                                                                                              \
+        esp_err_t err = nvs_get_u32(nvs, #field, &config_data.field);                              \
+        if (err != ESP_OK) {                                                                       \
+            if (err != ESP_ERR_NVS_NOT_FOUND) {                                                    \
+                ESP_LOGE(TAG, "LOAD_U32: %s = %u (default), nvs_get_u32 err: %s", #field,          \
+                         (unsigned)(defval), esp_err_to_name(err));                                \
+            }                                                                                      \
+            config_data.field = defval;                                                            \
+        }                                                                                          \
+    }
+#define U64(field, defval)                                                                         \
+    {                                                                                              \
+        esp_err_t err = nvs_get_u64(nvs, #field, &config_data.field);                              \
+        if (err != ESP_OK) {                                                                       \
+            if (err != ESP_ERR_NVS_NOT_FOUND) {                                                    \
+                ESP_LOGE(TAG, "LOAD_U64: %s = %llu (default), nvs_get_u64 err: %s", #field,        \
+                         (unsigned long long)(defval), esp_err_to_name(err));                      \
+            }                                                                                      \
+            config_data.field = defval;                                                            \
+        }                                                                                          \
+    }
+    CONFIG_FIELDS(STR, U8, U16, U32, U64);
 #undef STR
 #undef U8
 #undef U16
+#undef U32
+#undef U64
     nvs_close(nvs);
 }
 
@@ -181,10 +237,29 @@ void config_manager_print_all_keys(void) {
         }                                                                                          \
         return 1;                                                                                  \
     }
+#define CONFIG_FIELD_APPLY_SETTER_U32(field, default_val)                                          \
+    if (strcmp(item->string, #field) == 0) {                                                       \
+        if (item->type == cJSON_Number) {                                                          \
+            config_set_##field((uint32_t)item->valuedouble);                                       \
+        } else {                                                                                   \
+            ESP_LOGW(TAG, "JSON type mismatch for field %s (expected number)", #field);            \
+        }                                                                                          \
+        return 1;                                                                                  \
+    }
+#define CONFIG_FIELD_APPLY_SETTER_U64(field, default_val)                                          \
+    if (strcmp(item->string, #field) == 0) {                                                       \
+        if (item->type == cJSON_Number) {                                                          \
+            config_set_##field((uint64_t)item->valuedouble);                                       \
+        } else {                                                                                   \
+            ESP_LOGW(TAG, "JSON type mismatch for field %s (expected number)", #field);            \
+        }                                                                                          \
+        return 1;                                                                                  \
+    }
 
 static int config_manager_apply_json_item(const cJSON *item) {
     CONFIG_FIELDS(CONFIG_FIELD_APPLY_SETTER_STR, CONFIG_FIELD_APPLY_SETTER_U8,
-                  CONFIG_FIELD_APPLY_SETTER_U16)
+                  CONFIG_FIELD_APPLY_SETTER_U16, CONFIG_FIELD_APPLY_SETTER_U32,
+                  CONFIG_FIELD_APPLY_SETTER_U64)
     return 0;
 }
 

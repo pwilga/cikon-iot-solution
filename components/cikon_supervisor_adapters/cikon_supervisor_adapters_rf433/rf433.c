@@ -66,4 +66,4 @@ supervisor_platform_adapter_t rf433_adapter = {
     .shutdown = rf433_receiver_shutdown,
     .on_event = rf433_adapter_on_event,
     .on_interval = rf433_adapter_on_interval,
-    .tele_group = (const tele_entry_t[]){{"rf433", tele_rf433_code}, {NULL, NULL}}};
+    .tele_group = (const tele_entry_t[]){{"rf433_code", tele_rf433_code}, {NULL, NULL}}};

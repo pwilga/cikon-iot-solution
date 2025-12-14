@@ -4,7 +4,7 @@
 // Example config_fields_private.h (do NOT commit your real config_fields_private.h)
 // Copy this file as config_fields_private.h and fill with your own values.
 
-#define CONFIG_FIELDS(STR, U8, U16)                                                                \
+#define CONFIG_FIELDS(STR, U8, U16, U32, U64)                                                      \
     STR(dev_name, 16, "cikonesp")                                                                  \
     STR(http_auth, 32, "Basic <Authorization>")                                                    \
     STR(mdns_host, 32, "")                                                                         \
@@ -23,6 +23,8 @@
     U16(udp_mon_port, 5005)                                                                        \
     STR(sntp1, 64, "pool.ntp.org")                                                                 \
     STR(sntp2, 64, "time.google.com")                                                              \
-    STR(sntp3, 64, "time.cloudflare.com")
+    STR(sntp3, 64, "time.cloudflare.com")                                                          \
+    U64(led_state, 0)                                                                              \
+    U64(led_last_state, 0)
 
 #endif // CONFIG_FIELDS_PRIVATE_H

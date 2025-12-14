@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,6 +9,7 @@
 #include "cJSON.h"
 
 #include "cmnd.h"
+#include "config_manager.h"
 #include "ha.h"
 #include "json_parser.h"
 #include "led_adapter.h"
@@ -27,6 +29,9 @@ typedef struct {
 
 static led_config_t leds[LED_ADAPTER_MAX_LEDS + 1]; // +1 for sentinel
 static bool led_initialized = false;
+static uint64_t last_saved_state = 0;
+static uint64_t last_saved_last_state = 0;
+static bool state_dirty = false;
 
 static void parse_gpio_list(void) {
 
@@ -76,13 +81,73 @@ static void parse_gpio_list(void) {
     free(str);
 }
 
+// Macros to generate pack/unpack functions for LED state fields
+// Each macro creates a function that packs/unpacks 8 uint8_t values into/from a uint64_t
+// This allows storing LED state efficiently in NVS (one nvs_set_u64 per field)
+
+// Generate: static uint64_t led_pack_<field_name>(void)
+// Packs leds[0..7].<field_name> into bits [0..63] (8 bits per LED)
+#define LED_PACK_FIELD(field_name)                                                                 \
+    static uint64_t led_pack_##field_name(void) {                                                  \
+        uint64_t packed = 0;                                                                       \
+        for (int i = 0; i < 8 && leds[i].gpio != GPIO_NUM_NC; i++) {                               \
+            packed |= ((uint64_t)leds[i].field_name) << (i * 8);                                   \
+        }                                                                                          \
+        return packed;                                                                             \
+    }
+
+// Generate: static void led_unpack_<field_name>(uint64_t packed)
+// Unpacks bits [0..63] into leds[0..7].<field_name> (8 bits per LED)
+#define LED_UNPACK_FIELD(field_name)                                                               \
+    static void led_unpack_##field_name(uint64_t packed) {                                         \
+        for (int i = 0; i < 8 && leds[i].gpio != GPIO_NUM_NC; i++) {                               \
+            leds[i].field_name = (packed >> (i * 8)) & 0xFF;                                       \
+        }                                                                                          \
+    }
+
+LED_PACK_FIELD(brightness)
+LED_PACK_FIELD(last_brightness)
+LED_UNPACK_FIELD(brightness)
+LED_UNPACK_FIELD(last_brightness)
+
+static void led_save_state(void) {
+
+    uint64_t current_state = led_pack_brightness();
+    uint64_t current_last_state = led_pack_last_brightness();
+
+    if (current_state != last_saved_state || current_last_state != last_saved_last_state) {
+        config_set_led_state(current_state);
+        config_set_led_last_state(current_last_state);
+        last_saved_state = current_state;
+        last_saved_last_state = current_last_state;
+        state_dirty = false;
+        ESP_LOGI(TAG, "LED state saved to NVS: 0x%" PRIx64 " / 0x%" PRIx64, current_state,
+                 current_last_state);
+    }
+}
+
+static void led_restore_state(void) {
+
+    uint64_t saved_state = config_get()->led_state;
+    uint64_t saved_last_state = config_get()->led_last_state;
+
+    led_unpack_brightness(saved_state);
+    led_unpack_last_brightness(saved_last_state);
+
+    last_saved_state = saved_state;
+    last_saved_last_state = saved_last_state;
+
+    ESP_LOGI(TAG, "LED state restored from NVS: 0x%" PRIx64 " / 0x%" PRIx64, saved_state,
+             saved_last_state);
+}
+
 static void led_init_channel(led_config_t *led) {
 
     ledc_channel_config_t channel_config = {.gpio_num = led->gpio,
                                             .speed_mode = LEDC_LOW_SPEED_MODE,
                                             .channel = led->channel,
                                             .timer_sel = LEDC_TIMER_0,
-                                            .duty = 0,
+                                            .duty = led->brightness, // Use restored value
                                             .hpoint = 0};
 #ifdef CONFIG_LED_OUTPUT_INVERT
     channel_config.flags.output_invert = 1;
@@ -128,6 +193,8 @@ static void led_adapter_init(void) {
 
     ledc_fade_func_install(0);
 
+    led_restore_state();
+
     for (led_config_t *led = leds; led->gpio != GPIO_NUM_NC; led++) {
         led_init_channel(led);
     }
@@ -141,6 +208,8 @@ static void led_adapter_shutdown(void) {
     if (!led_initialized) {
         return;
     }
+
+    led_save_state();
 
     for (led_config_t *led = leds; led->gpio != GPIO_NUM_NC; led++) {
         ledc_set_duty(LEDC_LOW_SPEED_MODE, led->channel, 0);
@@ -165,6 +234,7 @@ void led_set_brightness(uint8_t led_index, uint8_t brightness) {
     leds[led_index].brightness = brightness;
     ledc_set_duty(LEDC_LOW_SPEED_MODE, leds[led_index].channel, brightness);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, leds[led_index].channel);
+    state_dirty = true;
 }
 
 void led_fade_to(uint8_t led_index, uint8_t target, uint32_t duration_ms) {
@@ -180,6 +250,7 @@ void led_fade_to(uint8_t led_index, uint8_t target, uint32_t duration_ms) {
     leds[led_index].brightness = target;
     ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE, leds[led_index].channel, target, duration_ms);
     ledc_fade_start(LEDC_LOW_SPEED_MODE, leds[led_index].channel, LEDC_FADE_NO_WAIT);
+    state_dirty = true;
 }
 
 uint8_t led_get_brightness(uint8_t led_index) {
@@ -297,6 +368,13 @@ static void led_handler(const char *args_json_str) {
     cJSON_Delete(root);
 }
 
+static void led_adapter_on_interval(supervisor_interval_stage_t stage) {
+    // Save state every 5 seconds if dirty
+    if (stage == SUPERVISOR_INTERVAL_5S && state_dirty) {
+        led_save_state();
+    }
+}
+
 static const tele_entry_t led_tele_group[] = {{"pwm_led", led_tele_appender}, {NULL, NULL}};
 
 static const command_entry_t led_cmnd_group[] = {
@@ -305,6 +383,7 @@ static const command_entry_t led_cmnd_group[] = {
 supervisor_platform_adapter_t led_adapter = {
     .init = led_adapter_init,
     .shutdown = led_adapter_shutdown,
+    .on_interval = led_adapter_on_interval,
     .tele_group = led_tele_group,
     .cmnd_group = led_cmnd_group,
 };
