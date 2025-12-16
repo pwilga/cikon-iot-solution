@@ -1,0 +1,17 @@
+menu "DS18B20 Temperature Sensor Adapter"
+
+config DS18B20_GPIO
+    int "1-Wire GPIO pin"
+    default 32
+    help
+        GPIO pin connected to DS18B20 data line (requires 4.7kΩ pull-up)
+
+config DS18B20_MAX_SENSORS
+    int "Maximum number of DS18B20 sensors"
+    default 1
+    range 1 8
+    help
+        Maximum number of DS18B20 sensors to scan and register.
+        Limited to 8 for memory efficiency.
+
+endmenu

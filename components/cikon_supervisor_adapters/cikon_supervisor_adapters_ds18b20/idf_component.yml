@@ -1,0 +1,26 @@
+name: cikon_supervisor_adapters_ds18b20
+version: "1.0.0"
+description: "Supervisor DS18B20 adapter - 1-Wire temperature sensor support"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_mqtt:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_mqtt
+  espressif/ds18b20: "*"
+  espressif/onewire_bus: "*"
+  espressif/cjson: "*"
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6
