@@ -84,10 +84,7 @@ static void debug_print_sys_info(void) {
 }
 
 // Adapter callbacks
-static void debug_adapter_init(void) {
-    ESP_LOGI(TAG, "Initializing debug adapter");
-    debug_print_sys_info();
-}
+static void debug_adapter_init(void) { ESP_LOGI(TAG, "Initializing debug adapter"); }
 
 static void debug_adapter_on_event(EventBits_t bits) {
 

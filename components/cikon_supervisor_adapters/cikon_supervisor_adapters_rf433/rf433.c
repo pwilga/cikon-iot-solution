@@ -49,6 +49,9 @@ static void tele_rf433_code(const char *tele_id, cJSON *json_root) {
 }
 
 void rf433_adapter_init(void) {
+
+    ESP_LOGI(TAG, "Initializing RF433 adapter on GPIO %d", CONFIG_RF433_GPIO_PIN);
+
     esp_event_handler_register(RF433_EVENTS, RF433_CODE_RECEIVED, rf433_event_handler, NULL);
     rf433_receiver_configure(CONFIG_RF433_GPIO_PIN);
     rf433_receiver_init();

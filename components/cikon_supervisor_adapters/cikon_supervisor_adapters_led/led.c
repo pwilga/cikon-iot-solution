@@ -174,6 +174,9 @@ static void led_ha_register_entities(void) {
 }
 
 static void led_adapter_init(void) {
+
+    ESP_LOGI(TAG, "Initializing LED adapter");
+
     if (led_initialized) {
         return;
     }

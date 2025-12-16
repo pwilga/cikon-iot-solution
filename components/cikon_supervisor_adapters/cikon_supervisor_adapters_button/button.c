@@ -37,6 +37,7 @@ static void button_event_handler(void *handle, void *usr_data) {
 }
 
 static void button_adapter_init(void) {
+
     ESP_LOGI(TAG, "Initializing button adapter on GPIO %d", CONFIG_BUTTON_GPIO);
 
     button_config_t btn_cfg = {

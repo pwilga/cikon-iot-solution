@@ -30,6 +30,7 @@ static const uint32_t supervisor_intervals_ms[SUPERVISOR_INTERVAL_COUNT] = {
     [SUPERVISOR_INTERVAL_1S] = 1000,
     [SUPERVISOR_INTERVAL_2S] = 2000,
     [SUPERVISOR_INTERVAL_5S] = 5000,
+    [SUPERVISOR_INTERVAL_10S] = 10000,
     [SUPERVISOR_INTERVAL_60S] = 60000,
     [SUPERVISOR_INTERVAL_5M] = 5 * 60 * 1000,
     [SUPERVISOR_INTERVAL_10M] = 10 * 60 * 1000,
@@ -58,7 +59,6 @@ esp_err_t supervisor_register_adapter(supervisor_platform_adapter_t *adapter) {
     }
 
     registered_adapters[adapter_count++] = adapter;
-    ESP_LOGI(TAG, "Registered adapter #%d", adapter_count);
 
     if (adapter->tele_group) {
         tele_register_group(adapter->tele_group);
@@ -165,7 +165,6 @@ esp_err_t supervisor_platform_init(void) {
 
     for (int i = 0; i < adapter_count; i++) {
         if (registered_adapters[i]->init) {
-            ESP_LOGI(TAG, "Initializing adapter #%d", i + 1);
             registered_adapters[i]->init();
         }
     }

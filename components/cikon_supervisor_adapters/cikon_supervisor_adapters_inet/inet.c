@@ -209,7 +209,7 @@ void inet_adapter_init(void) {
         return;
     }
 
-    ESP_LOGI(TAG, "Initializing inet platform adapter");
+    ESP_LOGI(TAG, "Initializing inet adapter");
 
     if (network_transition_mutex == NULL) {
         network_transition_mutex = xSemaphoreCreateMutex();
