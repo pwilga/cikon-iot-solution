@@ -55,7 +55,7 @@ void rf433_adapter_init(void) {
     esp_event_handler_register(RF433_EVENTS, RF433_CODE_RECEIVED, rf433_event_handler, NULL);
     rf433_receiver_configure(CONFIG_RF433_GPIO_PIN);
     rf433_receiver_init();
-    ha_register_entity(HA_SENSOR, "rf433_code", NULL, NULL, NULL);
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR, .name = "rf433_code"});
 }
 
 // void rf433_adapter_shutdown(void) {}

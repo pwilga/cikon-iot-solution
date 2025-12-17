@@ -169,7 +169,8 @@ static void led_ha_register_entities(void) {
             break;
         }
 
-        ha_register_entity(HA_LIGHT, name, NULL, NULL, NULL);
+        ha_register_entity(
+            &(ha_entity_config_t){.type = HA_LIGHT, .name = name, .parent_key = "pwm_led"});
     }
 }
 

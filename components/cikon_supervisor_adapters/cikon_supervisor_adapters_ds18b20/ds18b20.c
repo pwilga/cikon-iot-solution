@@ -9,8 +9,6 @@
 #include "ds18b20_adapter.h"
 #include "ha.h"
 #include "onewire_bus.h"
-// #include "onewire_bus_impl_rmt.h"
-// #include "onewire_device.h"
 #include "supervisor.h"
 #include "tele.h"
 
@@ -144,7 +142,10 @@ static void ds18b20_adapter_init(void) {
 
     // Register HA entities
     for (uint8_t i = 0; i < sensor_count; i++) {
-        ha_register_entity(HA_SENSOR, sensors[i].name, "temperature", NULL, NULL);
+        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                                 .name = sensors[i].name,
+                                                 .device_class = "temperature",
+                                                 .parent_key = "temps"});
     }
 
     ds18b20_read_sensors();

@@ -50,18 +50,6 @@ static void mqtt_shutdown_task(void *args) {
 
 void mqtt_publish_telemetry(void) {
 
-    // To be removed ? Analyze this !!!
-    // if (!(xEventGroupGetBits(mqtt_event_group) & MQTT_CONNECTED_BIT)) {
-    //     // Prevent console spam on repeated connection failures.
-    //     static int not_connected_counter = 0;
-    //     not_connected_counter++;
-    //     if (not_connected_counter >= 5) {
-    //         ESP_LOGW(TAG, "MQTT not connected, skipping telemetry publish");
-    //         not_connected_counter = 0;
-    //     }
-    //     return;
-    // }
-
     if (!mqtt_config.telemetry_cb)
         return;
 
