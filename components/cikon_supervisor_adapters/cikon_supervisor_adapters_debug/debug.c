@@ -1,17 +1,39 @@
-#include "config_manager.h"
-#include "debug_adapter.h"
+#include <string.h>
+
+#include "cJSON.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/idf_additions.h"
+
+#include "config_manager.h"
+#include "debug_adapter.h"
+#include "ha.h"
 #include "mqtt.h"
+#include "tele.h"
 #include "wifi.h"
-#include <string.h>
 
 #define TAG "cikon:adapter:debug"
 
 static bool debug_enabled = true;
+
+// Helper for random float generation
+static float random_float(float min, float max) {
+    return min + ((float)esp_random() / UINT32_MAX) * (max - min);
+}
+
+// Unified task data collection function
+static TaskStatus_t *get_task_status_array(UBaseType_t *out_count) {
+    UBaseType_t num_tasks = uxTaskGetNumberOfTasks();
+    TaskStatus_t *task_array = malloc(num_tasks * sizeof(TaskStatus_t));
+    if (!task_array) {
+        return NULL;
+    }
+    *out_count = uxTaskGetSystemState(task_array, num_tasks, NULL);
+    return task_array;
+}
 
 static void debug_print_config_summary(void) {
     const config_t *cfg = config_get();
@@ -31,33 +53,34 @@ static void debug_print_config_summary(void) {
 }
 
 static void debug_print_tasks_summary(void) {
-    TaskStatus_t *task_status_array;
-    UBaseType_t task_count = uxTaskGetNumberOfTasks();
-    task_status_array = malloc(task_count * sizeof(TaskStatus_t));
+    UBaseType_t task_count = 0;
+    TaskStatus_t *task_status_array = get_task_status_array(&task_count);
+
+    if (!task_status_array) {
+        return;
+    }
+
     ESP_LOGI(TAG, "| * TASKS *");
-    if (task_status_array) {
-        UBaseType_t real_count = uxTaskGetSystemState(task_status_array, task_count, NULL);
-        char line[128] = "";
-        int col = 0;
-        for (UBaseType_t i = 0; i < real_count; i++) {
-            char entry[40];
-            snprintf(entry, sizeof(entry), "| %-14s %6u ", task_status_array[i].pcTaskName,
-                     (unsigned)(task_status_array[i].usStackHighWaterMark * sizeof(StackType_t)));
-            strcat(line, entry);
-            col++;
-            if (col == 3) {
-                strcat(line, "|");
-                ESP_LOGI(TAG, "%s", line);
-                line[0] = '\0';
-                col = 0;
-            }
-        }
-        if (col > 0 && line[0]) {
+    char line[128] = "";
+    int col = 0;
+    for (UBaseType_t i = 0; i < task_count; i++) {
+        char entry[40];
+        snprintf(entry, sizeof(entry), "| %-14s %6u ", task_status_array[i].pcTaskName,
+                 (unsigned)(task_status_array[i].usStackHighWaterMark * sizeof(StackType_t)));
+        strcat(line, entry);
+        col++;
+        if (col == 3) {
             strcat(line, "|");
             ESP_LOGI(TAG, "%s", line);
+            line[0] = '\0';
+            col = 0;
         }
-        free(task_status_array);
     }
+    if (col > 0 && line[0]) {
+        strcat(line, "|");
+        ESP_LOGI(TAG, "%s", line);
+    }
+    free(task_status_array);
 }
 
 static void debug_print_sys_info(void) {
@@ -83,8 +106,29 @@ static void debug_print_sys_info(void) {
              (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 }
 
-// Adapter callbacks
-static void debug_adapter_init(void) { ESP_LOGI(TAG, "Initializing debug adapter"); }
+// Custom HA builder for tasks_dict
+static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
+    char buf[64];
+
+    snprintf(buf, sizeof(buf), "{{ value_json.%s | count }}", sanitized_name);
+    cJSON_ReplaceItemInObject(payload, "val_tpl", cJSON_CreateString(buf));
+
+    snprintf(buf, sizeof(buf), "{{ value_json.%s | tojson }}", sanitized_name);
+    cJSON_AddStringToObject(payload, "json_attr_tpl", buf);
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+}
+
+static void debug_adapter_init(void) {
+    ESP_LOGI(TAG, "Initializing debug adapter");
+
+    // Register HA entities
+    ha_register_entity(&(ha_entity_config_t){
+        .type = HA_SENSOR, .name = "Temperature", .device_class = "temperature"});
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "Tasks Dict",
+                                             .entity_category = "diagnostic",
+                                             .custom_builder = build_tasks_dict_ha});
+}
 
 static void debug_adapter_on_event(EventBits_t bits) {
 
@@ -153,7 +197,77 @@ static void debug_adapter_shutdown(void) {
     debug_enabled = false;
 }
 
-supervisor_platform_adapter_t debug_adapter = {.init = debug_adapter_init,
-                                               .shutdown = debug_adapter_shutdown,
-                                               .on_event = debug_adapter_on_event,
-                                               .on_interval = debug_adapter_on_interval};
+// Telemetry functions
+static void tele_debug_temperature(const char *tele_id, cJSON *json_root) {
+    float temp = random_float(20.5f, 25.9f);
+    cJSON_AddNumberToObject(json_root, tele_id, temp);
+}
+
+static void tele_debug_tasks_dict(const char *tele_id, cJSON *json_root) {
+    if (!json_root)
+        return;
+
+    UBaseType_t task_count = 0;
+    TaskStatus_t *task_status_array = get_task_status_array(&task_count);
+    if (!task_status_array)
+        return;
+
+    cJSON *task_dict = cJSON_CreateObject();
+    if (!task_dict) {
+        free(task_status_array);
+        return;
+    }
+
+    for (UBaseType_t i = 0; i < task_count; i++) {
+        cJSON *json_task = cJSON_CreateObject();
+        if (!json_task)
+            continue;
+
+        cJSON_AddNumberToObject(json_task, "prio", task_status_array[i].uxCurrentPriority);
+        cJSON_AddNumberToObject(json_task, "stack", task_status_array[i].usStackHighWaterMark);
+        cJSON_AddNumberToObject(json_task, "runtime_ticks", task_status_array[i].ulRunTimeCounter);
+        cJSON_AddNumberToObject(json_task, "task_number", task_status_array[i].xTaskNumber);
+
+        const char *state_str = "unknown";
+        switch (task_status_array[i].eCurrentState) {
+        case eRunning:
+            state_str = "running";
+            break;
+        case eReady:
+            state_str = "ready";
+            break;
+        case eBlocked:
+            state_str = "blocked";
+            break;
+        case eSuspended:
+            state_str = "suspended";
+            break;
+        case eDeleted:
+            state_str = "deleted";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(json_task, "state", state_str);
+
+#if (INCLUDE_xTaskGetAffinity == 1)
+        cJSON_AddNumberToObject(json_task, "core", task_status_array[i].xCoreID);
+#endif
+
+        cJSON_AddItemToObject(task_dict, task_status_array[i].pcTaskName, json_task);
+    }
+
+    free(task_status_array);
+    cJSON_AddItemToObject(json_root, tele_id, task_dict);
+}
+
+static const tele_entry_t debug_telemetry[] = {
+    {"temperature", tele_debug_temperature}, {"tasks_dict", tele_debug_tasks_dict}, {NULL, NULL}};
+
+supervisor_platform_adapter_t debug_adapter = {
+    .init = debug_adapter_init,
+    .shutdown = debug_adapter_shutdown,
+    .on_event = debug_adapter_on_event,
+    .on_interval = debug_adapter_on_interval,
+    .tele_group = debug_telemetry,
+};

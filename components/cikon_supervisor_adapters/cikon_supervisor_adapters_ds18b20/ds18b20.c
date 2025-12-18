@@ -1,4 +1,4 @@
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 
 #include "esp_log.h"
@@ -80,17 +80,14 @@ static void ds18b20_scan_sensors(void) {
     // ESP_LOGI(TAG, "Searching done, %d DS18B20 sensor(s) found", sensor_count);
 }
 
-// Read all sensors
 static void ds18b20_read_sensors(void) {
 
     if (!initialized || sensor_count == 0) {
         return;
     }
 
-    // Trigger conversion for all sensors on bus
     ds18b20_trigger_temperature_conversion_for_all(bus);
 
-    // Read temperatures
     for (uint8_t i = 0; i < sensor_count; i++) {
         float temp;
         if (ds18b20_get_temperature(sensors[i].handle, &temp) == ESP_OK) {
@@ -104,7 +101,6 @@ static void ds18b20_read_sensors(void) {
     }
 }
 
-// Telemetry appender
 static void tele_ds18b20_temps(const char *tele_id, cJSON *json_root) {
     cJSON *temp_obj = cJSON_CreateObject();
 
@@ -117,7 +113,6 @@ static void tele_ds18b20_temps(const char *tele_id, cJSON *json_root) {
     cJSON_AddItemToObject(json_root, tele_id, temp_obj);
 }
 
-// Adapter callbacks
 static void ds18b20_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing DS18B20 adapter");
@@ -187,11 +182,9 @@ static void ds18b20_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 }
 
-// Adapter instance
 supervisor_platform_adapter_t ds18b20_adapter = {
     .init = ds18b20_adapter_init,
     .shutdown = ds18b20_adapter_shutdown,
-    .on_event = NULL,
     .on_interval = ds18b20_adapter_on_interval,
     .tele_group = (const tele_entry_t[]){{"temps", tele_ds18b20_temps}, {NULL, NULL}},
     .cmnd_group = NULL,

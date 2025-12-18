@@ -236,9 +236,10 @@ void inet_adapter_init(void) {
         (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3},
         inet_sntp_sync_cb);
 
-    static char device_ip[16];
+    static char device_url[64];
+
     // TODO: Ethernet support ? Check both interfaces
-    wifi_get_interface_ip(device_ip, sizeof(device_ip));
+    snprintf(device_url, sizeof(device_url), "%s.local", hostname);
 
     mqtt_config_t mqtt_cfg = {.client_id = get_client_id(),
                               .device_name = config_get()->dev_name,
@@ -246,7 +247,7 @@ void inet_adapter_init(void) {
                               .device_model = CONFIG_IDF_TARGET,
                               .device_sw_version = "v1.0.0",
                               .device_hw_version = CONFIG_IDF_INIT_VERSION,
-                              .device_ip_address = device_ip,
+                              .device_uri = device_url,
                               .mqtt_node = config_get()->mqtt_node,
                               .mqtt_broker = config_get()->mqtt_broker,
                               .mqtt_user = config_get()->mqtt_user,
@@ -283,6 +284,11 @@ void inet_adapter_init(void) {
     if (!cmnd_find("wifi")) {
         cmnd_register("wifi", "Control WiFi (on/off)", wifi_handler);
     }
+
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "IP Address",
+                                             .icon = "mdi:ip-outline",
+                                             .entity_category = "diagnostic"});
 }
 
 void inet_adapter_shutdown(void) {
@@ -488,6 +494,12 @@ static void wifi_handler(const char *args_json_str) {
     }
 }
 
+static void tele_inet_ip_address(const char *tele_id, cJSON *json_root) {
+    char ip[16];
+    wifi_get_interface_ip(ip, sizeof(ip));
+    cJSON_AddStringToObject(json_root, tele_id, ip);
+}
+
 static const command_entry_t inet_commands[] = {
     {"ap", "Switch to AP mode", set_ap_handler},
     {"sta", "Switch to STA mode", set_sta_handler},
@@ -504,4 +516,5 @@ supervisor_platform_adapter_t inet_adapter = {
     .on_event = inet_adapter_on_event,
     .on_interval = inet_adapter_on_interval,
     .cmnd_group = inet_commands,
+    .tele_group = (const tele_entry_t[]){{"ip_address", tele_inet_ip_address}, {NULL, NULL}},
 };

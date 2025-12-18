@@ -54,7 +54,7 @@ static cJSON *create_ha_device(void) {
 
     // Safe: cJSON_AddStringToObject copies the string internally
     char config_url[32];
-    snprintf(config_url, sizeof(config_url), "http://%s", mqtt_get_config()->device_ip_address);
+    snprintf(config_url, sizeof(config_url), "http://%s", mqtt_get_config()->device_uri);
     cJSON_AddStringToObject(device, "cu", config_url);
 
     return device;
@@ -77,17 +77,6 @@ static void build_button(cJSON *payload, const char *sanitized_name) {
     char buf[32];
     snprintf(buf, sizeof(buf), "{\"%s\": null}", sanitized_name);
     cJSON_AddStringToObject(payload, "command_template", buf);
-}
-
-static void build_tasks_dict(cJSON *payload, const char *sanitized_name) {
-    char buf[64];
-
-    snprintf(buf, sizeof(buf), "{{ value_json.%s | count }}", sanitized_name);
-    cJSON_ReplaceItemInObject(payload, "val_tpl", cJSON_CreateString(buf));
-
-    snprintf(buf, sizeof(buf), "{{ value_json.%s | tojson }}", sanitized_name);
-    cJSON_AddStringToObject(payload, "json_attr_tpl", buf);
-    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
 }
 
 static void build_light(cJSON *payload, const char *sanitized_name, const char *parent_key) {
@@ -146,8 +135,6 @@ static void register_default_entities(void) {
     }
     default_registered = true;
 
-    ha_register_entity(&(ha_entity_config_t){
-        .type = HA_SENSOR, .name = "Temperature", .device_class = "temperature"});
     ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
                                              .name = "Uptime",
                                              .device_class = "duration",
@@ -159,10 +146,6 @@ static void register_default_entities(void) {
     ha_register_entity(&(ha_entity_config_t){.type = HA_SWITCH, .name = "Onboard Led"});
     ha_register_entity(&(ha_entity_config_t){
         .type = HA_BUTTON, .name = "Restart", .entity_category = "diagnostic"});
-    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "Tasks Dict",
-                                             .entity_category = "diagnostic",
-                                             .custom_builder = build_tasks_dict});
 }
 
 static void publish_entity(const ha_entity_config_t *def, bool empty_payload) {

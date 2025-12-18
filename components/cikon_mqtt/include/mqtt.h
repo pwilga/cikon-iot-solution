@@ -19,7 +19,7 @@ typedef struct {
     const char *device_model;
     const char *device_sw_version;
     const char *device_hw_version;
-    const char *device_ip_address;
+    const char *device_uri;
     const char *mqtt_node;
     const char *mqtt_broker;
     const char *mqtt_user;
