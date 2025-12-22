@@ -14,9 +14,6 @@ dependencies:
   cikon_config:
     git: https://github.com/pwilga/cikon-iot-solution.git
     path: components/cikon_config
-  cikon_wifi:
-    git: https://github.com/pwilga/cikon-iot-solution.git
-    path: components/cikon_wifi
   cikon_helpers:
     git: https://github.com/pwilga/cikon-iot-solution.git
     path: components/cikon_helpers

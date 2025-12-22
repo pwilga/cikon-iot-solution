@@ -12,11 +12,28 @@
 #include "debug_adapter.h"
 #include "metadata.h"
 #include "tele.h"
-#include "wifi.h"
 
 #define TAG "cikon:adapter:debug"
 
 static bool debug_enabled = true;
+
+// Weak symbols for optional WiFi diagnostics (zero coupling)
+__attribute__((weak)) void wifi_log_event_group_bits(void) {
+    // Default: no-op if wifi component not linked
+}
+
+__attribute__((weak)) void wifi_get_interface_ip(char *buf, size_t len) {
+    // Default: "N/A" if wifi component not linked
+    if (buf && len > 0) {
+        strncpy(buf, "N/A", len - 1);
+        buf[len - 1] = '\0';
+    }
+}
+
+// Weak symbol for optional MQTT diagnostics (zero coupling)
+__attribute__((weak)) void mqtt_log_event_group_bits(void) {
+    // Default: no-op if mqtt component not linked
+}
 
 // Helper for random float generation
 static float random_float(float min, float max) {
@@ -172,7 +189,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         ESP_LOGI(TAG, "Uptime: %u s", uptime);
 
         wifi_log_event_group_bits();
-        // mqtt_log_event_group_bits();
+        mqtt_log_event_group_bits();
 
         char ip[16];
         wifi_get_interface_ip(ip, sizeof(ip));
