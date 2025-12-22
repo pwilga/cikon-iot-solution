@@ -9,7 +9,10 @@
 
 #include "cmnd.h"
 #include "config_manager.h"
+#include "metadata.h"
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 #include "ha.h"
+#endif
 #include "https_server.h"
 #include "inet_adapter.h"
 #include "json_parser.h"
@@ -202,6 +205,38 @@ static const char *inet_get_or_generate_ap_ssid(void) {
     return ssid;
 }
 
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+static void inet_adapter_register_ha_entities(void) {
+    // Register inet's own HA entity
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "IP",
+                                             .icon = "mdi:ip-outline",
+                                             .entity_category = "diagnostic"});
+
+    // Iterate through all adapters and register their HA metadata
+    const supervisor_platform_adapter_t **adapters = supervisor_get_adapters();
+    for (int i = 0; adapters[i] != NULL; i++) {
+        if (adapters[i]->metadata == NULL) {
+            continue;
+        }
+
+        const ha_metadata_t *meta = (const ha_metadata_t *)adapters[i]->metadata;
+
+        // Check if this is HA metadata (magic signature)
+        if (meta->magic != HA_METADATA_MAGIC) {
+            continue;
+        }
+
+        // Register all entities from this adapter
+        for (int e = 0; meta->entities[e].type != HA_ENTITY_NONE; e++) {
+            ha_register_entity(&meta->entities[e]);
+        }
+    }
+}
+#else
+static inline void inet_adapter_register_ha_entities(void) {}
+#endif
+
 void inet_adapter_init(void) {
 
     if (is_wifi_network_connected()) {
@@ -284,11 +319,6 @@ void inet_adapter_init(void) {
     if (!cmnd_find("wifi")) {
         cmnd_register("wifi", "Control WiFi (on/off)", wifi_handler);
     }
-
-    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "IP Address",
-                                             .icon = "mdi:ip-outline",
-                                             .entity_category = "diagnostic"});
 }
 
 void inet_adapter_shutdown(void) {
@@ -323,6 +353,11 @@ void inet_adapter_shutdown(void) {
 }
 
 static void inet_adapter_on_event(EventBits_t bits) {
+
+    if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
+        // All adapters initialized, register HA entities from metadata
+        inet_adapter_register_ha_entities();
+    }
 
     if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
         mqtt_trigger_telemetry();
@@ -407,8 +442,6 @@ static void inet_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 }
 
-// ===== Command handlers =====
-
 static void set_ap_handler(const char *args_json_str) {
     (void)args_json_str;
     inet_switch_to_ap_mode();
@@ -447,6 +480,7 @@ static void sntp_handler(const char *args_json_str) {
     }
 }
 
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 static void ha_handler(const char *args_json_str) {
     logic_state_t force_empty_payload = json_str_as_logic_state(args_json_str);
     if (force_empty_payload == STATE_TOGGLE) {
@@ -457,6 +491,7 @@ static void ha_handler(const char *args_json_str) {
     ESP_LOGI(TAG, "Triggering Home Assistant MQTT discovery");
     publish_ha_mqtt_discovery(force_empty_payload == STATE_OFF);
 }
+#endif
 
 static void ota_handler(const char *args_json_str) {
     logic_state_t ota_state = json_str_as_logic_state(args_json_str);
@@ -507,7 +542,9 @@ static const command_entry_t inet_commands[] = {
     {"sntp", "Control SNTP service (on/off)", sntp_handler},
     {"ota", "Control OTA service (on/off)", ota_handler},
     {"monitor", "Control TCP monitor (on/off)", monitor_handler},
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     {"ha", "Trigger Home Assistant MQTT discovery", ha_handler},
+#endif
     {NULL, NULL, NULL}};
 
 supervisor_platform_adapter_t inet_adapter = {
@@ -516,5 +553,5 @@ supervisor_platform_adapter_t inet_adapter = {
     .on_event = inet_adapter_on_event,
     .on_interval = inet_adapter_on_interval,
     .cmnd_group = inet_commands,
-    .tele_group = (const tele_entry_t[]){{"ip_address", tele_inet_ip_address}, {NULL, NULL}},
+    .tele_group = (const tele_entry_t[]){{"ip", tele_inet_ip_address}, {NULL, NULL}},
 };

@@ -11,9 +11,9 @@ dependencies:
   cikon_supervisor:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_supervisor
-  cikon_mqtt:
+  cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
-    path: components/cikon_mqtt
+    path: components/cikon_helpers
   espressif/ds18b20: "*"
   espressif/onewire_bus: "*"
   espressif/cjson: "*"

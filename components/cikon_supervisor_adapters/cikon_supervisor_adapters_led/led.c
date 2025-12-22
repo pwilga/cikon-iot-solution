@@ -10,9 +10,9 @@
 
 #include "cmnd.h"
 #include "config_manager.h"
-#include "ha.h"
 #include "json_parser.h"
 #include "led_adapter.h"
+#include "metadata.h"
 #include "supervisor.h"
 #include "tele.h"
 
@@ -162,18 +162,6 @@ static void led_init_channel(led_config_t *led) {
     ESP_LOGI(TAG, "LED channel %d initialized on GPIO %d", led->channel, led->gpio);
 }
 
-static void led_ha_register_entities(void) {
-    for (uint8_t i = 0;; i++) {
-        const char *name = led_get_name(i);
-        if (!name) {
-            break;
-        }
-
-        ha_register_entity(
-            &(ha_entity_config_t){.type = HA_LIGHT, .name = name, .parent_key = "pwm_led"});
-    }
-}
-
 static void led_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing LED adapter");
@@ -204,7 +192,6 @@ static void led_adapter_init(void) {
     }
 
     led_initialized = true;
-    led_ha_register_entities();
     ESP_LOGI(TAG, "LED adapter initialized");
 }
 
@@ -374,7 +361,7 @@ static void led_handler(const char *args_json_str) {
 
 static void led_adapter_on_interval(supervisor_interval_stage_t stage) {
     // Save state every 5 seconds if dirty
-    if (stage == SUPERVISOR_INTERVAL_5S && state_dirty) {
+    if (stage == SUPERVISOR_INTERVAL_10S && state_dirty) {
         led_save_state();
     }
 }
@@ -384,10 +371,26 @@ static const tele_entry_t led_tele_group[] = {{"pwm_led", led_tele_appender}, {N
 static const command_entry_t led_cmnd_group[] = {
     {"pwm_led", "Set LED brightness (0-255)", led_handler}, {NULL, NULL, NULL}};
 
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+#ifndef HA_ENTITY_LIST
+#define HA_ENTITY_LIST // Fallback if CMake didn't inject
+#endif
+
+#define HA_ENTITY_ENTRY(gpio, led_name)                                                            \
+    {.type = HA_LIGHT, .name = led_name, .parent_key = "pwm_led", .icon = "mdi:led-strip"},
+
+static const ha_metadata_t led_ha_metadata = {.magic = HA_METADATA_MAGIC,
+                                              .entities = {HA_ENTITY_LIST{.type = HA_ENTITY_NONE}}};
+#undef HA_ENTITY_ENTRY
+#endif
+
 supervisor_platform_adapter_t led_adapter = {
     .init = led_adapter_init,
     .shutdown = led_adapter_shutdown,
     .on_interval = led_adapter_on_interval,
     .tele_group = led_tele_group,
     .cmnd_group = led_cmnd_group,
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    .metadata = &led_ha_metadata,
+#endif
 };

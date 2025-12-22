@@ -17,9 +17,9 @@ dependencies:
   cikon_wifi:
     git: https://github.com/pwilga/cikon-iot-solution.git
     path: components/cikon_wifi
-  cikon_mqtt:
+  cikon_helpers:
     git: https://github.com/pwilga/cikon-iot-solution.git
-    path: components/cikon_mqtt
+    path: components/cikon_helpers
 
 targets:
   - esp32

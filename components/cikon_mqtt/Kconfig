@@ -41,4 +41,10 @@ menu "Cikon IoT MQTT Configuration"
         int "MQTT telemetry task priority"
         default 5
 
+    config MQTT_ENABLE_HA_DISCOVERY
+        bool "Enable Home Assistant MQTT Discovery"
+        default y
+        help
+            Enable Home Assistant auto-discovery protocol.
+            When disabled, all HA-related code is removed at compile time.
 endmenu

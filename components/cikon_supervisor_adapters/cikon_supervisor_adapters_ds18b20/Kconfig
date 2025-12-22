@@ -14,4 +14,13 @@ config DS18B20_MAX_SENSORS
         Maximum number of DS18B20 sensors to scan and register.
         Limited to 8 for memory efficiency.
 
+config DS18B20_SENSOR_NAMES
+    string "Sensor names (comma-separated)"
+    default "Board Temperature"
+    help
+        Names for temperature sensors in ROM scan order (sorted by ROM ID).
+        Sensors are sorted by ROM ID for deterministic ordering.
+        First name = lowest ROM ID, second name = second lowest, etc.
+        If fewer names than sensors, remaining get auto-names (temp0, temp1...).
+
 endmenu

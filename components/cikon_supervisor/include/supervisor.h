@@ -16,7 +16,7 @@ extern "C" {
  * @brief Supervisor event bits
  */
 #define SUPERVISOR_EVENT_CMND_COMPLETED BIT0
-#define SUPERVISOR_EVENT_RESERVED1 BIT1
+#define SUPERVISOR_EVENT_PLATFORM_INITIALIZED BIT1
 #define SUPERVISOR_EVENT_RESERVED2 BIT2
 #define SUPERVISOR_EVENT_RESERVED3 BIT3
 
@@ -81,6 +81,13 @@ typedef struct {
      */
     const command_entry_t *cmnd_group;
 
+    /**
+     * @brief Optional metadata (NULL if unused)
+     * Platform-specific metadata (e.g., HA entities, Zigbee endpoints).
+     * Format determined by metadata magic signature.
+     */
+    const void *metadata;
+
 } supervisor_platform_adapter_t;
 
 /**
@@ -120,6 +127,12 @@ EventGroupHandle_t supervisor_get_event_group(void);
  * @param bits Event bits to set
  */
 void supervisor_notify_event(EventBits_t bits);
+
+/**
+ * @brief Get array of registered adapters (NULL-terminated)
+ * @return Pointer to NULL-terminated array of adapter pointers
+ */
+const supervisor_platform_adapter_t **supervisor_get_adapters(void);
 
 #ifdef __cplusplus
 }

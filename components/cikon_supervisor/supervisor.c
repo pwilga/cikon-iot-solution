@@ -70,6 +70,18 @@ esp_err_t supervisor_register_adapter(supervisor_platform_adapter_t *adapter) {
     return ESP_OK;
 }
 
+const supervisor_platform_adapter_t **supervisor_get_adapters(void) {
+    // Return NULL-terminated array
+    static supervisor_platform_adapter_t *adapters_with_sentinel[SUPERVISOR_MAX_ADAPTERS + 1];
+
+    for (uint8_t i = 0; i < adapter_count; i++) {
+        adapters_with_sentinel[i] = registered_adapters[i];
+    }
+    adapters_with_sentinel[adapter_count] = NULL; // Sentinel
+
+    return (const supervisor_platform_adapter_t **)adapters_with_sentinel;
+}
+
 // Supervisor task - core event loop
 static void supervisor_task(void *args) {
     ESP_LOGI(TAG, "Supervisor task started with %d adapter(s)", adapter_count);
@@ -170,6 +182,9 @@ esp_err_t supervisor_platform_init(void) {
 
     xTaskCreate(supervisor_task, "supervisor", CONFIG_SUPERVISOR_TASK_STACK_SIZE, NULL,
                 CONFIG_SUPERVISOR_TASK_PRIORITY, NULL);
+
+    // Notify all adapters that platform initialization is complete
+    supervisor_notify_event(SUPERVISOR_EVENT_PLATFORM_INITIALIZED);
 
     // ESP_LOGI(TAG, "Supervisor platform initialization complete");
 

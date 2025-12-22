@@ -10,8 +10,7 @@
 
 #include "config_manager.h"
 #include "debug_adapter.h"
-#include "ha.h"
-#include "mqtt.h"
+#include "metadata.h"
 #include "tele.h"
 #include "wifi.h"
 
@@ -106,6 +105,7 @@ static void debug_print_sys_info(void) {
              (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 }
 
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 // Custom HA builder for tasks_dict
 static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
     char buf[64];
@@ -117,18 +117,9 @@ static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
     cJSON_AddStringToObject(payload, "json_attr_tpl", buf);
     cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
 }
+#endif
 
-static void debug_adapter_init(void) {
-    ESP_LOGI(TAG, "Initializing debug adapter");
-
-    // Register HA entities
-    ha_register_entity(&(ha_entity_config_t){
-        .type = HA_SENSOR, .name = "Temperature", .device_class = "temperature"});
-    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "Tasks Dict",
-                                             .entity_category = "diagnostic",
-                                             .custom_builder = build_tasks_dict_ha});
-}
+static void debug_adapter_init(void) { ESP_LOGI(TAG, "Initializing debug adapter"); }
 
 static void debug_adapter_on_event(EventBits_t bits) {
 
@@ -142,8 +133,8 @@ static void debug_adapter_on_event(EventBits_t bits) {
     if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
         ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_CMND_COMPLETED");
     }
-    if (bits & SUPERVISOR_EVENT_RESERVED1) {
-        ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_RESERVED1");
+    if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
+        ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_PLATFORM_INITIALIZED");
     }
     if (bits & SUPERVISOR_EVENT_RESERVED2) {
         ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_RESERVED2");
@@ -181,7 +172,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         ESP_LOGI(TAG, "Uptime: %u s", uptime);
 
         wifi_log_event_group_bits();
-        mqtt_log_event_group_bits();
+        // mqtt_log_event_group_bits();
 
         char ip[16];
         wifi_get_interface_ip(ip, sizeof(ip));
@@ -197,7 +188,6 @@ static void debug_adapter_shutdown(void) {
     debug_enabled = false;
 }
 
-// Telemetry functions
 static void tele_debug_temperature(const char *tele_id, cJSON *json_root) {
     float temp = random_float(20.5f, 25.9f);
     cJSON_AddNumberToObject(json_root, tele_id, temp);
@@ -261,8 +251,36 @@ static void tele_debug_tasks_dict(const char *tele_id, cJSON *json_root) {
     cJSON_AddItemToObject(json_root, tele_id, task_dict);
 }
 
+static void cmnd_debug_sysinfo(const char *args_json_str) {
+    (void)args_json_str;
+    debug_print_sys_info();
+}
+
+static void cmnd_debug_config(const char *args_json_str) {
+    (void)args_json_str;
+    debug_print_config_summary();
+}
+
+static const command_entry_t debug_commands[] = {
+    {"sysinfo", "Print system information", cmnd_debug_sysinfo},
+    {"showconf", "Print configuration summary", cmnd_debug_config},
+    {NULL, NULL, NULL}};
+
 static const tele_entry_t debug_telemetry[] = {
     {"temperature", tele_debug_temperature}, {"tasks_dict", tele_debug_tasks_dict}, {NULL, NULL}};
+
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+static const ha_metadata_t debug_ha_metadata = {
+    .magic = HA_METADATA_MAGIC,
+    .entities = {
+        {.type = HA_SENSOR, .name = "Temperature", .device_class = "temperature"},
+        {.type = HA_SENSOR,
+         .name = "Tasks Dict",
+         .entity_category = "diagnostic",
+         .custom_builder = build_tasks_dict_ha},
+        {.type = HA_ENTITY_NONE} // Sentinel
+    }};
+#endif
 
 supervisor_platform_adapter_t debug_adapter = {
     .init = debug_adapter_init,
@@ -270,4 +288,8 @@ supervisor_platform_adapter_t debug_adapter = {
     .on_event = debug_adapter_on_event,
     .on_interval = debug_adapter_on_interval,
     .tele_group = debug_telemetry,
+    .cmnd_group = debug_commands,
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    .metadata = &debug_ha_metadata,
+#endif
 };

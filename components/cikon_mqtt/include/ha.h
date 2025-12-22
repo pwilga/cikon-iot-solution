@@ -1,6 +1,7 @@
 /* Homeassistant MQTT Discovery */
 #pragma once
 
+#include "metadata.h"
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -9,32 +10,6 @@ extern "C" {
 
 // NOLINTNEXTLINE(readability-identifier-naming)
 typedef struct cJSON cJSON;
-
-// Entity types
-typedef enum {
-    HA_SENSOR,
-    HA_SWITCH,
-    HA_BUTTON,
-    HA_LIGHT,
-} ha_entity_type_t;
-
-// Custom builder callback type
-typedef void (*ha_custom_builder_t)(cJSON *payload, const char *sanitized_name);
-
-/**
- * @brief Home Assistant entity configuration structure
- */
-typedef struct {
-    ha_entity_type_t type;              // Required: Entity type
-    const char *name;                   // Required: Human-readable name
-    const char *device_class;           // Optional: Device class ("temperature", "duration", etc.)
-    const char *entity_category;        // Optional: "diagnostic" or "config" (NULL for main)
-    const char *parent_key;             // Optional: Parent key for nested JSON (e.g., "temps" for
-                                        // {"temps":{"temp0":23.5}})
-    const char *icon;                   // Optional: Icon name (e.g., "mdi:thermometer")
-    const char *unit;                   // Optional: Unit of measurement (e.g., "°C", "s")
-    ha_custom_builder_t custom_builder; // Optional: Custom payload builder
-} ha_entity_config_t;
 
 /**
  * @brief Register a Home Assistant entity.

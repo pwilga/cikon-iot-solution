@@ -7,7 +7,8 @@
 
 #include "ds18b20.h"
 #include "ds18b20_adapter.h"
-#include "ha.h"
+#include "json_parser.h"
+#include "metadata.h"
 #include "onewire_bus.h"
 #include "supervisor.h"
 #include "tele.h"
@@ -17,7 +18,8 @@
 typedef struct {
     ds18b20_device_handle_t handle;
     float last_temp;
-    char name[16];
+    char name[32];
+    uint64_t rom_id;
     bool valid;
 } sensor_t;
 
@@ -25,6 +27,35 @@ static onewire_bus_handle_t bus = NULL;
 static sensor_t sensors[CONFIG_DS18B20_MAX_SENSORS];
 static uint8_t sensor_count = 0;
 static bool initialized = false;
+
+// Parse sensor names from Kconfig
+static const char *sensor_names[CONFIG_DS18B20_MAX_SENSORS];
+static uint8_t sensor_name_count = 0;
+
+static void parse_sensor_names(void) {
+    const char *name_list = CONFIG_DS18B20_SENSOR_NAMES;
+    char *str = strdup(name_list);
+    char *token = strtok(str, ",");
+    sensor_name_count = 0;
+
+    while (token != NULL && sensor_name_count < CONFIG_DS18B20_MAX_SENSORS) {
+        sensor_names[sensor_name_count++] = strdup(token);
+        token = strtok(NULL, ",");
+    }
+    free(str);
+    ESP_LOGI(TAG, "Parsed %d sensor names from Kconfig", sensor_name_count);
+}
+
+// Comparator for qsort - sort sensors by ROM ID (deterministic ordering)
+static int compare_sensors_by_rom(const void *a, const void *b) {
+    const sensor_t *sa = (const sensor_t *)a;
+    const sensor_t *sb = (const sensor_t *)b;
+    if (sa->rom_id < sb->rom_id)
+        return -1;
+    if (sa->rom_id > sb->rom_id)
+        return 1;
+    return 0;
+}
 
 // Scan 1-Wire bus and register sensors
 static void ds18b20_scan_sensors(void) {
@@ -51,15 +82,13 @@ static void ds18b20_scan_sensors(void) {
                 sensors[found].handle = ds18b20;
                 sensors[found].valid = false;
                 sensors[found].last_temp = 0.0f;
+                sensors[found].rom_id = next_onewire_device.address; // Store ROM ID
 
-                // Auto-name: temp0, temp1, ...
-                snprintf(sensors[found].name, sizeof(sensors[found].name), "temp%d", found);
-
-                ESP_LOGI(TAG, "Found DS18B20[%d]: %s", found, sensors[found].name);
+                ESP_LOGI(TAG, "Found DS18B20[%d]: ROM=%016llX", found, next_onewire_device.address);
                 found++;
 
                 if (found >= CONFIG_DS18B20_MAX_SENSORS) {
-                    // ESP_LOGI(TAG, "Max sensor limit reached, stop searching");
+                    ESP_LOGW(TAG, "Max sensor limit reached, stop searching");
                     break;
                 }
             } else {
@@ -77,7 +106,23 @@ static void ds18b20_scan_sensors(void) {
 
     ESP_ERROR_CHECK(onewire_del_device_iter(iter));
     sensor_count = found;
-    // ESP_LOGI(TAG, "Searching done, %d DS18B20 sensor(s) found", sensor_count);
+
+    // Sort sensors by ROM ID for deterministic ordering
+    if (sensor_count > 1) {
+        qsort(sensors, sensor_count, sizeof(sensor_t), compare_sensors_by_rom);
+        ESP_LOGI(TAG, "Sensors sorted by ROM ID");
+    }
+
+    // Assign names from Kconfig or auto-generate
+    for (uint8_t i = 0; i < sensor_count; i++) {
+        if (i < sensor_name_count && sensor_names[i] != NULL) {
+            strncpy(sensors[i].name, sensor_names[i], sizeof(sensors[i].name) - 1);
+            sensors[i].name[sizeof(sensors[i].name) - 1] = '\0';
+        } else {
+            snprintf(sensors[i].name, sizeof(sensors[i].name), "temp%d", i);
+        }
+        ESP_LOGI(TAG, "Sensor[%d]: ROM=%016llX Name='%s'", i, sensors[i].rom_id, sensors[i].name);
+    }
 }
 
 static void ds18b20_read_sensors(void) {
@@ -106,7 +151,9 @@ static void tele_ds18b20_temps(const char *tele_id, cJSON *json_root) {
 
     for (uint8_t i = 0; i < sensor_count; i++) {
         if (sensors[i].valid) {
-            cJSON_AddNumberToObject(temp_obj, sensors[i].name, sensors[i].last_temp);
+            char *sanitized_name = sanitize(sensors[i].name);
+            cJSON_AddNumberToObject(temp_obj, sanitized_name, sensors[i].last_temp);
+            free(sanitized_name);
         }
     }
 
@@ -116,6 +163,8 @@ static void tele_ds18b20_temps(const char *tele_id, cJSON *json_root) {
 static void ds18b20_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing DS18B20 adapter");
+
+    parse_sensor_names();
 
     // Install 1-Wire bus
     onewire_bus_config_t bus_config = {
@@ -134,15 +183,6 @@ static void ds18b20_adapter_init(void) {
     }
 
     ds18b20_scan_sensors();
-
-    // Register HA entities
-    for (uint8_t i = 0; i < sensor_count; i++) {
-        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                                 .name = sensors[i].name,
-                                                 .device_class = "temperature",
-                                                 .parent_key = "temps"});
-    }
-
     ds18b20_read_sensors();
 
     initialized = true;
@@ -182,10 +222,26 @@ static void ds18b20_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 }
 
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+#ifndef HA_ENTITY_LIST
+#define HA_ENTITY_LIST // Fallback if CMake didn't inject
+#endif
+
+#define HA_ENTITY_ENTRY(sensor_name)                                                               \
+    {.type = HA_SENSOR, .name = sensor_name, .device_class = "temperature", .parent_key = "temps"},
+
+static const ha_metadata_t ds18b20_ha_metadata = {
+    .magic = HA_METADATA_MAGIC, .entities = {HA_ENTITY_LIST{.type = HA_ENTITY_NONE}}};
+#undef HA_ENTITY_ENTRY
+#endif
+
 supervisor_platform_adapter_t ds18b20_adapter = {
     .init = ds18b20_adapter_init,
     .shutdown = ds18b20_adapter_shutdown,
     .on_interval = ds18b20_adapter_on_interval,
     .tele_group = (const tele_entry_t[]){{"temps", tele_ds18b20_temps}, {NULL, NULL}},
     .cmnd_group = NULL,
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    .metadata = &ds18b20_ha_metadata,
+#endif
 };
