@@ -1,4 +1,5 @@
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -6,6 +7,7 @@
 #include "cJSON.h"
 #include "cmnd.h"
 #include "config_manager.h"
+#include "enum_helpers.h"
 #include "json_parser.h"
 #include "platform_services.h"
 #include "supervisor.h"
@@ -20,6 +22,9 @@ static EventGroupHandle_t supervisor_event_group;
 static supervisor_platform_adapter_t *registered_adapters[SUPERVISOR_MAX_ADAPTERS];
 static uint8_t adapter_count = 0;
 
+// OTA rollback validation
+static bool firmware_validated = false;
+
 // Forward declarations for readability - handlers/appenders defined at end of file
 static const command_entry_t core_commands[];
 static const tele_entry_t core_tele[];
@@ -30,6 +35,7 @@ static const uint32_t supervisor_intervals_ms[SUPERVISOR_INTERVAL_COUNT] = {
     [SUPERVISOR_INTERVAL_2S] = 2000,
     [SUPERVISOR_INTERVAL_5S] = 5000,
     [SUPERVISOR_INTERVAL_10S] = 10000,
+    [SUPERVISOR_INTERVAL_30S] = 30000,
     [SUPERVISOR_INTERVAL_60S] = 60000,
     [SUPERVISOR_INTERVAL_5M] = 5 * 60 * 1000,
     [SUPERVISOR_INTERVAL_10M] = 10 * 60 * 1000,
@@ -82,6 +88,44 @@ const supervisor_platform_adapter_t **supervisor_get_adapters(void) {
     return (const supervisor_platform_adapter_t **)adapters_with_sentinel;
 }
 
+static void supervisor_validate_firmware(void) {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t ota_state;
+
+    if (esp_ota_get_state_partition(running, &ota_state) != ESP_OK) {
+        ESP_LOGD(TAG, "Failed to get OTA state");
+        firmware_validated = true;
+        return;
+    }
+
+    ESP_LOGI(TAG, "OTA state: %s (%d)", esp_ota_state_to_string(ota_state), ota_state);
+
+    if (ota_state != ESP_OTA_IMG_PENDING_VERIFY) {
+        // ESP_LOGI(TAG, "Firmware validation not required (state: %s)", state_str);
+        firmware_validated = true;
+        return;
+    }
+
+    if (esp_ota_mark_app_valid_cancel_rollback() != ESP_OK) {
+        ESP_LOGE(TAG, "❌ Failed to validate firmware!");
+        return;
+    }
+
+    esp_app_desc_t app_desc;
+    if (esp_ota_get_partition_description(running, &app_desc) == ESP_OK) {
+        ESP_LOGI(TAG, "✅ Firmware validated: %s v%s", app_desc.project_name, app_desc.version);
+        ESP_LOGI(TAG, "   Compiled: %s %s (IDF %s)", app_desc.date, app_desc.time,
+                 app_desc.idf_ver);
+    }
+    firmware_validated = true;
+}
+
+static void supervisor_on_interval(supervisor_interval_stage_t stage) {
+    if (stage == SUPERVISOR_INTERVAL_10S && !firmware_validated) {
+        supervisor_validate_firmware();
+    }
+}
+
 // Supervisor task - core event loop
 static void supervisor_task(void *args) {
     ESP_LOGI(TAG, "Supervisor task started with %d adapter(s)", adapter_count);
@@ -121,6 +165,9 @@ static void supervisor_task(void *args) {
         TickType_t now = xTaskGetTickCount();
         for (int stage = 0; stage < SUPERVISOR_INTERVAL_COUNT; stage++) {
             if (now - last_stage[stage] >= pdMS_TO_TICKS(supervisor_intervals_ms[stage])) {
+
+                supervisor_on_interval((supervisor_interval_stage_t)stage);
+
                 // Forward interval to all adapters
                 for (int i = 0; i < adapter_count; i++) {
                     if (registered_adapters[i]->on_interval) {
@@ -185,8 +232,6 @@ esp_err_t supervisor_platform_init(void) {
 
     // Notify all adapters that platform initialization is complete
     supervisor_notify_event(SUPERVISOR_EVENT_PLATFORM_INITIALIZED);
-
-    // ESP_LOGI(TAG, "Supervisor platform initialization complete");
 
     return ESP_OK;
 }

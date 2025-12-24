@@ -8,4 +8,5 @@ idf_component_register(
     REQUIRES
         esp_event
         freertos
+        app_update
 )

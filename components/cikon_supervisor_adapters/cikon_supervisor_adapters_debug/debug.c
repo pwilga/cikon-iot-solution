@@ -1,21 +1,27 @@
+#include <inttypes.h>
 #include <string.h>
 
 #include "cJSON.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/idf_additions.h"
 
 #include "config_manager.h"
 #include "debug_adapter.h"
+#include "enum_helpers.h"
 #include "metadata.h"
 #include "tele.h"
 
 #define TAG "cikon:adapter:debug"
 
 static bool debug_enabled = true;
+static const esp_partition_t *failed_ota_partition = NULL;
+static esp_ota_img_states_t failed_ota_state = ESP_OTA_IMG_UNDEFINED;
+static char failed_ota_version[32] = "unknown";
 
 // Weak symbols for optional WiFi diagnostics (zero coupling)
 __attribute__((weak)) void wifi_log_event_group_bits(void) {
@@ -136,7 +142,21 @@ static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
 }
 #endif
 
-static void debug_adapter_init(void) { ESP_LOGI(TAG, "Initializing debug adapter"); }
+static void debug_adapter_init(void) {
+    ESP_LOGI(TAG, "Initializing debug adapter");
+
+    // Check for failed OTA partition (passive check only)
+    failed_ota_partition = esp_ota_get_last_invalid_partition();
+
+    if (failed_ota_partition != NULL) {
+        esp_ota_get_state_partition(failed_ota_partition, &failed_ota_state);
+
+        esp_app_desc_t app_desc;
+        if (esp_ota_get_partition_description(failed_ota_partition, &app_desc) == ESP_OK) {
+            snprintf(failed_ota_version, sizeof(failed_ota_version), "%s", app_desc.version);
+        }
+    }
+}
 
 static void debug_adapter_on_event(EventBits_t bits) {
 
@@ -195,6 +215,12 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         wifi_get_interface_ip(ip, sizeof(ip));
         ESP_LOGI(TAG, "IP: %s", ip);
 
+        // Alert continuously if failed OTA detected (passive reporting)
+        if (failed_ota_partition != NULL) {
+            ESP_LOGW(TAG, "Failed OTA %s: %s (v%s)", failed_ota_partition->label,
+                     esp_ota_state_to_string(failed_ota_state), failed_ota_version);
+        }
+
         debug_print_tasks_summary();
         ESP_LOGI(TAG, "=====================");
     }
@@ -208,6 +234,29 @@ static void debug_adapter_shutdown(void) {
 static void tele_debug_temperature(const char *tele_id, cJSON *json_root) {
     float temp = random_float(20.5f, 25.9f);
     cJSON_AddNumberToObject(json_root, tele_id, temp);
+}
+
+static void tele_debug_rollback(const char *tele_id, cJSON *json_root) {
+    if (!json_root)
+        return;
+
+    if (failed_ota_partition == NULL) {
+        cJSON_AddStringToObject(json_root, tele_id, "OK");
+        return;
+    }
+
+    cJSON *obj = cJSON_CreateObject();
+    if (!obj)
+        return;
+
+    cJSON_AddStringToObject(obj, "failed_partition", failed_ota_partition->label);
+    cJSON_AddNumberToObject(obj, "failed_subtype", failed_ota_partition->subtype);
+
+    char addr_hex[16];
+    snprintf(addr_hex, sizeof(addr_hex), "0x%08" PRIx32, failed_ota_partition->address);
+    cJSON_AddStringToObject(obj, "failed_address", addr_hex);
+
+    cJSON_AddItemToObject(json_root, tele_id, obj);
 }
 
 static void tele_debug_tasks_dict(const char *tele_id, cJSON *json_root) {
@@ -283,8 +332,10 @@ static const command_entry_t debug_commands[] = {
     {"showconf", "Print configuration summary", cmnd_debug_config},
     {NULL, NULL, NULL}};
 
-static const tele_entry_t debug_telemetry[] = {
-    {"temperature", tele_debug_temperature}, {"tasks_dict", tele_debug_tasks_dict}, {NULL, NULL}};
+static const tele_entry_t debug_telemetry[] = {{"temperature", tele_debug_temperature},
+                                               {"tasks_dict", tele_debug_tasks_dict},
+                                               {"rollback", tele_debug_rollback},
+                                               {NULL, NULL}};
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 static const ha_metadata_t debug_ha_metadata = {
