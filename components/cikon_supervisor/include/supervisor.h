@@ -135,6 +135,12 @@ void supervisor_notify_event(EventBits_t bits);
  */
 const supervisor_platform_adapter_t **supervisor_get_adapters(void);
 
+/**
+ * @brief Check if safe mode is currently active
+ * @return true if safe mode is active, false otherwise
+ */
+bool supervisor_is_safe_mode_active(void);
+
 #ifdef __cplusplus
 }
 #endif

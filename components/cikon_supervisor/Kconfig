@@ -35,4 +35,20 @@ menu "Cikon IoT Supervisor Core Configuration"
         help
             Priority of the supervisor task.
 
+    config SUPERVISOR_SAFE_MODE_THRESHOLD
+        int "Safe mode crash threshold"
+        default 3
+        range 2 10
+        help
+            Number of crashes/panics before activating safe mode.
+            Safe mode disables hardware adapters and keeps only WiFi/Monitor/OTA active.
+
+    config SUPERVISOR_SAFE_MODE_STABLE_TIME_S
+        int "Safe mode auto-clear time (seconds)"
+        default 90
+        range 30 300
+        help
+            Time in seconds of stable operation before auto-clearing safe mode.
+            After this time without crashes, boot counter resets to 0.
+
 endmenu

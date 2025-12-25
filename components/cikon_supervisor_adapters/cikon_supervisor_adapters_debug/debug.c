@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cJSON.h"
@@ -202,6 +203,10 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
 
     // Log system stats every 2 seconds
     if (stage == SUPERVISOR_INTERVAL_2S) {
+        if (supervisor_is_safe_mode_active()) {
+            ESP_LOGE(TAG, "SAFE MODE ACTIVE - limited functionality");
+        }
+
         size_t free_heap = esp_get_free_heap_size();
         ESP_LOGI(TAG, "Free heap: %.2f KB", free_heap / 1024.0);
 
@@ -217,8 +222,9 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
 
         // Alert continuously if failed OTA detected (passive reporting)
         if (failed_ota_partition != NULL) {
-            ESP_LOGW(TAG, "Failed OTA %s: %s (v%s)", failed_ota_partition->label,
-                     esp_ota_state_to_string(failed_ota_state), failed_ota_version);
+            ESP_LOGW(TAG, "OTA rollback detected from %s partition: %s (v%s)",
+                     failed_ota_partition->label, esp_ota_state_to_string(failed_ota_state),
+                     failed_ota_version);
         }
 
         debug_print_tasks_summary();
@@ -241,22 +247,14 @@ static void tele_debug_rollback(const char *tele_id, cJSON *json_root) {
         return;
 
     if (failed_ota_partition == NULL) {
-        cJSON_AddStringToObject(json_root, tele_id, "OK");
+        cJSON_AddStringToObject(json_root, tele_id, "n/a");
         return;
     }
 
-    cJSON *obj = cJSON_CreateObject();
-    if (!obj)
-        return;
-
-    cJSON_AddStringToObject(obj, "failed_partition", failed_ota_partition->label);
-    cJSON_AddNumberToObject(obj, "failed_subtype", failed_ota_partition->subtype);
-
-    char addr_hex[16];
-    snprintf(addr_hex, sizeof(addr_hex), "0x%08" PRIx32, failed_ota_partition->address);
-    cJSON_AddStringToObject(obj, "failed_address", addr_hex);
-
-    cJSON_AddItemToObject(json_root, tele_id, obj);
+    char rollback_str[64];
+    snprintf(rollback_str, sizeof(rollback_str), "%s: %s", failed_ota_partition->label,
+             esp_ota_state_to_string(failed_ota_state));
+    cJSON_AddStringToObject(json_root, tele_id, rollback_str);
 }
 
 static void tele_debug_tasks_dict(const char *tele_id, cJSON *json_root) {
@@ -327,9 +325,15 @@ static void cmnd_debug_config(const char *args_json_str) {
     debug_print_config_summary();
 }
 
+static void cmnd_debug_crash(const char *args_json_str) {
+    (void)args_json_str;
+    abort();
+}
+
 static const command_entry_t debug_commands[] = {
     {"sysinfo", "Print system information", cmnd_debug_sysinfo},
     {"showconf", "Print configuration summary", cmnd_debug_config},
+    {"crash", "Crash the system (for testing)", cmnd_debug_crash},
     {NULL, NULL, NULL}};
 
 static const tele_entry_t debug_telemetry[] = {{"temperature", tele_debug_temperature},

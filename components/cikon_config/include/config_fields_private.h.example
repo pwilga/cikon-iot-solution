@@ -1,5 +1,4 @@
-#ifndef CONFIG_FIELDS_PRIVATE_H
-#define CONFIG_FIELDS_PRIVATE_H
+#pragma once
 
 // Example config_fields_private.h (do NOT commit your real config_fields_private.h)
 // Copy this file as config_fields_private.h and fill with your own values.
@@ -25,6 +24,5 @@
     STR(sntp2, 64, "time.google.com")                                                              \
     STR(sntp3, 64, "time.cloudflare.com")                                                          \
     U64(led_state, 0)                                                                              \
-    U64(led_last_state, 0)
-
-#endif // CONFIG_FIELDS_PRIVATE_H
+    U64(led_last_state, 0)                                                                         \
+    U32(boot_counter, 0)

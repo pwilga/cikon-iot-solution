@@ -1,5 +1,6 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -24,6 +25,9 @@ static uint8_t adapter_count = 0;
 
 // OTA rollback validation
 static bool firmware_validated = false;
+
+// Safe mode state
+static bool safe_mode_active = false;
 
 // Forward declarations for readability - handlers/appenders defined at end of file
 static const command_entry_t core_commands[];
@@ -88,6 +92,49 @@ const supervisor_platform_adapter_t **supervisor_get_adapters(void) {
     return (const supervisor_platform_adapter_t **)adapters_with_sentinel;
 }
 
+bool supervisor_is_safe_mode_active(void) { return safe_mode_active; }
+
+// Safe mode implementation - inspired by ESPHome safe mode mechanism
+// https://github.com/esphome/esphome/blob/dev/esphome/components/safe_mode/safe_mode.cpp
+// Detects repeated crashes/panics and automatically clears after stable operation
+static bool safe_mode_check(void) {
+
+    esp_reset_reason_t reason = esp_reset_reason();
+    uint32_t boot_counter = config_get()->boot_counter;
+
+    if (is_abnormal_reset(reason)) {
+
+        boot_counter++;
+        ESP_LOGW(TAG, "Crash detected (%s), boot counter: %u/%u",
+                 esp_reset_reason_to_string(reason), boot_counter,
+                 CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD);
+        config_set_boot_counter(boot_counter);
+    }
+
+    if (boot_counter >= CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD) {
+        ESP_LOGE(TAG, "SAFE MODE ACTIVE: %u crashes detected", boot_counter);
+        ESP_LOGE(TAG, "Hardware adapters DISABLED - WiFi/OTA only");
+        ESP_LOGE(TAG, "Auto-clear after %ds stable operation",
+                 CONFIG_SUPERVISOR_SAFE_MODE_STABLE_TIME_S);
+        return true;
+    }
+
+    ESP_LOGI(TAG, "Boot counter: %u/%u (reset reason: %s)", boot_counter,
+             CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD, esp_reset_reason_to_string(reason));
+    return false;
+}
+
+static void safe_mode_clear(void) {
+    config_set_boot_counter(0);
+
+    if (safe_mode_active) {
+        safe_mode_active = false;
+        ESP_LOGI(TAG, "Boot counter cleared - exiting safe mode");
+    } else {
+        ESP_LOGI(TAG, "Boot counter cleared after stable operation");
+    }
+}
+
 static void supervisor_validate_firmware(void) {
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_ota_img_states_t ota_state;
@@ -107,7 +154,7 @@ static void supervisor_validate_firmware(void) {
     }
 
     if (esp_ota_mark_app_valid_cancel_rollback() != ESP_OK) {
-        ESP_LOGE(TAG, "❌ Failed to validate firmware!");
+        ESP_LOGE(TAG, "Failed to validate firmware!");
         return;
     }
 
@@ -121,8 +168,16 @@ static void supervisor_validate_firmware(void) {
 }
 
 static void supervisor_on_interval(supervisor_interval_stage_t stage) {
+
     if (stage == SUPERVISOR_INTERVAL_10S && !firmware_validated) {
         supervisor_validate_firmware();
+    }
+
+    // Auto-clear boot counter after stable operation (check every 5s)
+    // This prevents false positives from sporadic crashes spread over time
+    if (stage == SUPERVISOR_INTERVAL_5S && config_get()->boot_counter > 0 &&
+        (esp_timer_get_time() / 1000000ULL) > CONFIG_SUPERVISOR_SAFE_MODE_STABLE_TIME_S) {
+        safe_mode_clear();
     }
 }
 
@@ -220,6 +275,9 @@ void supervisor_init(void) {
 
 esp_err_t supervisor_platform_init(void) {
     ESP_LOGI(TAG, "Initializing %d platform adapter(s)", adapter_count);
+
+    // Check safe mode before initializing adapters
+    safe_mode_active = safe_mode_check();
 
     for (int i = 0; i < adapter_count; i++) {
         if (registered_adapters[i]->init) {

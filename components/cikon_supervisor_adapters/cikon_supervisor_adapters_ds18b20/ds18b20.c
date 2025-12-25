@@ -102,6 +102,8 @@ static void ds18b20_scan_sensors(void) {
             ESP_LOGW(TAG, "Max search iterations reached, stopping");
             break;
         }
+
+        vTaskDelay(1);
     } while (search_result != ESP_ERR_NOT_FOUND);
 
     ESP_ERROR_CHECK(onewire_del_device_iter(iter));
@@ -142,6 +144,10 @@ static void ds18b20_read_sensors(void) {
         } else {
             sensors[i].valid = false;
             ESP_LOGW(TAG, "Failed to read sensor '%s'", sensors[i].name);
+        }
+
+        if (i < sensor_count - 1) {
+            vTaskDelay(1);
         }
     }
 }

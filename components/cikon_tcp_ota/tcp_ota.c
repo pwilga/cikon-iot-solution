@@ -1,4 +1,4 @@
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 
 #include "esp_err.h"
@@ -153,6 +153,8 @@ static void handle_ota(const int client_sock) {
             return;
         }
         mbedtls_md5_update(&md5_ctx, rx_buffer, read_bytes);
+
+        vTaskDelay(1);
     }
 
     RETURN_IF_FALSE(send_ack(client_sock));
