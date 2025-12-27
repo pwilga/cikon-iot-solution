@@ -45,6 +45,13 @@ typedef enum {
  */
 typedef struct {
     /**
+     * @brief Enable this adapter in safe mode
+     * If false (default), adapter is skipped when safe mode is active.
+     * Only critical adapters (inet) should set this to true.
+     */
+    bool enable_in_safe_mode;
+
+    /**
      * @brief Initialize platform-specific resources
      * Called once during supervisor startup.
      */

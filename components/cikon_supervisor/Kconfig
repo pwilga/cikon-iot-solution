@@ -21,6 +21,14 @@ menu "Cikon IoT Supervisor Core Configuration"
         help
             Maximum number of telemetry appenders that can be registered.
 
+    config SUPERVISOR_MAX_ADAPTERS
+        int "Maximum number of platform adapters"
+        default 8
+        range 4 16
+        help
+            Maximum number of platform adapters that can be registered.
+            Typical: 8.
+
     config SUPERVISOR_TASK_STACK_SIZE
         int "Supervisor task stack size"
         default 4096

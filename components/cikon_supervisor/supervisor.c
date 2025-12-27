@@ -15,12 +15,11 @@
 #include "tele.h"
 
 #define TAG "cikon:supervisor"
-#define SUPERVISOR_MAX_ADAPTERS 8
 
 static QueueHandle_t supervisor_queue;
 static EventGroupHandle_t supervisor_event_group;
 
-static supervisor_platform_adapter_t *registered_adapters[SUPERVISOR_MAX_ADAPTERS];
+static supervisor_platform_adapter_t *registered_adapters[CONFIG_SUPERVISOR_MAX_ADAPTERS];
 static uint8_t adapter_count = 0;
 
 // OTA rollback validation
@@ -57,8 +56,8 @@ void supervisor_notify_event(EventBits_t bits) {
 }
 
 esp_err_t supervisor_register_adapter(supervisor_platform_adapter_t *adapter) {
-    if (adapter_count >= SUPERVISOR_MAX_ADAPTERS) {
-        ESP_LOGE(TAG, "Maximum number of adapters (%d) reached!", SUPERVISOR_MAX_ADAPTERS);
+    if (adapter_count >= CONFIG_SUPERVISOR_MAX_ADAPTERS) {
+        ESP_LOGE(TAG, "Maximum number of adapters (%d) reached!", CONFIG_SUPERVISOR_MAX_ADAPTERS);
         return ESP_ERR_NO_MEM;
     }
 
@@ -82,7 +81,8 @@ esp_err_t supervisor_register_adapter(supervisor_platform_adapter_t *adapter) {
 
 const supervisor_platform_adapter_t **supervisor_get_adapters(void) {
     // Return NULL-terminated array
-    static supervisor_platform_adapter_t *adapters_with_sentinel[SUPERVISOR_MAX_ADAPTERS + 1];
+    static supervisor_platform_adapter_t
+        *adapters_with_sentinel[CONFIG_SUPERVISOR_MAX_ADAPTERS + 1];
 
     for (uint8_t i = 0; i < adapter_count; i++) {
         adapters_with_sentinel[i] = registered_adapters[i];
@@ -112,7 +112,7 @@ static bool safe_mode_check(void) {
     }
 
     if (boot_counter >= CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD) {
-        ESP_LOGE(TAG, "SAFE MODE ACTIVE: %u crashes detected", boot_counter);
+        ESP_LOGE(TAG, "Safe mode active: %u crashes detected", boot_counter);
         ESP_LOGE(TAG, "Hardware adapters DISABLED - WiFi/OTA only");
         ESP_LOGE(TAG, "Auto-clear after %ds stable operation",
                  CONFIG_SUPERVISOR_SAFE_MODE_STABLE_TIME_S);
@@ -128,8 +128,7 @@ static void safe_mode_clear(void) {
     config_set_boot_counter(0);
 
     if (safe_mode_active) {
-        safe_mode_active = false;
-        ESP_LOGI(TAG, "Boot counter cleared - exiting safe mode");
+        ESP_LOGI(TAG, "Boot counter cleared - restart to exit safe mode");
     } else {
         ESP_LOGI(TAG, "Boot counter cleared after stable operation");
     }
@@ -223,13 +222,19 @@ static void supervisor_task(void *args) {
 
                 supervisor_on_interval((supervisor_interval_stage_t)stage);
 
+                last_stage[stage] = now;
+
+                // Safe mode: Skip forwarding intervals to adapters
+                if (safe_mode_active) {
+                    continue;
+                }
+
                 // Forward interval to all adapters
                 for (int i = 0; i < adapter_count; i++) {
                     if (registered_adapters[i]->on_interval) {
                         registered_adapters[i]->on_interval((supervisor_interval_stage_t)stage);
                     }
                 }
-                last_stage[stage] = now;
             }
         }
     }
@@ -279,7 +284,19 @@ esp_err_t supervisor_platform_init(void) {
     // Check safe mode before initializing adapters
     safe_mode_active = safe_mode_check();
 
+    // Safe mode: Validate firmware immediately to allow OTA recovery
+    if (safe_mode_active) {
+        ESP_LOGW(TAG, "Safe mode: force validating firmware to enable OTA");
+        supervisor_validate_firmware();
+    }
+
     for (int i = 0; i < adapter_count; i++) {
+        // Safe mode: Skip adapters not enabled for safe mode
+        if (safe_mode_active && !registered_adapters[i]->enable_in_safe_mode) {
+            ESP_LOGW(TAG, "Safe mode: skipping adapter at index %d", i);
+            continue;
+        }
+
         if (registered_adapters[i]->init) {
             registered_adapters[i]->init();
         }

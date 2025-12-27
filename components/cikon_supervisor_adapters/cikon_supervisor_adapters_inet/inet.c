@@ -126,7 +126,6 @@ static void inet_stop_services(void) {
     if (shutdown_ota) {
         tcp_ota_shutdown();
     }
-    // udp_monitor_shutdown();
 
     sta_services_running = false;
     ap_services_running = false;
@@ -164,12 +163,22 @@ static void inet_sntp_sync_cb(struct timeval *tv) {
 }
 
 static void inet_restart_cb(void) {
-    // ESP_LOGI(TAG, "Restart requested, shutting down inet adapter");
+    // Unregister event handlers first (safe for both modes)
+    wifi_unregister_event_handlers();
+
     shutdown_ota = false; // Don't shutdown OTA before restart
-    // inet_adapter_shutdown();
+
+    // SAFE MODE: Only clear boot counter
+    if (supervisor_is_safe_mode_active()) {
+        ESP_LOGD(TAG, "SAFE MODE: Clearing boot counter before restart");
+        config_set_boot_counter(0);
+        vTaskDelay(pdMS_TO_TICKS(500)); // Ensure NVS write completes
+        return;
+    }
+
+    // NORMAL MODE: Full shutdown sequence
     mqtt_publish_offline_state();
     mqtt_shutdown();
-    wifi_unregister_event_handlers();
 }
 
 static void inet_netif_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
@@ -379,16 +388,21 @@ static void inet_adapter_on_event(EventBits_t bits) {
 
         if (sta_services_running) {
             ESP_LOGW(TAG, "STA services already running, ignoring");
-            mqtt_init();
+            if (!supervisor_is_safe_mode_active()) {
+                mqtt_init();
+            }
             return;
         }
 
-        ESP_LOGI(TAG, "STA ready, starting STA services");
-        inet_mdns_init();
-        inet_sntp_init();
-        mqtt_init();
+        ESP_LOGI(TAG, "STA ready, starting services");
         tcp_ota_init();
         tcp_monitor_init();
+
+        if (!supervisor_is_safe_mode_active()) {
+            inet_mdns_init();
+            inet_sntp_init();
+            mqtt_init();
+        }
 
         sta_services_running = true;
         ap_services_running = false;
@@ -400,11 +414,14 @@ static void inet_adapter_on_event(EventBits_t bits) {
             return;
         }
 
-        ESP_LOGI(TAG, "AP ready, starting AP services");
-        https_init();
-        inet_mdns_init();
+        ESP_LOGI(TAG, "AP ready, starting services");
         tcp_ota_init();
         tcp_monitor_init();
+
+        if (!supervisor_is_safe_mode_active()) {
+            https_init();
+            inet_mdns_init();
+        }
 
         ap_services_running = true;
         sta_services_running = false;
@@ -548,6 +565,7 @@ static const command_entry_t inet_commands[] = {
     {NULL, NULL, NULL}};
 
 supervisor_platform_adapter_t inet_adapter = {
+    .enable_in_safe_mode = true, // Critical: always init inet adapter
     .init = inet_adapter_init,
     .shutdown = inet_adapter_shutdown,
     .on_event = inet_adapter_on_event,
