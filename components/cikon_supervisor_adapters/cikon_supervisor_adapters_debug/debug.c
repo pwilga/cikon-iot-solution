@@ -4,9 +4,11 @@
 
 #include "cJSON.h"
 #include "esp_chip_info.h"
+#include "esp_core_dump.h"
 #include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
+#include "esp_partition.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/idf_additions.h"
@@ -330,10 +332,54 @@ static void cmnd_debug_crash(const char *args_json_str) {
     abort();
 }
 
+static void cmnd_debug_coredump(const char *args_json_str) {
+    (void)args_json_str;
+
+    esp_err_t err = esp_core_dump_image_check();
+    if (err == ESP_OK) {
+        size_t out_addr, out_size;
+        if (esp_core_dump_image_get(&out_addr, &out_size) == ESP_OK) {
+            ESP_LOGW(TAG, "⚠️  Core dump found from previous crash!");
+            ESP_LOGI(TAG, "Core dump address: 0x%x, size: %u bytes", out_addr, out_size);
+            ESP_LOGI(TAG, "Use 'idf.py coredump-info' to analyze");
+        } else {
+            ESP_LOGW(TAG, "Core dump found but couldn't get details");
+        }
+    } else if (err == ESP_ERR_NOT_FOUND) {
+        ESP_LOGI(TAG, "No core dump found in flash");
+    } else if (err == ESP_ERR_INVALID_CRC) {
+        ESP_LOGE(TAG, "Core dump found but CRC check failed (corrupted)");
+    } else {
+        ESP_LOGE(TAG, "Core dump check failed: %s", esp_err_to_name(err));
+    }
+}
+
+static void cmnd_debug_coredump_erase(const char *args_json_str) {
+    (void)args_json_str;
+
+    const esp_partition_t *coredump_part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+
+    if (coredump_part == NULL) {
+        ESP_LOGE(TAG, "Coredump partition not found");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Erasing core dump partition...");
+    esp_err_t err = esp_partition_erase_range(coredump_part, 0, coredump_part->size);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "Core dump partition erased successfully");
+    } else {
+        ESP_LOGE(TAG, "Failed to erase coredump: %s", esp_err_to_name(err));
+    }
+}
+
 static const command_entry_t debug_commands[] = {
     {"sysinfo", "Print system information", cmnd_debug_sysinfo},
     {"showconf", "Print configuration summary", cmnd_debug_config},
     {"crash", "Crash the system (for testing)", cmnd_debug_crash},
+    {"coredump", "Check if core dump exists in flash", cmnd_debug_coredump},
+    {"coredump_erase", "Erase core dump partition", cmnd_debug_coredump_erase},
     {NULL, NULL, NULL}};
 
 static const tele_entry_t debug_telemetry[] = {{"temperature", tele_debug_temperature},

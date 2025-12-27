@@ -9,4 +9,6 @@ idf_component_register(
         esp_event
         freertos
         app_update
+    PRIV_REQUIRES
+        espcoredump
 )
