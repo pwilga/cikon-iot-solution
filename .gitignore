@@ -12,7 +12,6 @@
 /sdkconfig.old
 
 # IDE and tools
-.vscode/
 *.code-workspace
 CMakeFiles/
 CMakeCache.txt
