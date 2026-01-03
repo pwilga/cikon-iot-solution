@@ -16,6 +16,7 @@ dependencies:
     path: components/cikon_helpers
     require: public
   espressif/cjson: "*"
+  espressif/mqtt: "*"
 
 targets:
   - esp32

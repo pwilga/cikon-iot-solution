@@ -1,6 +1,7 @@
 #include "json_parser.h"
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 bool json_str_as_string_buf(const char *json_str, char *out_buf, size_t buf_size) {
     if (!out_buf || buf_size == 0) {

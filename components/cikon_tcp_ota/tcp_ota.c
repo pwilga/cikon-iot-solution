@@ -7,7 +7,7 @@
 #include "esp_partition.h"
 
 #include "lwip/sockets.h"
-#include "mbedtls/md5.h"
+#include "psa/crypto.h"
 
 #include "platform_services.h"
 #include <stdint.h>
@@ -122,10 +122,17 @@ static void handle_ota(const int client_sock) {
         return;
     }
 
-    // Initialize MD5 context
-    mbedtls_md5_context md5_ctx;
-    mbedtls_md5_init(&md5_ctx);
-    mbedtls_md5_starts(&md5_ctx);
+    // Initialize PSA Crypto (if not already initialized)
+    psa_crypto_init();
+
+    // Initialize MD5 hash operation
+    psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
+    psa_status_t status = psa_hash_setup(&hash_op, PSA_ALG_MD5);
+    if (status != PSA_SUCCESS) {
+        ESP_LOGE(TAG, "Failed to setup MD5 hash: %d", status);
+        esp_ota_end(ota_handle);
+        return;
+    }
 
     // Ready for image transmission
 
@@ -150,9 +157,10 @@ static void handle_ota(const int client_sock) {
             ESP_LOGE(TAG, "Failed to write OTA data chunk (%d bytes): %s", read_bytes,
                      esp_err_to_name(err));
             esp_ota_end(ota_handle);
+            psa_hash_abort(&hash_op);
             return;
         }
-        mbedtls_md5_update(&md5_ctx, rx_buffer, read_bytes);
+        psa_hash_update(&hash_op, rx_buffer, read_bytes);
 
         vTaskDelay(1);
     }
@@ -168,8 +176,12 @@ static void handle_ota(const int client_sock) {
 
     // Finalize MD5 calculation
     uint8_t md5_calc[MD5_SIZE];
-    mbedtls_md5_finish(&md5_ctx, md5_calc);
-    mbedtls_md5_free(&md5_ctx);
+    size_t hash_length;
+    status = psa_hash_finish(&hash_op, md5_calc, sizeof(md5_calc), &hash_length);
+    if (status != PSA_SUCCESS || hash_length != MD5_SIZE) {
+        ESP_LOGE(TAG, "Failed to finalize MD5: status=%d, len=%d", status, hash_length);
+        return;
+    }
 
     // Compare calculated MD5 with expected
     if (memcmp(md5_calc, md5_expected, sizeof(md5_expected))) {
