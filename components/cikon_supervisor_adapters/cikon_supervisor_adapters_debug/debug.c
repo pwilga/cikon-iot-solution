@@ -13,6 +13,7 @@
 #include "esp_timer.h"
 #include "freertos/idf_additions.h"
 
+#include "bits_helper.h"
 #include "config_manager.h"
 #include "debug_adapter.h"
 #include "enum_helpers.h"
@@ -176,26 +177,18 @@ static void debug_adapter_on_event(EventBits_t bits) {
     if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
         ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_PLATFORM_INITIALIZED");
     }
-    if (bits & SUPERVISOR_EVENT_RESERVED2) {
-        ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_RESERVED2");
-    }
-    if (bits & SUPERVISOR_EVENT_RESERVED3) {
-        ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_RESERVED3");
-    }
 
-    // Inet adapter events (BIT4-7)
-    if (bits & BIT4) {
+    // Inet adapter events
+    if (bits & INET_EVENT_TIME_SYNCED) {
         ESP_LOGI(TAG, "  -> INET_EVENT_TIME_SYNCED");
     }
-    if (bits & BIT5) {
+    if (bits & INET_EVENT_STA_READY) {
         ESP_LOGI(TAG, "  -> INET_EVENT_STA_READY");
     }
-    if (bits & BIT6) {
+    if (bits & INET_EVENT_AP_READY) {
         ESP_LOGI(TAG, "  -> INET_EVENT_AP_READY");
     }
-    if (bits & BIT7) {
-        ESP_LOGI(TAG, "  -> INET_EVENT_RESERVED");
-    }
+
 }
 
 static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {

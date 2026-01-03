@@ -7,6 +7,7 @@
 #include "esp_wifi_types_generic.h"
 #include "mdns.h"
 
+#include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
 #include "metadata.h"
@@ -25,11 +26,6 @@
 #include "wifi.h"
 
 #define TAG "cikon:adapter:inet"
-
-#define INET_EVENT_TIME_SYNCED BIT4
-#define INET_EVENT_STA_READY BIT5
-#define INET_EVENT_AP_READY BIT6
-#define INET_EVENT_RESERVED BIT7
 
 // Forward declaration for wifi command handler (used in inet_adapter_init)
 static void wifi_handler(const char *args_json_str);

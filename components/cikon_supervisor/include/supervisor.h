@@ -13,14 +13,6 @@ extern "C" {
 #endif
 
 /**
- * @brief Supervisor event bits
- */
-#define SUPERVISOR_EVENT_CMND_COMPLETED BIT0
-#define SUPERVISOR_EVENT_PLATFORM_INITIALIZED BIT1
-#define SUPERVISOR_EVENT_RESERVED2 BIT2
-#define SUPERVISOR_EVENT_RESERVED3 BIT3
-
-/**
  * @brief Supervisor interval stages
  */
 typedef enum {

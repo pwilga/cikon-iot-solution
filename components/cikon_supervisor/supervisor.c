@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "bits_helper.h"
 #include "cJSON.h"
 #include "cmnd.h"
 #include "config_manager.h"

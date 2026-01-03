@@ -5,6 +5,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 
+#include "bits_helper.h"
 #include "cmnd.h"
 #include "metadata.h"
 #include "rf433_adapter.h"
