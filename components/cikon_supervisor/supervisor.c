@@ -238,6 +238,8 @@ static void supervisor_task(void *args) {
                 }
             }
         }
+
+        vTaskDelay(1);
     }
 }
 

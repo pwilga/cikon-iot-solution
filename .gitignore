@@ -16,6 +16,7 @@
 CMakeFiles/
 CMakeCache.txt
 Makefile
+.cache/
 
 # Python
 __pycache__/

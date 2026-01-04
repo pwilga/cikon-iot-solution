@@ -111,7 +111,8 @@ static void handle_ota(const int client_sock) {
         RETURN_IF_FALSE(send_ack(client_sock));
     }
 
-    OTA_LOG_STEP(2); // OTA start
+    OTA_LOG_STEP(2);
+    vTaskDelay(1);
 
     esp_ota_handle_t ota_handle = 0;
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
@@ -167,14 +168,17 @@ static void handle_ota(const int client_sock) {
 
     RETURN_IF_FALSE(send_ack(client_sock));
 
-    OTA_LOG_STEP(4); // Verification
+    OTA_LOG_STEP(4);
+    vTaskDelay(1);
+
     err = esp_ota_end(ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Finalizing OTA update failed: %s", esp_err_to_name(err));
         return;
     }
 
-    // Finalize MD5 calculation
+    vTaskDelay(1);
+
     uint8_t md5_calc[MD5_SIZE];
     size_t hash_length;
     status = psa_hash_finish(&hash_op, md5_calc, sizeof(md5_calc), &hash_length);
