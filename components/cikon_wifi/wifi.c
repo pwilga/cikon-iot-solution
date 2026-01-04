@@ -276,7 +276,10 @@ void wifi_configure(const wifi_credentials_t *creds) {
     }
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    err = esp_wifi_init(&cfg);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_ERROR_CHECK(err);
+    }
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, NULL, &instance_any_id));
@@ -373,71 +376,85 @@ void wifi_init_sta_mode() {
 
 esp_err_t safe_wifi_stop() {
 
-    // If WiFi was never started (no netif exists), nothing to stop
-    if (sta_netif == NULL && ap_netif == NULL) {
+    // Check if WiFi driver is running (handle both netif and minimal mode)
+    wifi_mode_t mode;
+    esp_err_t mode_err = esp_wifi_get_mode(&mode);
+
+    // If WiFi not initialized or not started, nothing to stop
+    if (mode_err == ESP_ERR_WIFI_NOT_INIT || mode_err == ESP_ERR_WIFI_NOT_STARTED) {
         return ESP_OK;
     }
 
-    // Atomically (thread-safe) detach the task handle from the global variable,
-    // so that no other code can use or delete it at the same time (prevents race conditions).
-    // vTaskDelete is called outside the critical section, because it may block or take time.
-    //
-    // This pattern should be used whenever a task handle can be accessed or deleted
-    // from multiple contexts (e.g. event handlers, timers, other tasks).
-    //
-    // For simple, single-context code (e.g. only one task manages the handle),
-    // a critical section may not be needed.
-    TaskHandle_t sta_tmp_handle = NULL;
+    // If WiFi was started by cikon_wifi (netif exists), do full cleanup
+    bool has_netif = (sta_netif != NULL || ap_netif != NULL);
 
-    taskENTER_CRITICAL(&wifi_sta_task_mux);
-    sta_tmp_handle = wifi_sta_connection_task_handle;
-    wifi_sta_connection_task_handle = NULL;
-    taskEXIT_CRITICAL(&wifi_sta_task_mux);
+    if (has_netif) {
+        // Atomically (thread-safe) detach the task handle from the global variable,
+        // so that no other code can use or delete it at the same time (prevents race conditions).
+        // vTaskDelete is called outside the critical section, because it may block or take time.
+        //
+        // This pattern should be used whenever a task handle can be accessed or deleted
+        // from multiple contexts (e.g. event handlers, timers, other tasks).
+        //
+        // For simple, single-context code (e.g. only one task manages the handle),
+        // a critical section may not be needed.
+        TaskHandle_t sta_tmp_handle = NULL;
 
-    if (sta_tmp_handle != NULL) {
-        vTaskDelete(sta_tmp_handle);
+        taskENTER_CRITICAL(&wifi_sta_task_mux);
+        sta_tmp_handle = wifi_sta_connection_task_handle;
+        wifi_sta_connection_task_handle = NULL;
+        taskEXIT_CRITICAL(&wifi_sta_task_mux);
+
+        if (sta_tmp_handle != NULL) {
+            vTaskDelete(sta_tmp_handle);
+        }
+
+        taskENTER_CRITICAL(&wifi_ap_timeout_mux);
+        ap_seconds_without_clients = 0;
+        taskEXIT_CRITICAL(&wifi_ap_timeout_mux);
+
+        // Clear the STOPPED bit before calling esp_wifi_stop()
+        xEventGroupClearBits(wifi_event_group, WIFI_STOPPED_BIT);
     }
 
-    taskENTER_CRITICAL(&wifi_ap_timeout_mux);
-    ap_seconds_without_clients = 0;
-    taskEXIT_CRITICAL(&wifi_ap_timeout_mux);
-
-    // Clear the STOPPED bit before calling esp_wifi_stop()
-    xEventGroupClearBits(wifi_event_group, WIFI_STOPPED_BIT);
-
     // Disconnect all AP clients before stopping (MAC 0 = disconnect all)
-    wifi_mode_t current_mode;
-    if (esp_wifi_get_mode(&current_mode) == ESP_OK) {
-        if (current_mode == WIFI_MODE_AP || current_mode == WIFI_MODE_APSTA) {
-            esp_wifi_deauth_sta(0);
-        }
+    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
+        esp_wifi_deauth_sta(0);
     }
 
     esp_wifi_disconnect();
     esp_err_t err = esp_wifi_stop();
 
-    // Check if shutdown is in progress - event handlers are already unregistered
-    // so WIFI_STOPPED_BIT will never be set by events
-    EventBits_t shutdown_bits = xEventGroupGetBits(wifi_event_group);
-    if (shutdown_bits & WIFI_SHUTDOWN_INITIATED_BIT) {
-        vTaskDelay(pdMS_TO_TICKS(500));
-    } else {
-        // Wait for WiFi to actually stop (not shutdown)
-        EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_STOPPED_BIT, pdTRUE, pdFALSE,
-                                               pdMS_TO_TICKS(1000));
+    // Wait for stop confirmation (different for netif vs minimal mode)
+    if (has_netif) {
+        // Check if shutdown is in progress - event handlers are already unregistered
+        // so WIFI_STOPPED_BIT will never be set by events
+        EventBits_t shutdown_bits = xEventGroupGetBits(wifi_event_group);
+        if (shutdown_bits & WIFI_SHUTDOWN_INITIATED_BIT) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+        } else {
+            // Wait for WiFi to actually stop (not shutdown)
+            EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_STOPPED_BIT, pdTRUE, pdFALSE,
+                                                   pdMS_TO_TICKS(1000));
 
-        if (!(bits & WIFI_STOPPED_BIT)) {
-            ESP_LOGW(TAG, "WiFi stop event timeout after 1000ms");
+            if (!(bits & WIFI_STOPPED_BIT)) {
+                ESP_LOGW(TAG, "WiFi stop event timeout after 1000ms");
+            }
         }
+    } else {
+        // WiFi started in minimal mode (no netif) - just wait a bit for driver to stop
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     // CRITICAL: Wait for WiFi driver to finish processing all packets
     // before destroying netif to prevent NULL pointer dereference
     vTaskDelay(pdMS_TO_TICKS(200));
 
-    xEventGroupClearBits(wifi_event_group, WIFI_STA_CONNECTED_BIT | WIFI_AP_STARTED_BIT |
-                                               WIFI_SHUTDOWN_INITIATED_BIT |
-                                               WIFI_AP_CLIENT_CONNECTED_BIT);
+    if (has_netif) {
+        xEventGroupClearBits(wifi_event_group, WIFI_STA_CONNECTED_BIT | WIFI_AP_STARTED_BIT |
+                                                   WIFI_SHUTDOWN_INITIATED_BIT |
+                                                   WIFI_AP_CLIENT_CONNECTED_BIT);
+    }
 
     if (sta_netif) {
         // esp_netif_destroy(sta_netif);

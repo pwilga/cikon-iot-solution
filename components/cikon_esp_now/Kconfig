@@ -1,0 +1,41 @@
+menu "Cikon IoT ESP-NOW"
+
+    config ESPNOW_ENABLE
+        bool "Enable ESP-NOW support"
+        default n
+        help
+            Enable ESP-NOW wireless communication protocol.
+
+    config ESPNOW_CHANNEL
+        int "WiFi Channel for ESP-NOW"
+        depends on ESPNOW_ENABLE
+        range 0 14
+        default 1
+        help
+            WiFi channel for ESP-NOW communication.
+            Channel 0: Use current WiFi channel
+            Channels 1-14: Force specific channel
+
+    config ESPNOW_ENABLE_ENCRYPTION
+        bool "Enable ESP-NOW encryption"
+        depends on ESPNOW_ENABLE
+        default n
+        help
+            Enable encryption for ESP-NOW messages.
+
+    config ESPNOW_PMK
+        string "Primary Master Key (PMK)"
+        depends on ESPNOW_ENABLE_ENCRYPTION
+        default "pmk1234567890123"
+        help
+            Primary Master Key for ESP-NOW encryption (must be 16 bytes).
+
+    config ESPNOW_MAX_PEERS
+        int "Maximum number of peers"
+        depends on ESPNOW_ENABLE
+        range 1 20
+        default 10
+        help
+            Maximum number of ESP-NOW peers that can be registered.
+
+endmenu

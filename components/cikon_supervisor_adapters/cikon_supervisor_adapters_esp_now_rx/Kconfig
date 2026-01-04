@@ -1,0 +1,10 @@
+menu "ESP-NOW RX Adapter"
+
+    config ESPNOW_RX_AUTO_START
+        bool "Auto-start ESP-NOW RX on boot"
+        default n
+        help
+            Automatically start ESP-NOW RX adapter on initialization.
+            If disabled, use 'start' command to activate.
+
+endmenu
