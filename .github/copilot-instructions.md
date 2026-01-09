@@ -184,6 +184,10 @@ static void cmnd_<name>_<action>(const char *cmnd_id, const char *payload) {
 - Functions: `<name>_adapter_*` or `tele_<name>_*` or `cmnd_<name>_*`
 - File names: lowercase with underscores
 - Header guards: **ALWAYS** use `#pragma once` (never `#ifndef` guards)
+- FreeRTOS includes: **ALWAYS** include with pragma keep to prevent IWYU removal:
+  ```c
+  #include "freertos/FreeRTOS.h" // IWYU pragma: keep
+  ```
 
 ### CMakeLists.txt Template
 ```cmake
@@ -215,10 +219,10 @@ dependencies:
 ```c
 #pragma once
 
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "supervisor.h"
 
 extern supervisor_platform_adapter_t <name>_adapter;
-```spressif/component_name: "^1.0.0"
 ```
 
 ### Registration in main.c

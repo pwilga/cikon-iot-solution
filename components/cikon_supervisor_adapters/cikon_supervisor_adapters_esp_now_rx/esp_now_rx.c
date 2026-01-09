@@ -5,60 +5,12 @@
 #include <string.h>
 
 #include "cikon_esp_now.h"
-#include "cmnd.h"
+#include "esp_now_protocols.h"
 #include "esp_now_rx_adapter.h"
-#include "json_parser.h"
 #include "supervisor.h"
 #include "tele.h"
 
 #define TAG "cikon:adapter:esp_now_rx"
-
-typedef struct {
-    uint8_t program;       // 0x91 for ON button, 0x81 for all others
-    uint8_t seq[4];        // 32-bit sequence number (LSB first)
-    uint8_t dt1;           // Button data type (0x32)
-    uint8_t button;        // Button code (1-255)
-    uint8_t dt2;           // Battery data type (0x01)
-    uint8_t battery_level; // Battery level (0-100)
-    uint8_t checksum[4];   // Checksums (4 bytes)
-} wizmote_message_t;       // Total: 13 bytes
-
-typedef enum {
-    WIZMOTE_BUTTON_ON = 1,
-    WIZMOTE_BUTTON_OFF = 2,
-    WIZMOTE_BUTTON_NIGHT = 3,
-    WIZMOTE_BUTTON_BRIGHT_DOWN = 8,
-    WIZMOTE_BUTTON_BRIGHT_UP = 9,
-    WIZMOTE_BUTTON_ONE = 16,
-    WIZMOTE_BUTTON_TWO = 17,
-    WIZMOTE_BUTTON_THREE = 18,
-    WIZMOTE_BUTTON_FOUR = 19,
-} wizmote_button_t;
-
-static const char *wizmote_button_name(uint8_t button_id) {
-    switch (button_id) {
-    case WIZMOTE_BUTTON_ON:
-        return "WIZMOTE_BUTTON_ON";
-    case WIZMOTE_BUTTON_OFF:
-        return "WIZMOTE_BUTTON_OFF";
-    case WIZMOTE_BUTTON_NIGHT:
-        return "WIZMOTE_BUTTON_NIGHT";
-    case WIZMOTE_BUTTON_BRIGHT_DOWN:
-        return "WIZMOTE_BUTTON_BRIGHT_DOWN";
-    case WIZMOTE_BUTTON_BRIGHT_UP:
-        return "WIZMOTE_BUTTON_BRIGHT_UP";
-    case WIZMOTE_BUTTON_ONE:
-        return "WIZMOTE_BUTTON_ONE";
-    case WIZMOTE_BUTTON_TWO:
-        return "WIZMOTE_BUTTON_TWO";
-    case WIZMOTE_BUTTON_THREE:
-        return "WIZMOTE_BUTTON_THREE";
-    case WIZMOTE_BUTTON_FOUR:
-        return "WIZMOTE_BUTTON_FOUR";
-    default:
-        return "WIZMOTE_BUTTON_UNKNOWN";
-    }
-}
 
 static bool initialized = false;
 static esp_event_handler_instance_t espnow_event_handler_instance = NULL;
@@ -150,23 +102,23 @@ static void esp_now_rx_event_handler(void *arg, esp_event_base_t event_base, int
     }
 }
 
-static void esp_now_rx_start(void) {
+static void esp_now_rx_adapter_init(void) {
+
     if (initialized) {
-        ESP_LOGW(TAG, "Already started");
+        ESP_LOGW(TAG, "Adapter already started");
         return;
     }
 
-    ESP_LOGI(TAG, "Starting ESP-NOW RX adapter");
+    ESP_LOGI(TAG, "Initializing adapter");
 
-    esp_err_t err = espnow_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to init ESP-NOW: %s", esp_err_to_name(err));
-        return;
-    }
+    espnow_init();
 
-    err = esp_event_handler_instance_register(ESP_NOW_EVENTS, ESP_NOW_EVENT_RECV_DATA,
-                                              esp_now_rx_event_handler, NULL,
-                                              &espnow_event_handler_instance);
+    packets_received = 0;
+    packets_dropped = 0;
+
+    esp_err_t err = esp_event_handler_instance_register(ESP_NOW_EVENTS, ESP_NOW_EVENT_RECV_DATA,
+                                                        esp_now_rx_event_handler, NULL,
+                                                        &espnow_event_handler_instance);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to register event handler: %s", esp_err_to_name(err));
         espnow_shutdown();
@@ -174,16 +126,16 @@ static void esp_now_rx_start(void) {
     }
 
     initialized = true;
-    ESP_LOGI(TAG, "ESP-NOW RX adapter started");
 }
 
-static void esp_now_rx_stop(void) {
+static void esp_now_rx_adapter_shutdown(void) {
+
     if (!initialized) {
-        ESP_LOGW(TAG, "Not started");
+        ESP_LOGW(TAG, "Adapter not initialized");
         return;
     }
 
-    ESP_LOGI(TAG, "Stopping ESP-NOW RX adapter");
+    ESP_LOGI(TAG, "Shutting down adapter");
 
     if (espnow_event_handler_instance != NULL) {
         esp_event_handler_instance_unregister(ESP_NOW_EVENTS, ESP_NOW_EVENT_RECV_DATA,
@@ -193,17 +145,6 @@ static void esp_now_rx_stop(void) {
 
     espnow_shutdown();
     initialized = false;
-
-    ESP_LOGI(TAG, "ESP-NOW RX adapter stopped");
-}
-
-static void cmnd_esp_now_rx(const char *args_json_str) {
-
-    if (STATE_ON == json_str_as_logic_state(args_json_str)) {
-        esp_now_rx_start();
-    } else {
-        esp_now_rx_stop();
-    }
 }
 
 static void tele_esp_now_rx_stats(const char *tele_id, cJSON *json_root) {
@@ -214,43 +155,12 @@ static void tele_esp_now_rx_stats(const char *tele_id, cJSON *json_root) {
     cJSON_AddItemToObject(json_root, tele_id, stats);
 }
 
-static void esp_now_rx_adapter_init(void) {
-    ESP_LOGI(TAG, "Initializing ESP-NOW RX adapter");
-
-    packets_received = 0;
-    packets_dropped = 0;
-}
-
-static void esp_now_rx_adapter_shutdown(void) {
-    if (!initialized) {
-        return;
-    }
-
-    ESP_LOGI(TAG, "Shutting down ESP-NOW RX adapter");
-
-    if (espnow_event_handler_instance != NULL) {
-        esp_event_handler_instance_unregister(ESP_NOW_EVENTS, ESP_NOW_EVENT_RECV_DATA,
-                                              espnow_event_handler_instance);
-        espnow_event_handler_instance = NULL;
-    }
-
-    espnow_shutdown();
-    initialized = false;
-
-    ESP_LOGI(TAG, "ESP-NOW RX adapter shut down");
-}
-
-static const command_entry_t esp_now_rx_commands[] = {
-    {"esp_now_rx", "Enable/disable ESP-NOW RX (true/false)", cmnd_esp_now_rx}, {NULL, NULL, NULL}};
-
-static const tele_entry_t esp_now_rx_telemetry[] = {{"enow_stat", tele_esp_now_rx_stats},
+static const tele_entry_t esp_now_rx_telemetry[] = {{"esp_now_rx", tele_esp_now_rx_stats},
                                                     {NULL, NULL}};
 
 supervisor_platform_adapter_t esp_now_rx_adapter = {
+    .name = "esp_now_rx",
     .init = esp_now_rx_adapter_init,
     .shutdown = esp_now_rx_adapter_shutdown,
-    .on_event = NULL,
-    .on_interval = NULL,
     .tele_group = esp_now_rx_telemetry,
-    .cmnd_group = esp_now_rx_commands,
 };

@@ -36,6 +36,9 @@ typedef enum {
  * without knowing platform-specific details. Each platform implements this interface.
  */
 typedef struct {
+
+    const char *name;
+
     /**
      * @brief Enable this adapter in safe mode
      * If false (default), adapter is skipped when safe mode is active.

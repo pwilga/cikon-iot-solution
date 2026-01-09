@@ -3,6 +3,8 @@
 #include "esp_netif.h"
 #include "esp_now.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
+#include "freertos/task.h"
 
 #include "cikon_esp_now.h"
 
@@ -13,6 +15,9 @@ ESP_EVENT_DEFINE_BASE(ESP_NOW_EVENTS);
 static bool initialized = false;
 static bool wifi_minimal_mode = false;
 static esp_event_handler_instance_t wifi_event_handler_instance = NULL;
+
+static int ref_count = 0;
+static portMUX_TYPE ref_count_lock = portMUX_INITIALIZER_UNLOCKED;
 
 static void espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_status_t status) {
 
@@ -81,12 +86,17 @@ static void espnow_wifi_event_handler(void *arg, esp_event_base_t event_base, in
 }
 
 esp_err_t espnow_init(void) {
-    if (initialized) {
-        ESP_LOGW(TAG, "Already initialized");
+    portENTER_CRITICAL(&ref_count_lock);
+    ref_count++;
+    bool should_init = (ref_count == 1);
+    portEXIT_CRITICAL(&ref_count_lock);
+
+    if (!should_init) {
+        ESP_LOGI(TAG, "ESP-NOW already initialized (ref_count: %d)", ref_count);
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "Initializing ESP-NOW");
+    ESP_LOGI(TAG, "Initializing ESP-NOW radio");
 
     wifi_mode_t mode;
     esp_err_t err = esp_wifi_get_mode(&mode);
@@ -173,11 +183,27 @@ cleanup_espnow:
 }
 
 esp_err_t espnow_shutdown(void) {
+    portENTER_CRITICAL(&ref_count_lock);
+    ref_count--;
+    bool should_shutdown = (ref_count <= 0);
+    int current_ref = ref_count;
+    portEXIT_CRITICAL(&ref_count_lock);
+
+    if (!should_shutdown) {
+        ESP_LOGI(TAG, "ESP-NOW still in use (ref_count: %d)", current_ref);
+        return ESP_OK;
+    }
+
     if (!initialized) {
         return ESP_OK;
     }
 
     ESP_LOGI(TAG, "Shutting down ESP-NOW");
+
+    esp_now_unregister_send_cb();
+    esp_now_unregister_recv_cb();
+
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     if (wifi_event_handler_instance != NULL) {
         esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID,
@@ -191,7 +217,6 @@ esp_err_t espnow_shutdown(void) {
     }
 
     initialized = false;
-    // ESP_LOGI(TAG, "ESP-NOW shut down");
 
     return err;
 }

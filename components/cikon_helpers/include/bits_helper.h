@@ -15,20 +15,20 @@
  * - Document adapter name + purpose with each bit
  */
 
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/event_groups.h"
 
-#define SUPERVISOR_EVENT_CMND_COMPLETED  BIT0
-#define SUPERVISOR_EVENT_PLATFORM_INITIALIZED  BIT1
+#define SUPERVISOR_EVENT_CMND_COMPLETED BIT0
+#define SUPERVISOR_EVENT_PLATFORM_INITIALIZED BIT1
 
 // BIT2-3: Available
 
-#define INET_EVENT_TIME_SYNCED  BIT4
-#define INET_EVENT_STA_READY  BIT5
-#define INET_EVENT_AP_READY  BIT6
+#define INET_EVENT_TIME_SYNCED BIT4
+#define INET_EVENT_STA_READY BIT5
+#define INET_EVENT_AP_READY BIT6
 
 // BIT7: Available
 
-#define ESPNOW_EVENT_NETWORK_READY  BIT8
+#define ESPNOW_EVENT_NETWORK_READY BIT8
 
 // BIT9-23: Available (15 bits)
