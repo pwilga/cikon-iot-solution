@@ -85,7 +85,7 @@ typedef struct {
 #### 1. File Organization (MANDATORY ORDER)
 Files MUST be structured in this exact order from top to bottom:
 1. Includes
-2. Defines and static variables
+2. Defines and static variables (including `initialized` flag)
 3. Helper functions (if any)
 4. Adapter callbacks (`init`, `shutdown`, `on_event`, `on_interval`)
 5. Command handlers (`cmnd_<name>_*`)
@@ -94,7 +94,45 @@ Files MUST be structured in this exact order from top to bottom:
 8. **X-Macro/Metadata pattern** (if using HA integration)
 9. **Adapter structure** (ALWAYS last)
 
-#### 2. TELE/CMND Array Rules
+#### 2. Initialization State Tracking (MANDATORY)
+Every adapter MUST track its initialization state to prevent double-init or shutdown of uninitialized hardware.
+
+**Pattern:**
+```c
+#define TAG "cikon:adapter:<name>"
+
+static bool initialized = false;  // MANDATORY - track adapter state
+
+static esp_err_t <name>_adapter_init(void) {
+    if (initialized) {
+        return ESP_ERR_INVALID_STATE;  // Already initialized
+    }
+
+    // Hardware initialization here
+
+    initialized = true;
+    return ESP_OK;
+}
+
+static esp_err_t <name>_adapter_shutdown(void) {
+    if (!initialized) {
+        return ESP_ERR_INVALID_STATE;  // Not initialized
+    }
+
+    // Hardware cleanup here
+
+    initialized = false;
+    return ESP_OK;
+}
+```
+
+**Why this is mandatory:**
+- Prevents GPIO conflicts from double initialization
+- Protects against shutting down hardware that's not running
+- Prevents double task creation
+- Standard practice in ESP-IDF drivers (i2c, spi, uart all do this)
+
+#### 3. TELE/CMND Array Rules
 - **Single entry**: Use compound literal directly in adapter struct
 - **Multiple entries**: Declare static array before adapter struct
 
@@ -121,7 +159,7 @@ supervisor_platform_adapter_t adapter = {
 };
 ```
 
-#### 3. Adapter Instance (ALWAYS at bottom of .c file)
+#### 4. Adapter Instance (ALWAYS at bottom of .c file)
 ```c
 supervisor_platform_adapter_t <name>_adapter = {
     .init = <name>_adapter_init,
@@ -133,33 +171,34 @@ supervisor_platform_adapter_t <name>_adapter = {
 };
 ```
 
-#### 4. Standard Callbacks
+#### 5. Standard Callbacks
 ```c
-static void <name>_adapter_init(void) {
-    ESP_LOGI(TAG, "Initializing <name> adapter");  // ⚠️ MANDATORY first log in init()
+static esp_err_t <name>_adapter_init(void) {
+    if (initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     // Hardware setup
     // Register HA entities: ha_register_entity()
-    // Set initialized flag
-    ESP_LOGI(TAG, "<Name> adapter initialized");
+
+    initialized = true;
+    return ESP_OK;
 }
 
-static void <name>_adapter_shutdown(void) {
-    if (!initialized) return;
-    ESP_LOGI(TAG, "Shutting down <name> adapter");
+static esp_err_t <name>_adapter_shutdown(void) {
+    if (!initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     // Cleanup hardware
     // Free resources
-    ESP_LOGI(TAG, "<Name> adapter shut down");
-}
 
-static void <name>_adapter_on_interval(supervisor_interval_stage_t stage) {
-    // Handle periodic tasks
-    if (stage == SUPERVISOR_INTERVAL_1S) {
-        // Do something every second
-    }
+    initialized = false;
+    return ESP_OK;
 }
 ```
 
-#### 5. Telemetry Functions (tele.h)
+#### 6. Telemetry Functions (tele.h)
 ```c
 static void tele_<name>_<data>(const char *tele_id, cJSON *json_root) {
     cJSON *obj = cJSON_CreateObject();
@@ -168,7 +207,16 @@ static void tele_<name>_<data>(const char *tele_id, cJSON *json_root) {
 }
 ```
 
-#### 6. Command Functions (cmnd.h)
+#### 7. Command Functions (cmnd.h)
+```c
+static void tele_<name>_<data>(const char *tele_id, cJSON *json_root) {
+    cJSON *obj = cJSON_CreateObject();
+    // Add data to obj
+    cJSON_AddItemToObject(json_root, tele_id, obj);
+}
+```
+
+#### 7. Command Functions (cmnd.h)
 ```c
 static void cmnd_<name>_<action>(const char *cmnd_id, const char *payload) {
     // Parse payload, execute action

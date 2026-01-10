@@ -22,7 +22,7 @@
 
 #define TAG "cikon:adapter:debug"
 
-static bool debug_enabled = true;
+static bool initialized = false;
 static const esp_partition_t *failed_ota_partition = NULL;
 static esp_ota_img_states_t failed_ota_state = ESP_OTA_IMG_UNDEFINED;
 static char failed_ota_version[32] = "unknown";
@@ -146,7 +146,11 @@ static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
 }
 #endif
 
-static void debug_adapter_init(void) {
+static esp_err_t debug_adapter_init(void) {
+    if (initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     ESP_LOGI(TAG, "Initializing debug adapter");
 
     // Check for failed OTA partition (passive check only)
@@ -160,13 +164,16 @@ static void debug_adapter_init(void) {
             snprintf(failed_ota_version, sizeof(failed_ota_version), "%s", app_desc.version);
         }
     }
+
+    initialized = true;
+    return ESP_OK;
 }
 
 static void debug_adapter_on_event(EventBits_t bits) {
-
-    if (!debug_enabled) {
+    if (!initialized) {
         return;
     }
+
     // Log all events
     ESP_LOGI(TAG, "Event received: 0x%08" PRIx32, (uint32_t)bits);
 
@@ -188,11 +195,10 @@ static void debug_adapter_on_event(EventBits_t bits) {
     if (bits & INET_EVENT_AP_READY) {
         ESP_LOGI(TAG, "  -> INET_EVENT_AP_READY");
     }
-
 }
 
 static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
-    if (!debug_enabled) {
+    if (!initialized) {
         return;
     }
 
@@ -227,9 +233,13 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 }
 
-static void debug_adapter_shutdown(void) {
-    ESP_LOGI(TAG, "Debug adapter shutdown - disabling periodic logging");
-    debug_enabled = false;
+static esp_err_t debug_adapter_shutdown(void) {
+    if (!initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    initialized = false;
+    return ESP_OK;
 }
 
 static void tele_debug_temperature(const char *tele_id, cJSON *json_root) {
@@ -394,6 +404,7 @@ static const ha_metadata_t debug_ha_metadata = {
 #endif
 
 supervisor_platform_adapter_t debug_adapter = {
+    .name = "debug",
     .init = debug_adapter_init,
     .shutdown = debug_adapter_shutdown,
     .on_event = debug_adapter_on_event,

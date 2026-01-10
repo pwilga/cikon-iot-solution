@@ -19,11 +19,11 @@ menu "Cikon IoT TCP OTA Configuration"
 
     config TCP_OTA_TASK_PRIORITY
         int "TCP OTA task priority"
-        default 10
+        default 4
         range 0 25
         help
             Priority of the TCP OTA task.
-            Lower priority to avoid blocking critical system tasks.
-            Default: 10
+            Should be lower than critical system tasks to prevent watchdog timeout.
+            Default: 4 (allows IDLE task to run during flash erase)
 
 endmenu

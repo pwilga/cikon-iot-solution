@@ -48,15 +48,17 @@ typedef struct {
 
     /**
      * @brief Initialize platform-specific resources
-     * Called once during supervisor startup.
+     * Called during supervisor startup or when adapter is enabled at runtime.
+     * @return ESP_OK on success, ESP_ERR_INVALID_STATE if already initialized
      */
-    void (*init)(void);
+    esp_err_t (*init)(void);
 
     /**
      * @brief Shutdown platform gracefully
-     * Called before restart or power down.
+     * Called before restart, power down, or when adapter is disabled at runtime.
+     * @return ESP_OK on success, ESP_ERR_INVALID_STATE if already shut down
      */
-    void (*shutdown)(void);
+    esp_err_t (*shutdown)(void);
 
     /**
      * @brief Handle platform events
@@ -142,6 +144,22 @@ const supervisor_platform_adapter_t **supervisor_get_adapters(void);
  * @return true if safe mode is active, false otherwise
  */
 bool supervisor_is_safe_mode_active(void);
+
+/**
+ * @brief Initialize adapter and register its command/telemetry groups
+ * @param adapter Adapter to initialize
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if no init function, adapter's init() return value
+ * otherwise
+ */
+esp_err_t supervisor_adapter_init(supervisor_platform_adapter_t *adapter);
+
+/**
+ * @brief Shutdown adapter and unregister its command/telemetry groups
+ * @param adapter Adapter to shutdown
+ * @return ESP_OK on success, ESP_ERR_INVALID_ARG if no shutdown function, adapter's shutdown()
+ * return value otherwise
+ */
+esp_err_t supervisor_adapter_shutdown(supervisor_platform_adapter_t *adapter);
 
 #ifdef __cplusplus
 }

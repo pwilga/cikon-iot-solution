@@ -1,3 +1,4 @@
+#include "esp_err.h"
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 
@@ -166,7 +167,7 @@ static void tele_ds18b20_temps(const char *tele_id, cJSON *json_root) {
     cJSON_AddItemToObject(json_root, tele_id, temp_obj);
 }
 
-static void ds18b20_adapter_init(void) {
+static esp_err_t ds18b20_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing DS18B20 adapter");
 
@@ -185,7 +186,7 @@ static void ds18b20_adapter_init(void) {
         ESP_LOGE(TAG, "Failed to create 1-Wire bus: %s", esp_err_to_name(ret));
         ESP_LOGE(TAG, "DS18B20 adapter initialization failed - check GPIO %d and RMT availability",
                  CONFIG_DS18B20_GPIO);
-        return;
+        return ret;
     }
 
     ds18b20_scan_sensors();
@@ -194,11 +195,12 @@ static void ds18b20_adapter_init(void) {
     initialized = true;
 
     ESP_LOGI(TAG, "DS18B20 adapter initialized with %d sensor(s)", sensor_count);
+    return ESP_OK;
 }
 
-static void ds18b20_adapter_shutdown(void) {
+static esp_err_t ds18b20_adapter_shutdown(void) {
     if (!initialized) {
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     ESP_LOGI(TAG, "Shutting down DS18B20 adapter");
@@ -219,6 +221,7 @@ static void ds18b20_adapter_shutdown(void) {
     initialized = false;
 
     ESP_LOGI(TAG, "DS18B20 adapter shut down");
+    return ESP_OK;
 }
 
 static void ds18b20_adapter_on_interval(supervisor_interval_stage_t stage) {
@@ -242,6 +245,7 @@ static const ha_metadata_t ds18b20_ha_metadata = {
 #endif
 
 supervisor_platform_adapter_t ds18b20_adapter = {
+    .name = "ds18b20",
     .init = ds18b20_adapter_init,
     .shutdown = ds18b20_adapter_shutdown,
     .on_interval = ds18b20_adapter_on_interval,

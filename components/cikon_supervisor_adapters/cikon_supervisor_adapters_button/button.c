@@ -10,6 +10,7 @@
 #define TAG "cikon:adapter:button"
 #define MAX_BUTTONS 4
 
+static bool initialized = false;
 static button_handle_t button_handles[MAX_BUTTONS] = {0};
 static uint8_t button_count = 0;
 
@@ -36,7 +37,11 @@ static void button_event_handler(void *handle, void *usr_data) {
     }
 }
 
-static void button_adapter_init(void) {
+static esp_err_t button_adapter_init(void) {
+
+    if (initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     ESP_LOGI(TAG, "Initializing button adapter on GPIO %d", CONFIG_BUTTON_GPIO);
 
@@ -68,9 +73,16 @@ static void button_adapter_init(void) {
     } else {
         ESP_LOGE(TAG, "Failed to initialize button");
     }
+
+    initialized = true;
+    return ESP_OK;
 }
 
-static void button_adapter_shutdown(void) {
+static esp_err_t button_adapter_shutdown(void) {
+    if (!initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     ESP_LOGI(TAG, "Shutting down button adapter");
 
     for (int i = 0; i < MAX_BUTTONS; i++) {
@@ -80,9 +92,12 @@ static void button_adapter_shutdown(void) {
         }
     }
     button_count = 0;
+    initialized = false;
+    return ESP_OK;
 }
 
-supervisor_platform_adapter_t button_adapter = {.init = button_adapter_init,
+supervisor_platform_adapter_t button_adapter = {.name = "button",
+                                                .init = button_adapter_init,
                                                 .shutdown = button_adapter_shutdown,
                                                 .on_event = NULL,
                                                 .on_interval = NULL};

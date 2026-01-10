@@ -27,6 +27,8 @@
 
 #define TAG "cikon:adapter:inet"
 
+static bool initialized = false;
+
 // Forward declaration for wifi command handler (used in inet_adapter_init)
 static void wifi_handler(const char *args_json_str);
 
@@ -242,11 +244,15 @@ static void inet_adapter_register_ha_entities(void) {
 static inline void inet_adapter_register_ha_entities(void) {}
 #endif
 
-void inet_adapter_init(void) {
+esp_err_t inet_adapter_init(void) {
+
+    if (initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     if (is_wifi_network_connected()) {
         ESP_LOGW(TAG, "WiFi network already connected, skipping inet adapter init");
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     ESP_LOGI(TAG, "Initializing inet adapter");
@@ -321,12 +327,19 @@ void inet_adapter_init(void) {
     wifi_init_sta_mode();
 
     // Register persistent wifi command (not unregistered with adapter shutdown)
-    if (!cmnd_find("wifi")) {
-        cmnd_register("wifi", "Control WiFi (on/off)", wifi_handler);
-    }
+    // if (!cmnd_find("wifi")) {
+    //     cmnd_register("wifi", "Control WiFi (on/off)", wifi_handler);
+    // }
+
+    initialized = true;
+    return ESP_OK;
 }
 
-void inet_adapter_shutdown(void) {
+esp_err_t inet_adapter_shutdown(void) {
+
+    if (!initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     ESP_LOGI(TAG, "Shutting down inet platform adapter");
 
@@ -355,6 +368,9 @@ void inet_adapter_shutdown(void) {
     shutdown_ota = true;
 
     wifi_shutdown();
+
+    initialized = false;
+    return ESP_OK;
 }
 
 static void inet_adapter_on_event(EventBits_t bits) {
@@ -562,6 +578,7 @@ static const command_entry_t inet_commands[] = {
 
 supervisor_platform_adapter_t inet_adapter = {
     .enable_in_safe_mode = true, // Critical: always init inet adapter
+    .name = "inet",
     .init = inet_adapter_init,
     .shutdown = inet_adapter_shutdown,
     .on_event = inet_adapter_on_event,

@@ -162,12 +162,12 @@ static void led_init_channel(led_config_t *led) {
     ESP_LOGI(TAG, "LED channel %d initialized on GPIO %d", led->channel, led->gpio);
 }
 
-static void led_adapter_init(void) {
+static esp_err_t led_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing LED adapter");
 
     if (led_initialized) {
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     parse_gpio_list();
@@ -180,7 +180,7 @@ static void led_adapter_init(void) {
 
     if (ledc_timer_config(&timer_config) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to configure LEDC timer");
-        return;
+        return ESP_FAIL;
     }
 
     ledc_fade_func_install(0);
@@ -193,11 +193,12 @@ static void led_adapter_init(void) {
 
     led_initialized = true;
     ESP_LOGI(TAG, "LED adapter initialized");
+    return ESP_OK;
 }
 
-static void led_adapter_shutdown(void) {
+static esp_err_t led_adapter_shutdown(void) {
     if (!led_initialized) {
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     led_save_state();
@@ -210,6 +211,7 @@ static void led_adapter_shutdown(void) {
     ledc_fade_func_uninstall();
     led_initialized = false;
     ESP_LOGI(TAG, "LED adapter shutdown");
+    return ESP_OK;
 }
 
 void led_set_brightness(uint8_t led_index, uint8_t brightness) {
@@ -385,6 +387,7 @@ static const ha_metadata_t led_ha_metadata = {.magic = HA_METADATA_MAGIC,
 #endif
 
 supervisor_platform_adapter_t led_adapter = {
+    .name = "led",
     .init = led_adapter_init,
     .shutdown = led_adapter_shutdown,
     .on_interval = led_adapter_on_interval,

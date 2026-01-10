@@ -15,6 +15,7 @@
 
 #define TAG "cikon:adapter:rf433"
 
+static bool initialized = false;
 static uint32_t last_rf_code = 0;
 
 static void rf433_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
@@ -49,16 +50,33 @@ static void tele_rf433_code(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, hexbuf);
 }
 
-void rf433_adapter_init(void) {
+static esp_err_t rf433_adapter_init(void) {
+
+    if (initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
 
     ESP_LOGI(TAG, "Initializing RF433 adapter on GPIO %d", CONFIG_RF433_GPIO_PIN);
 
     esp_event_handler_register(RF433_EVENTS, RF433_CODE_RECEIVED, rf433_event_handler, NULL);
     rf433_receiver_configure(CONFIG_RF433_GPIO_PIN);
     rf433_receiver_init();
+
+    initialized = true;
+    return ESP_OK;
 }
 
-// void rf433_adapter_shutdown(void) {}
+static esp_err_t rf433_adapter_shutdown(void) {
+    if (!initialized) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_event_handler_unregister(RF433_EVENTS, RF433_CODE_RECEIVED, rf433_event_handler);
+    rf433_receiver_shutdown();
+
+    initialized = false;
+    return ESP_OK;
+}
 
 static void rf433_adapter_on_event(EventBits_t bits) {}
 
@@ -73,8 +91,9 @@ static const ha_metadata_t rf433_ha_metadata = {
 #endif
 
 supervisor_platform_adapter_t rf433_adapter = {
+    .name = "rf433",
     .init = rf433_adapter_init,
-    .shutdown = rf433_receiver_shutdown,
+    .shutdown = rf433_adapter_shutdown,
     .on_event = rf433_adapter_on_event,
     .on_interval = rf433_adapter_on_interval,
     .tele_group = (const tele_entry_t[]){{"rf433_code", tele_rf433_code}, {NULL, NULL}},

@@ -1,3 +1,4 @@
+#include "esp_err.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
@@ -56,24 +57,52 @@ void supervisor_notify_event(EventBits_t bits) {
     }
 }
 
-static void supervisor_adapter_register_groups(supervisor_platform_adapter_t *adapter) {
-    if (adapter->tele_group) {
-        tele_register_group(adapter->tele_group);
+esp_err_t supervisor_adapter_init(supervisor_platform_adapter_t *adapter) {
+
+    if (!adapter->init) {
+        return ESP_ERR_INVALID_ARG;
     }
 
-    if (adapter->cmnd_group) {
-        cmnd_register_group(adapter->cmnd_group);
+    esp_err_t ret = adapter->init();
+
+    if (ret == ESP_OK) {
+        if (adapter->tele_group) {
+            tele_register_group(adapter->tele_group);
+        }
+
+        if (adapter->cmnd_group) {
+            cmnd_register_group(adapter->cmnd_group);
+        }
+
+        ESP_LOGI(TAG, "Adapter initialized: %s", adapter->name);
+    } else if (ret == ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "Adapter already started: %s", adapter->name);
     }
+    return ret;
 }
 
-static void supervisor_adapter_unregister_groups(supervisor_platform_adapter_t *adapter) {
-    if (adapter->cmnd_group) {
-        cmnd_unregister_group(adapter->cmnd_group);
+esp_err_t supervisor_adapter_shutdown(supervisor_platform_adapter_t *adapter) {
+
+    if (!adapter->shutdown) {
+        return ESP_ERR_INVALID_ARG;
     }
 
-    if (adapter->tele_group) {
-        tele_unregister_group(adapter->tele_group);
+    esp_err_t ret = adapter->shutdown();
+
+    if (ret == ESP_OK) {
+        if (adapter->cmnd_group) {
+            cmnd_unregister_group(adapter->cmnd_group);
+        }
+
+        if (adapter->tele_group) {
+            tele_unregister_group(adapter->tele_group);
+        }
+
+        ESP_LOGI(TAG, "Adapter shut down: %s", adapter->name);
+    } else if (ret == ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "Adapter already shut down: %s", adapter->name);
     }
+    return ret;
 }
 
 esp_err_t supervisor_register_adapter(supervisor_platform_adapter_t *adapter) {
@@ -88,8 +117,6 @@ esp_err_t supervisor_register_adapter(supervisor_platform_adapter_t *adapter) {
     }
 
     registered_adapters[adapter_count++] = adapter;
-
-    supervisor_adapter_register_groups(adapter);
 
     return ESP_OK;
 }
@@ -296,6 +323,7 @@ void supervisor_init(void) {
 }
 
 esp_err_t supervisor_platform_init(void) {
+
     ESP_LOGI(TAG, "Initializing %d platform adapter(s)", adapter_count);
 
     // Check safe mode before initializing adapters
@@ -310,13 +338,13 @@ esp_err_t supervisor_platform_init(void) {
     for (int i = 0; i < adapter_count; i++) {
         // Safe mode: Skip adapters not enabled for safe mode
         if (safe_mode_active && !registered_adapters[i]->enable_in_safe_mode) {
-            ESP_LOGW(TAG, "Safe mode: skipping adapter at index %d", i);
+            ESP_LOGW(TAG, "Safe mode: skipping adapter: %s",
+                     registered_adapters[i]->name ? registered_adapters[i]->name : "unnamed");
             continue;
         }
 
-        if (registered_adapters[i]->init) {
-            registered_adapters[i]->init();
-        }
+        supervisor_adapter_init(registered_adapters[i]);
+        vTaskDelay(1); // Yield to IDLE task to reset watchdog
     }
 
     xTaskCreate(supervisor_task, "supervisor", CONFIG_SUPERVISOR_TASK_STACK_SIZE, NULL,
@@ -326,6 +354,51 @@ esp_err_t supervisor_platform_init(void) {
     supervisor_notify_event(SUPERVISOR_EVENT_PLATFORM_INITIALIZED);
 
     return ESP_OK;
+}
+
+static void supervisor_adapter_control_handler(const char *args_json_str) {
+
+    cJSON *json = cJSON_Parse(args_json_str);
+    if (!json) {
+        ESP_LOGW(TAG, "Invalid JSON for adapter");
+        return;
+    }
+
+    const char *adapter_name = cJSON_GetStringValue(cJSON_GetObjectItem(json, "name"));
+    cJSON *state_item = cJSON_GetObjectItem(json, "state");
+
+    if (!adapter_name || !state_item) {
+        ESP_LOGW(TAG, "Missing required parameters");
+        cJSON_Delete(json);
+        return;
+    }
+
+    char *state_json_str = cJSON_Print(state_item);
+    logic_state_t state = json_str_as_logic_state(state_json_str);
+    free(state_json_str);
+
+    // Find adapter by name
+    for (int i = 0; i < adapter_count; i++) {
+        if (!registered_adapters[i]->name ||
+            strcmp(registered_adapters[i]->name, adapter_name) != 0)
+            continue;
+
+        // Found adapter - execute state change
+        if (state == STATE_ON && registered_adapters[i]->init) {
+
+            supervisor_adapter_init(registered_adapters[i]);
+
+        } else if (state == STATE_OFF && registered_adapters[i]->shutdown) {
+
+            supervisor_adapter_shutdown(registered_adapters[i]);
+        }
+
+        cJSON_Delete(json);
+        return;
+    }
+
+    ESP_LOGW(TAG, "Adapter not found: %s", adapter_name);
+    cJSON_Delete(json);
 }
 
 static void restart_handler(const char *args_json_str) {
@@ -376,50 +449,6 @@ static void onboard_led_handler(const char *args_json_str) {
     onboard_led_set_state(new_state);
 }
 
-static void adapter_control_handler(const char *args_json_str) {
-
-    cJSON *json = cJSON_Parse(args_json_str);
-    if (!json) {
-        ESP_LOGW(TAG, "Invalid JSON for adapter");
-        return;
-    }
-
-    const char *adapter_name = cJSON_GetStringValue(cJSON_GetObjectItem(json, "name"));
-    cJSON *state_item = cJSON_GetObjectItem(json, "state");
-
-    if (!adapter_name || !state_item) {
-        ESP_LOGW(TAG, "Missing required parameters");
-        cJSON_Delete(json);
-        return;
-    }
-
-    char *state_json_str = cJSON_Print(state_item);
-    logic_state_t state = json_str_as_logic_state(state_json_str);
-    free(state_json_str);
-
-    // Find adapter by name
-    for (int i = 0; i < adapter_count; i++) {
-        if (!registered_adapters[i]->name ||
-            strcmp(registered_adapters[i]->name, adapter_name) != 0)
-            continue;
-
-        // Found adapter - execute state change
-        if (state == STATE_ON && registered_adapters[i]->init) {
-            ESP_LOGI(TAG, "Enabling adapter: %s", adapter_name);
-            registered_adapters[i]->init();
-        } else if (state == STATE_OFF && registered_adapters[i]->shutdown) {
-            ESP_LOGI(TAG, "Disabling adapter: %s", adapter_name);
-            registered_adapters[i]->shutdown();
-        }
-
-        cJSON_Delete(json);
-        return;
-    }
-
-    ESP_LOGW(TAG, "Adapter not found: %s", adapter_name);
-    cJSON_Delete(json);
-}
-
 static void tele_uptime_appender(const char *tele_id, cJSON *json_root) {
     uint32_t uptime = esp_timer_get_time() / 1000000ULL;
     cJSON_AddNumberToObject(json_root, tele_id, uptime);
@@ -440,7 +469,7 @@ static const command_entry_t core_commands[] = {
     {"setconf", "Set configuration from JSON", set_conf_handler},
     {"resetconf", "Reset configuration and restart", reset_conf_handler},
     {"onboard_led", "Set onboard LED state (on/off/toggle)", onboard_led_handler},
-    {"adapter", "Enable/disable adapter by name", adapter_control_handler},
+    {"adapter", "Enable/disable adapter by name", supervisor_adapter_control_handler},
     {NULL, NULL, NULL}};
 
 static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},

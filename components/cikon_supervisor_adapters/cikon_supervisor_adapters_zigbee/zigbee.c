@@ -5,6 +5,8 @@
 
 #define TAG "cikon:adapter:zigbee"
 
+static bool initialized = false;
+
 // Platform-specific event bits (for future use)
 #define ZIGBEE_EVENT_NETWORK_FORMED BIT2
 #define ZIGBEE_EVENT_DEVICE_JOINED BIT3
@@ -24,6 +26,10 @@ supervisor_platform_adapter_t zigbee_adapter = {.init = zigbee_adapter_init,
 // Adapter implementation (STUB/MOCK)
 
 static void zigbee_adapter_init(void) {
+    if (initialized) {
+        return;
+    }
+
     ESP_LOGI(TAG, "Initializing Zigbee platform adapter (MOCK)");
 
     // TODO: Initialize Zigbee stack
@@ -34,14 +40,20 @@ static void zigbee_adapter_init(void) {
     // - Start Zigbee network formation
 
     ESP_LOGW(TAG, "Zigbee adapter is currently a STUB - no real implementation");
+    initialized = true;
 }
 
 static void zigbee_adapter_shutdown(void) {
+    if (!initialized) {
+        return;
+    }
+
     ESP_LOGI(TAG, "Shutting down Zigbee platform adapter (MOCK)");
 
     // TODO: Shutdown Zigbee stack
     // - Leave network
     // - Deinitialize radio
+    initialized = false;
 }
 
 static void zigbee_adapter_on_event(EventBits_t bits) {

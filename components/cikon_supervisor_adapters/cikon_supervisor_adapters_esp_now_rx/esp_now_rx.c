@@ -102,11 +102,11 @@ static void esp_now_rx_event_handler(void *arg, esp_event_base_t event_base, int
     }
 }
 
-static void esp_now_rx_adapter_init(void) {
+static esp_err_t esp_now_rx_adapter_init(void) {
 
     if (initialized) {
         ESP_LOGW(TAG, "Adapter already started");
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     ESP_LOGI(TAG, "Initializing adapter");
@@ -122,17 +122,17 @@ static void esp_now_rx_adapter_init(void) {
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to register event handler: %s", esp_err_to_name(err));
         espnow_shutdown();
-        return;
+        return err;
     }
 
     initialized = true;
+    return ESP_OK;
 }
 
-static void esp_now_rx_adapter_shutdown(void) {
+static esp_err_t esp_now_rx_adapter_shutdown(void) {
 
     if (!initialized) {
-        ESP_LOGW(TAG, "Adapter not initialized");
-        return;
+        return ESP_ERR_INVALID_STATE;
     }
 
     ESP_LOGI(TAG, "Shutting down adapter");
@@ -145,6 +145,7 @@ static void esp_now_rx_adapter_shutdown(void) {
 
     espnow_shutdown();
     initialized = false;
+    return ESP_OK;
 }
 
 static void tele_esp_now_rx_stats(const char *tele_id, cJSON *json_root) {

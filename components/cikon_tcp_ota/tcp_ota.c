@@ -92,12 +92,14 @@ static void handle_ota(const int client_sock) {
         }
         RETURN_IF_FALSE(send_ack(client_sock));
     }
+    vTaskDelay(1);
 
     OTA_LOG_STEP(1); // Version, Size, MD5
     if (read_all(client_sock, rx_buffer) == sizeof(sw_version)) {
         memcpy(sw_version, rx_buffer, sizeof(sw_version));
         RETURN_IF_FALSE(send_ack(client_sock));
     }
+    vTaskDelay(1);
 
     if (read_all(client_sock, rx_buffer) == sizeof(uint32_t)) {
         firmware_size = ((uint32_t)rx_buffer[0] << 24) | ((uint32_t)rx_buffer[1] << 16) |
@@ -105,26 +107,30 @@ static void handle_ota(const int client_sock) {
 
         RETURN_IF_FALSE(send_ack(client_sock));
     }
+    vTaskDelay(1);
 
     if (read_all(client_sock, rx_buffer) == sizeof(md5_expected)) {
         memcpy(md5_expected, rx_buffer, sizeof(md5_expected));
         RETURN_IF_FALSE(send_ack(client_sock));
     }
+    vTaskDelay(1);
 
     OTA_LOG_STEP(2);
-    vTaskDelay(1);
 
     esp_ota_handle_t ota_handle = 0;
     const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
+    vTaskDelay(1);
 
     esp_err_t err = esp_ota_begin(update_partition, firmware_size, &ota_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to begin OTA update: %s", esp_err_to_name(err));
         return;
     }
+    vTaskDelay(1);
 
     // Initialize PSA Crypto (if not already initialized)
     psa_crypto_init();
+    vTaskDelay(1);
 
     // Initialize MD5 hash operation
     psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
@@ -134,18 +140,20 @@ static void handle_ota(const int client_sock) {
         esp_ota_end(ota_handle);
         return;
     }
+    vTaskDelay(1);
 
     // Ready for image transmission
-
     OTA_LOG_STEP(3); // Write
 
     uint32_t total_read_bytes = 0;
     uint16_t read_bytes = -1;
     uint8_t last_percent_reported = -1;
+    uint16_t chunk_count = 0;
 
     while (read_bytes) {
         read_bytes = read_all(client_sock, rx_buffer);
         total_read_bytes += read_bytes;
+        chunk_count++;
 
         int percent = (100 * total_read_bytes) / firmware_size;
         if (percent / 10 != last_percent_reported / 10) {
@@ -163,13 +171,15 @@ static void handle_ota(const int client_sock) {
         }
         psa_hash_update(&hash_op, rx_buffer, read_bytes);
 
-        vTaskDelay(1);
+        // Yield to watchdog every 10 chunks (~10KB) instead of every chunk
+        if (chunk_count % 10 == 0) {
+            vTaskDelay(1);
+        }
     }
 
     RETURN_IF_FALSE(send_ack(client_sock));
 
     OTA_LOG_STEP(4);
-    vTaskDelay(1);
 
     err = esp_ota_end(ota_handle);
     if (err != ESP_OK) {
@@ -186,6 +196,7 @@ static void handle_ota(const int client_sock) {
         ESP_LOGE(TAG, "Failed to finalize MD5: status=%d, len=%d", status, hash_length);
         return;
     }
+    vTaskDelay(1);
 
     // Compare calculated MD5 with expected
     if (memcmp(md5_calc, md5_expected, sizeof(md5_expected))) {
