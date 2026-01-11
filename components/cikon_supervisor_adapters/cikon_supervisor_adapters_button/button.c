@@ -1,11 +1,12 @@
-#include "button_adapter.h"
+#include <stdint.h>
+
 #include "button_gpio.h"
-#include "cmnd.h"
 #include "esp_log.h"
 #include "iot_button.h"
-#include "sdkconfig.h"
+
+#include "button_adapter.h"
+#include "cmnd.h"
 #include "supervisor.h"
-#include <stdint.h>
 
 #define TAG "cikon:adapter:button"
 #define MAX_BUTTONS 4
@@ -96,8 +97,8 @@ static esp_err_t button_adapter_shutdown(void) {
     return ESP_OK;
 }
 
-supervisor_platform_adapter_t button_adapter = {.name = "button",
-                                                .init = button_adapter_init,
-                                                .shutdown = button_adapter_shutdown,
-                                                .on_event = NULL,
-                                                .on_interval = NULL};
+supervisor_platform_adapter_t button_adapter = {
+    .name = "button",
+    .init = button_adapter_init,
+    .shutdown = button_adapter_shutdown,
+};
