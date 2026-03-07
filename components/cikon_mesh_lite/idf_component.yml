@@ -1,0 +1,19 @@
+name: cikon_mesh_lite
+version: "1.0.0"
+description: "Cikon IoT Solution - ESP-MESH Lite wrapper"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+  espressif/esp-bridge: "*"
+  espressif/esp-mesh-lite: "*"
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6
