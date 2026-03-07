@@ -5,7 +5,6 @@
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
 #include "esp_wifi_types_generic.h"
-#include "mdns.h"
 
 #include "bits_helper.h"
 #include "cmnd.h"
@@ -18,6 +17,7 @@
 #include "inet_adapter.h"
 #include "json_parser.h"
 #include "mqtt.h"
+#include "net.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tcp_monitor.h"
@@ -32,12 +32,6 @@ static bool initialized = false;
 // Forward declaration for wifi command handler (used in inet_adapter_init)
 static void wifi_handler(const char *args_json_str);
 
-static const char *mdns_host = NULL;
-static const char *mdns_instance = NULL;
-
-static const char *sntp_servers[CONFIG_LWIP_SNTP_MAX_SERVERS] = {NULL};
-static esp_sntp_time_cb_t sntp_cb = NULL;
-
 static esp_event_handler_instance_t inet_wifi_handler = NULL;
 static esp_event_handler_instance_t inet_ip_handler = NULL;
 
@@ -46,67 +40,6 @@ static bool shutdown_ota = true;
 static SemaphoreHandle_t network_transition_mutex = NULL;
 static volatile bool sta_services_running = false;
 static volatile bool ap_services_running = false;
-
-static void inet_mdns_configure(const char *hostname, const char *instance_name) {
-    mdns_host = hostname;
-    mdns_instance = instance_name;
-}
-
-static void inet_mdns_init(void) {
-
-    esp_err_t ret = (mdns_init() != ESP_OK || mdns_hostname_set(mdns_host) != ESP_OK ||
-                     mdns_instance_name_set(mdns_instance) != ESP_OK)
-                        ? ESP_FAIL
-                        : ESP_OK;
-
-    if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "mDNS started with hostname: %s.local", mdns_host);
-    } else {
-        ESP_LOGE(TAG, "mDNS init failed: %s", esp_err_to_name(ret));
-    }
-}
-
-static void inet_sntp_configure(const char **servers, esp_sntp_time_cb_t cb) {
-    for (int i = 0; i < CONFIG_LWIP_SNTP_MAX_SERVERS; ++i) {
-        if (servers[i] && strlen(servers[i]) > 0) {
-            sntp_servers[i] = servers[i];
-        } else {
-            sntp_servers[i] = NULL;
-        }
-    }
-    sntp_cb = cb;
-}
-
-static void inet_sntp_init(void) {
-    if (memcmp(sntp_servers, (const char *[CONFIG_LWIP_SNTP_MAX_SERVERS]){NULL},
-               sizeof(sntp_servers)) == 0) {
-        ESP_LOGW(TAG, "No SNTP servers configured, skipping SNTP init.");
-        return;
-    }
-
-    esp_sntp_config_t config = {
-        .smooth_sync = false,
-        .server_from_dhcp = false,
-        .wait_for_sync = true,
-        .start = true,
-        .sync_cb = sntp_cb,
-        .renew_servers_after_new_IP = false,
-        .ip_event_to_renew = IP_EVENT_STA_GOT_IP,
-        .index_of_first_server = 0,
-        .num_of_servers = CONFIG_LWIP_SNTP_MAX_SERVERS,
-        .servers = {NULL},
-    };
-
-    for (int i = 0; i < CONFIG_LWIP_SNTP_MAX_SERVERS; ++i) {
-        config.servers[i] = sntp_servers[i];
-    }
-
-    esp_netif_sntp_init(&config);
-    ESP_LOGI(TAG, "SNTP service initialized, servers: %s, %s, %s",
-             config.servers[0] ? config.servers[0] : "none",
-             config.servers[1] ? config.servers[1] : "none",
-             config.servers[2] ? config.servers[2] : "none");
-}
 
 static void inet_stop_services(void) {
     ESP_LOGI(TAG, "Stopping network services");
@@ -276,9 +209,9 @@ esp_err_t inet_adapter_init(void) {
         hostname = config_get()->dev_name;
     }
 
-    inet_mdns_configure(hostname, config_get()->mdns_instance);
+    net_mdns_configure(hostname, config_get()->mdns_instance);
 
-    inet_sntp_configure(
+    net_sntp_configure(
         (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3},
         inet_sntp_sync_cb);
 
@@ -354,7 +287,7 @@ esp_err_t inet_adapter_shutdown(void) {
     }
 
     inet_stop_services();
-    mdns_free();
+    net_mdns_shutdown();
 
     // Unregister callbacks
     set_restart_callback(NULL);
@@ -411,8 +344,8 @@ static void inet_adapter_on_event(EventBits_t bits) {
         tcp_monitor_init();
 
         if (!supervisor_is_safe_mode_active()) {
-            inet_mdns_init();
-            inet_sntp_init();
+            net_mdns_init();
+            net_sntp_init();
             mqtt_init();
         }
 
@@ -432,7 +365,7 @@ static void inet_adapter_on_event(EventBits_t bits) {
 
         if (!supervisor_is_safe_mode_active()) {
             https_init();
-            inet_mdns_init();
+            net_mdns_init();
         }
 
         ap_services_running = true;

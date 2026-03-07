@@ -35,7 +35,6 @@ dependencies:
   cikon_tcp_monitor:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_tcp_monitor
-  espressif/mdns: "*"
 
 targets:
   - esp32

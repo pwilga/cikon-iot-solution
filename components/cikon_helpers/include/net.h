@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "esp_netif_sntp.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,6 +13,13 @@ bool is_tcp_port_reachable(const char *host, uint16_t port);
 
 bool is_internet_reachable(void);
 bool is_mqtt_broker_reachable(void);
+
+void net_mdns_configure(const char *hostname, const char *instance_name);
+void net_mdns_init(void);
+void net_mdns_shutdown(void);
+
+void net_sntp_configure(const char **servers, esp_sntp_time_cb_t cb);
+void net_sntp_init(void);
 
 /**
  * @brief Checks if any local network interface is connected (e.g. Wi-Fi, Ethernet).
