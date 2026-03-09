@@ -6,6 +6,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include <inttypes.h>
+#include <string.h>
+
 #include "bits_helper.h"
 #include "cJSON.h"
 #include "cmnd.h"
@@ -147,22 +150,23 @@ static bool safe_mode_check(void) {
     if (is_abnormal_reset(reason)) {
 
         boot_counter++;
-        ESP_LOGW(TAG, "Crash detected (%s), boot counter: %u/%u",
-                 esp_reset_reason_to_string(reason), boot_counter,
-                 CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD);
+        ESP_LOGW(TAG, "Crash detected (%s), boot counter: %" PRIu32 "/%" PRIu32,
+             esp_reset_reason_to_string(reason), boot_counter,
+             (uint32_t)CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD);
         config_set_boot_counter(boot_counter);
     }
 
     if (boot_counter >= CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD) {
-        ESP_LOGE(TAG, "Safe mode active: %u crashes detected", boot_counter);
+        ESP_LOGE(TAG, "Safe mode active: %" PRIu32 " crashes detected", boot_counter);
         ESP_LOGE(TAG, "Hardware adapters DISABLED - WiFi/OTA only");
         ESP_LOGE(TAG, "Auto-clear after %ds stable operation",
                  CONFIG_SUPERVISOR_SAFE_MODE_STABLE_TIME_S);
         return true;
     }
 
-    ESP_LOGI(TAG, "Boot counter: %u/%u (reset reason: %s)", boot_counter,
-             CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD, esp_reset_reason_to_string(reason));
+    ESP_LOGI(TAG, "Boot counter: %" PRIu32 "/%" PRIu32 " (reset reason: %s)",
+             boot_counter, (uint32_t)CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD,
+             esp_reset_reason_to_string(reason));
     return false;
 }
 

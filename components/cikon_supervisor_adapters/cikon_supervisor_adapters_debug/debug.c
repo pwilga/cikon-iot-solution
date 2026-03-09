@@ -212,7 +212,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         ESP_LOGI(TAG, "Free heap: %.2f KB", free_heap / 1024.0);
 
         uint32_t uptime = esp_timer_get_time() / 1000000ULL;
-        ESP_LOGI(TAG, "Uptime: %u s", uptime);
+        ESP_LOGI(TAG, "Uptime: %" PRIu32 " s", uptime);
 
         wifi_log_event_group_bits();
         mqtt_log_event_group_bits();

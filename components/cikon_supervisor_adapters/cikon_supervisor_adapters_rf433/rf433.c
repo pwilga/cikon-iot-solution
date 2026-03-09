@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -22,7 +23,7 @@ static void rf433_event_handler(void *arg, esp_event_base_t base, int32_t id, vo
 
     rf433_event_data_t *rf_event = (rf433_event_data_t *)data;
 
-    ESP_LOGI(TAG, "Received code: 0x%06X (%d bits)", rf_event->code, rf_event->bits);
+    ESP_LOGI(TAG, "Received code: 0x%06" PRIX32 " (%d bits)", rf_event->code, rf_event->bits);
 
     switch (rf_event->code) {
     case 0x5447C2:
@@ -36,7 +37,7 @@ static void rf433_event_handler(void *arg, esp_event_base_t base, int32_t id, vo
         break;
 
     default:
-        ESP_LOGW(TAG, "Unknown code: 0x%06X", rf_event->code);
+        ESP_LOGW(TAG, "Unknown code: 0x%06" PRIX32, rf_event->code);
         break;
     }
 

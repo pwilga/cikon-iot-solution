@@ -10,7 +10,9 @@
 #include "psa/crypto.h"
 
 #include "platform_services.h"
+#include <inttypes.h>
 #include <stdint.h>
+#include <string.h>
 
 #define RETURN_IF_FALSE(x)                                                                         \
     do {                                                                                           \
@@ -136,7 +138,7 @@ static void handle_ota(const int client_sock) {
     psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
     psa_status_t status = psa_hash_setup(&hash_op, PSA_ALG_MD5);
     if (status != PSA_SUCCESS) {
-        ESP_LOGE(TAG, "Failed to setup MD5 hash: %d", status);
+        ESP_LOGE(TAG, "Failed to setup MD5 hash: %ld", (long)status);
         esp_ota_end(ota_handle);
         return;
     }
@@ -157,7 +159,8 @@ static void handle_ota(const int client_sock) {
 
         int percent = (100 * total_read_bytes) / firmware_size;
         if (percent / 10 != last_percent_reported / 10) {
-            ESP_LOGI(TAG, "Progress: %d%% (%d/%d bytes)", percent, total_read_bytes, firmware_size);
+            ESP_LOGI(TAG, "Progress: %d%% (%" PRIu32 "/%" PRIu32 " bytes)", percent,
+                     total_read_bytes, firmware_size);
             last_percent_reported = percent;
         }
 
@@ -193,7 +196,7 @@ static void handle_ota(const int client_sock) {
     size_t hash_length;
     status = psa_hash_finish(&hash_op, md5_calc, sizeof(md5_calc), &hash_length);
     if (status != PSA_SUCCESS || hash_length != MD5_SIZE) {
-        ESP_LOGE(TAG, "Failed to finalize MD5: status=%d, len=%d", status, hash_length);
+        ESP_LOGE(TAG, "Failed to finalize MD5: status=%ld, len=%zu", (long)status, hash_length);
         return;
     }
     vTaskDelay(1);

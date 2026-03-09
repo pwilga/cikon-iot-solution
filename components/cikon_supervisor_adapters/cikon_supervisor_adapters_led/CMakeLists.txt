@@ -5,6 +5,7 @@ idf_component_register(
         "include"
     PRIV_REQUIRES
         esp_driver_ledc
+        esp_driver_gpio
 )
 
 # X-Macro Pattern for Dynamic HA Entity Generation

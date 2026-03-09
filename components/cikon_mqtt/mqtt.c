@@ -69,7 +69,7 @@ void mqtt_publish_telemetry(void) {
 
 void mqtt_publish_offline_state(void) {
 
-    if (!(xEventGroupGetBits(mqtt_event_group) & MQTT_CONNECTED_BIT)) {
+    if (!mqtt_event_group || !(xEventGroupGetBits(mqtt_event_group) & MQTT_CONNECTED_BIT)) {
 
         // ESP_LOGW(TAG, "Client not connected, skipping offline state publish");
         return;
@@ -168,6 +168,11 @@ void mqtt_command_task(void *args) {
         // Check if we're still the active task
         if (mqtt_command_task_handle != current) {
             ESP_LOGW(TAG, "command_task: handle changed, terminating");
+            break;
+        }
+
+        // Protect against race condition if queue is deleted during shutdown
+        if (mqtt_queue == NULL) {
             break;
         }
 
@@ -286,8 +291,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             xTaskCreate(mqtt_shutdown_task, "mqtt_shutdown", 2048, NULL, 10, NULL);
         }
         break;
-    case MQTT_EVENT_DATA:
-
+    case MQTT_EVENT_DATA: {
         esp_mqtt_event_handle_t event = event_data;
 
         if (event->current_data_offset == 0) {
@@ -338,6 +342,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         }
 
         break;
+    }
     case MQTT_EVENT_PUBLISHED:
         xEventGroupSetBits(mqtt_event_group, MQTT_OFFLINE_PUBLISHED_BIT);
         break;
