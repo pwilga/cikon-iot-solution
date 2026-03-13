@@ -7,9 +7,9 @@ maintainers:
   - "Piotr Wilga <pwilga@gmail.com>"
 
 dependencies:
-  idf: ">=5.0"
-  espressif/esp-bridge: "*"
-  espressif/esp-mesh-lite: "*"
+  idf: ">=5.4"
+  espressif/mesh_lite: "*"
+  espressif/iot_bridge: "*"
 
 targets:
   - esp32

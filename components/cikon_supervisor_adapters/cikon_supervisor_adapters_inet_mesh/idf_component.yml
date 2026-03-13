@@ -1,0 +1,41 @@
+name: cikon_supervisor_adapters_inet_mesh
+version: "1.0.0"
+description: "Supervisor Inet-Mesh adapter - ESP-MESH Lite network adapter"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.4"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_config:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_config
+  cikon_core:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_core
+  cikon_mesh_lite:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_mesh_lite
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
+  cikon_tcp_ota:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_tcp_ota
+  cikon_tcp_monitor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_tcp_monitor
+  cikon_mqtt:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_mqtt
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

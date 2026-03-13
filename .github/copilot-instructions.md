@@ -246,6 +246,13 @@ idf_component_register(
 )
 ```
 
+**CRITICAL - Dependency Rules:**
+- **ONLY** use `REQUIRES` for **internal** cikon_* components (from same repo)
+- **NEVER** add external dependencies (`espressif/*`) in CMakeLists.txt
+- External dependencies go **ONLY** in `idf_component.yml`
+- ESP-IDF Component Manager automatically resolves `idf_component.yml` dependencies
+- Duplicating in both files causes conflicts and build errors
+
 ### Kconfig Template
 ```kconfig
 menu "<Name> Adapter Configuration"
@@ -255,6 +262,7 @@ menu "<Name> Adapter Configuration"
         range 1 100
 endmenu
 ```
+
 ### idf_component.yml Template
 **CRITICAL**: Always add external dependencies in `idf_component.yml`, NOT in CMakeLists.txt
 ```yaml
@@ -262,6 +270,12 @@ dependencies:
   espressif/component_name: "^1.0.0"
   espressif/another_component: "~2.0.0"
 ```
+
+**Examples:**
+- ✅ CORRECT: `espressif/mesh_lite: "*"` in idf_component.yml only
+- ❌ WRONG: `PRIV_REQUIRES mesh_lite` in CMakeLists.txt
+- ✅ CORRECT: `espressif/cjson: "*"` in idf_component.yml, used in public headers
+- ❌ WRONG: Adding both in idf_component.yml AND CMakeLists.txt
 
 ### Header Template
 ```c
@@ -593,11 +607,14 @@ static void zigbee_adapter_register_endpoints(void) {
 
 ## DO NOT
 - ❌ Create adapters outside the standard structure
+## DO NOT
+- ❌ Create adapters outside the standard structure
 - ❌ Skip NULL terminators in tele_group/cmnd_group
 - ❌ Use blocking operations in callbacks
 - ❌ Assume resources are initialized without checking
 - ❌ Use `#ifndef` header guards (use `#pragma once` instead)
-- ❌ Add external dependencies in CMakeLists.txt (use `idf_component.yml`)
+- ❌ **Add external dependencies (espressif/*) in CMakeLists.txt - they go ONLY in idf_component.yml**
+- ❌ **Duplicate dependencies in both CMakeLists.txt AND idf_component.yml**
 - ❌ Use deep nesting - prefer early returns/guard clauses
 - ❌ **GUESS configuration values - ALWAYS check examples first!**
 - ❌ **Implement features without reading component examples**
@@ -612,6 +629,7 @@ static void zigbee_adapter_register_endpoints(void) {
 - ✅ Test init/shutdown cycle
 - ✅ Document adapter-specific configuration in Kconfig
 - ✅ Use `#pragma once` in ALL header files
-- ✅ Declare external dependencies in `idf_component.yml` (espressif/* components)
-- ✅ Only use CMakeLists.txt REQUIRES for internal cikon_* components
+- ✅ **Declare external dependencies ONLY in `idf_component.yml` (espressif/* components)**
+- ✅ **Use CMakeLists.txt REQUIRES ONLY for internal cikon_* components**
+- ✅ **Let ESP-IDF Component Manager auto-resolve idf_component.yml dependencies**
 - ✅ **Remove trailing whitespace before committing (keep code clean)**

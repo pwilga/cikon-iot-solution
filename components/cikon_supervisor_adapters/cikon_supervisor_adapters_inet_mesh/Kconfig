@@ -1,0 +1,28 @@
+menu "Cikon IoT Supervisor Inet-Mesh Adapter"
+
+    config INET_MESH_MAX_LAYER
+        int "Maximum mesh network layers"
+        range 1 15
+        default 6
+        help
+            Maximum number of allowed mesh layers in the network.
+            Higher values allow deeper networks but may impact performance.
+            Range: 1-15 layers
+
+    config INET_MESH_MAX_CONNECTIONS
+        int "Maximum child connections per node"
+        range 1 10
+        default 6
+        help
+            Maximum number of child nodes that each node can accept.
+            Higher values allow more connections but consume more memory.
+            Range: 1-10 connections
+
+    config INET_MESH_ENABLE_ROOT_SERVICES
+        bool "Enable full services on root node"
+        default y
+        help
+            Enable MQTT, HTTPS, and OTA services when node becomes root.
+            Disable if you want minimal root node functionality.
+
+endmenu
