@@ -13,7 +13,6 @@
 #include "inet_mesh_adapter.h"
 #include "mesh_lite.h"
 #include "mqtt.h"
-#include "net.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tcp_monitor.h"

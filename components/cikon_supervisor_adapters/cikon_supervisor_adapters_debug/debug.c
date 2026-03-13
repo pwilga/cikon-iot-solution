@@ -45,6 +45,11 @@ __attribute__((weak)) void mqtt_log_event_group_bits(void) {
     // Default: no-op if mqtt component not linked
 }
 
+// Weak symbols for optional Mesh diagnostics (zero coupling)
+__attribute__((weak)) void mesh_log_topology(void) {
+    // Default: no-op if mesh component not linked
+}
+
 // Helper for random float generation
 static float random_float(float min, float max) {
     return min + ((float)esp_random() / UINT32_MAX) * (max - min);
@@ -230,6 +235,10 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
 
         debug_print_tasks_summary();
         ESP_LOGI(TAG, "=====================");
+    }
+
+    if (stage == SUPERVISOR_INTERVAL_10S) {
+        mesh_log_topology();
     }
 }
 

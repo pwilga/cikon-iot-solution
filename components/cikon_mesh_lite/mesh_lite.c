@@ -1,6 +1,7 @@
 #include "mesh_lite.h"
 #include "esp_bridge.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_mesh_lite.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
@@ -123,4 +124,56 @@ void mesh_lite_get_node_ip(char *buf, size_t buflen) {
     }
 
     snprintf(buf, buflen, IPSTR, IP2STR(&ip_info.ip));
+}
+
+void mesh_log_topology(void) {
+    if (!initialized) {
+        return;
+    }
+
+    uint8_t level = esp_mesh_lite_get_level();
+    const char *role = (level == 1) ? "ROOT" : "CHILD";
+
+    ESP_LOGI(TAG, "Mesh role: %s (Level %d)", role, level);
+
+#ifdef CONFIG_MESH_LITE_NODE_INFO_REPORT
+    uint32_t node_count = esp_mesh_lite_get_mesh_node_number();
+    ESP_LOGI(TAG, "Total nodes in mesh: %lu", (unsigned long)node_count);
+
+    uint32_t list_size = 0;
+    const node_info_list_t *nodes = esp_mesh_lite_get_nodes_list(&list_size);
+
+    if (nodes && list_size > 0) {
+        ESP_LOGI(TAG, "Node list:");
+        const node_info_list_t *current = nodes;
+        while (current) {
+            esp_ip4_addr_t ip_addr = {.addr = current->node->ip_addr};
+            ESP_LOGI(TAG, "  MAC: " MACSTR ", Level: %d, IP: " IPSTR,
+                     MAC2STR(current->node->mac_addr), current->node->level, IP2STR(&ip_addr));
+            current = current->next;
+        }
+    }
+#endif
+}
+
+void mesh_get_info(char *buf, size_t buflen) {
+    if (!buf || buflen == 0) {
+        return;
+    }
+
+    if (!initialized) {
+        strncpy(buf, "N/A", buflen - 1);
+        buf[buflen - 1] = '\0';
+        return;
+    }
+
+    uint8_t level = esp_mesh_lite_get_level();
+    const char *role = (level == 1) ? "ROOT" : "CHILD";
+
+#ifdef CONFIG_MESH_LITE_NODE_INFO_REPORT
+    uint32_t nodes = esp_mesh_lite_get_mesh_node_number();
+    snprintf(buf, buflen, "%s (L%d, %lu nodes)", role, level, (unsigned long)nodes);
+#else
+    snprintf(buf, buflen, "%s (L%d)", role, level);
+#endif
 }

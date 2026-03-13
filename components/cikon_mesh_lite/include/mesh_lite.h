@@ -24,6 +24,8 @@ esp_err_t mesh_lite_shutdown(void);
 bool is_mesh_root_node(void);
 int mesh_lite_get_child_count(void);
 void mesh_lite_get_node_ip(char *buf, size_t buflen);
+void mesh_log_topology(void);
+void mesh_get_info(char *buf, size_t len);
 
 #ifdef __cplusplus
 }
