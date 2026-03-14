@@ -124,17 +124,22 @@ static esp_err_t inet_mesh_adapter_shutdown(void) {
 }
 
 static void inet_mesh_adapter_on_event(EventBits_t bits) {
+
+    if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
+        mqtt_trigger_telemetry();
+    }
+
     if (bits & INET_EVENT_STA_READY) {
         ESP_LOGI(TAG, "Mesh STA ready - connected to router");
-        tcp_ota_init();
-        tcp_monitor_init();
-
-        if (!supervisor_is_safe_mode_active()) {
-            mqtt_init();
-        }
 
         if (is_mesh_root_node()) {
             ESP_LOGI(TAG, "This node is MESH ROOT");
+            tcp_ota_init();
+            tcp_monitor_init();
+
+            if (!supervisor_is_safe_mode_active()) {
+                mqtt_init();
+            }
         } else {
             ESP_LOGI(TAG, "This node is MESH CHILD");
         }

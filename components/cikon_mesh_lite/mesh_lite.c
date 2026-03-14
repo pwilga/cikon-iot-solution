@@ -133,8 +133,14 @@ void mesh_log_topology(void) {
 
     uint8_t level = esp_mesh_lite_get_level();
     const char *role = (level == 1) ? "ROOT" : "CHILD";
+    uint8_t mesh_id = esp_mesh_lite_get_mesh_id();
+    const char *leaf_marker = "";
 
-    ESP_LOGI(TAG, "Mesh role: %s (Level %d)", role, level);
+    if (esp_mesh_lite_is_leaf_node()) {
+        leaf_marker = " [L]";
+    }
+
+    ESP_LOGI(TAG, "Mesh role: %s%s (Level %d), mesh_id: 0x%02X", role, leaf_marker, level, mesh_id);
 
 #ifdef CONFIG_MESH_LITE_NODE_INFO_REPORT
     uint32_t node_count = esp_mesh_lite_get_mesh_node_number();
@@ -148,8 +154,10 @@ void mesh_log_topology(void) {
         const node_info_list_t *current = nodes;
         while (current) {
             esp_ip4_addr_t ip_addr = {.addr = current->node->ip_addr};
-            ESP_LOGI(TAG, "  MAC: " MACSTR ", Level: %d, IP: " IPSTR,
-                     MAC2STR(current->node->mac_addr), current->node->level, IP2STR(&ip_addr));
+            const char *marker = (current->node->level == 1) ? " [R]" : "";
+            ESP_LOGI(TAG, "  MAC: " MACSTR ", Level: %d, IP: " IPSTR "%s",
+                     MAC2STR(current->node->mac_addr), current->node->level, IP2STR(&ip_addr),
+                     marker);
             current = current->next;
         }
     }
