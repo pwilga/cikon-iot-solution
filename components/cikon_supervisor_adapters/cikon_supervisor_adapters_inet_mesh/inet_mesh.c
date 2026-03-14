@@ -136,12 +136,11 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
             ESP_LOGI(TAG, "This node is MESH ROOT");
             tcp_ota_init();
             tcp_monitor_init();
-
-            if (!supervisor_is_safe_mode_active()) {
-                mqtt_init();
-            }
         } else {
             ESP_LOGI(TAG, "This node is MESH CHILD");
+        }
+        if (!supervisor_is_safe_mode_active()) {
+            mqtt_init();
         }
     }
 
