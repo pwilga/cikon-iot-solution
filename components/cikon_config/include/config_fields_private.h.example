@@ -5,7 +5,7 @@
 
 #define CONFIG_FIELDS(STR, U8, U16, U32, U64)                                                      \
     STR(dev_name, 16, "cikonesp")                                                                  \
-    STR(http_auth, 32, "Basic <Authorization>")                                                    \
+    STR(http_auth, 32, "Basic cGltcGVrOkt1bGVjemthMTU=")                                           \
     STR(mdns_host, 32, "")                                                                         \
     STR(mdns_instance, 64, "Cikon Systems ESP32 device template")                                  \
     STR(mqtt_broker, 128, "mqtts://skynet.cikon.eu:8883")                                          \
@@ -16,13 +16,15 @@
     U8(mqtt_max_retry, 5)                                                                          \
     STR(mqtt_user, 32, "mqttuser")                                                                 \
     U16(ota_tcp_port, 5555)                                                                        \
-    STR(wifi_ap_ssid, 32, "")                                                                      \
+    STR(wifi_ap_ssid, 32, "cikonesp")                                                              \
+    STR(wifi_ap_pass, 32, "")                                                                      \
     STR(wifi_pass, 32, "")                                                                         \
-    STR(wifi_ssid, 32, "")                                                                         \
+    STR(wifi_ssid, 32, "jasnaiot")                                                                 \
     U16(udp_mon_port, 5005)                                                                        \
     STR(sntp1, 64, "pool.ntp.org")                                                                 \
     STR(sntp2, 64, "time.google.com")                                                              \
     STR(sntp3, 64, "time.cloudflare.com")                                                          \
     U64(led_state, 0)                                                                              \
     U64(led_last_state, 0)                                                                         \
-    U32(boot_counter, 0)
+    U32(boot_counter, 0)                                                                           \
+    U8(mesh_id, 0xAA)
