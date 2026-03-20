@@ -151,8 +151,8 @@ static bool safe_mode_check(void) {
 
         boot_counter++;
         ESP_LOGW(TAG, "Crash detected (%s), boot counter: %" PRIu32 "/%" PRIu32,
-             esp_reset_reason_to_string(reason), boot_counter,
-             (uint32_t)CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD);
+                 esp_reset_reason_to_string(reason), boot_counter,
+                 (uint32_t)CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD);
         config_set_boot_counter(boot_counter);
     }
 
@@ -164,9 +164,8 @@ static bool safe_mode_check(void) {
         return true;
     }
 
-    ESP_LOGI(TAG, "Boot counter: %" PRIu32 "/%" PRIu32 " (reset reason: %s)",
-             boot_counter, (uint32_t)CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD,
-             esp_reset_reason_to_string(reason));
+    ESP_LOGI(TAG, "Boot counter: %" PRIu32 "/%" PRIu32 " (reset reason: %s)", boot_counter,
+             (uint32_t)CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD, esp_reset_reason_to_string(reason));
     return false;
 }
 

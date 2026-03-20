@@ -1,12 +1,21 @@
 # If the private config header (config_fields_private.h) does not exist,
 # it is automatically copied from the example file (config_fields_private.h.example)
-# to the project directory (config/cikon_config).
+# to the device profile config directory.
 # This makes configuration and editing easy, while keeping sensitive data (e.g. passwords)
 # outside of version control and only in your local project.
 set(PRIV_FIELDS_HEADER "config_fields_private.h")
 set(PRIV_FIELDS_HEADER_EXAMPLE "${PRIV_FIELDS_HEADER}.example")
 
-set(PROJECT_CONFIG_DIR "${PROJECT_DIR}/config/cikon_config")
+# Use DEVICE_CONFIG_DIR if defined, otherwise fallback to PROJECT_DIR/config/cikon_config
+idf_build_get_property(DEVICE_CONFIG_DIR DEVICE_CONFIG_DIR)
+message(STATUS "cikon_config DEBUG: DEVICE_CONFIG_DIR='${DEVICE_CONFIG_DIR}'")
+if(DEVICE_CONFIG_DIR AND EXISTS "${DEVICE_CONFIG_DIR}")
+    set(PROJECT_CONFIG_DIR "${DEVICE_CONFIG_DIR}/cikon_config")
+    message(STATUS "cikon_config: Using device profile config dir")
+else()
+    set(PROJECT_CONFIG_DIR "${PROJECT_DIR}/config/cikon_config")
+    message(STATUS "cikon_config: Using fallback config dir")
+endif()
 
 set(FALLBACK_DIR "${CMAKE_CURRENT_LIST_DIR}/include")
 

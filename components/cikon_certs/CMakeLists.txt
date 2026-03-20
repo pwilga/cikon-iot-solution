@@ -1,19 +1,21 @@
-# Automatically detect the only .key file in certs/ in main project directory
-file(GLOB KEY_FILES "${PROJECT_DIR}/certs/*.key")
+# Check if all required certificate files exist
+idf_build_get_property(DEVICE_CERTS_DIR DEVICE_CERTS_DIR)
+set(CERTS_AVAILABLE FALSE)
+if(DEVICE_CERTS_DIR AND EXISTS "${DEVICE_CERTS_DIR}")
+    set(SERVER_CERT "${DEVICE_CERTS_DIR}/ca.pem")
+    set(CLIENT_CERT "${DEVICE_CERTS_DIR}/client.pem")
+    set(CLIENT_KEY "${DEVICE_CERTS_DIR}/client.key")
 
-if(KEY_FILES)
-    list(GET KEY_FILES 0 KEY_FILE)
-    get_filename_component(CLIENT_NAME ${KEY_FILE} NAME_WE)
+    if(EXISTS "${SERVER_CERT}" AND EXISTS "${CLIENT_CERT}" AND EXISTS "${CLIENT_KEY}")
+        set(CERTS_AVAILABLE TRUE)
+    endif()
+endif()
+
+# Embed certificates if all files were found
+if(CERTS_AVAILABLE)
     set(CERTS_TEMPLATE ${CMAKE_CURRENT_LIST_DIR}/certs.c.internal)
     set(GENERATED_CERTS_C "${CMAKE_CURRENT_BINARY_DIR}/certs.c")
-    set(SERVER_CERT "${PROJECT_DIR}/certs/ca.pem")
-    set(CLIENT_CERT "${PROJECT_DIR}/certs/${CLIENT_NAME}.pem")
-    set(CLIENT_KEY "${PROJECT_DIR}/certs/${CLIENT_NAME}.key")
-    configure_file(
-        ${CERTS_TEMPLATE}
-        ${GENERATED_CERTS_C}
-        @ONLY
-    )
+    configure_file(${CERTS_TEMPLATE} ${GENERATED_CERTS_C} COPYONLY)
     idf_component_register(
         SRCS
             "${GENERATED_CERTS_C}"
@@ -27,11 +29,7 @@ if(KEY_FILES)
 else()
     set(CERTS_TEMPLATE ${CMAKE_CURRENT_LIST_DIR}/certs.c.external)
     set(GENERATED_CERTS_C "${CMAKE_CURRENT_BINARY_DIR}/certs.c")
-    configure_file(
-        ${CERTS_TEMPLATE}
-        ${GENERATED_CERTS_C}
-        @ONLY
-    )
+    configure_file(${CERTS_TEMPLATE} ${GENERATED_CERTS_C} COPYONLY)
     idf_component_register(
         SRCS
             "${GENERATED_CERTS_C}"
