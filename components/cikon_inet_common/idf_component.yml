@@ -1,0 +1,32 @@
+name: cikon_inet_common
+version: "1.0.0"
+description: "Cikon IoT Solution - Common helpers for network adapters (inet, inet_mesh, ethernet)"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+  cikon_config:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_config
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
+  cikon_mqtt:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_mqtt
+  cikon_wifi:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_wifi
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6
