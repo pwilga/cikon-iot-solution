@@ -61,6 +61,8 @@ static esp_err_t inet_mesh_adapter_init(void) {
     mesh_lite_init();
 
     inet_common_configure_mqtt();
+    inet_common_sntp_configure(
+        (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3}, NULL);
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                         &inet_mesh_netif_event_handler, NULL,
@@ -129,6 +131,7 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
             ESP_LOGI(TAG, "This node is MESH CHILD");
         }
         if (!supervisor_is_safe_mode_active()) {
+            inet_common_sntp_init();
             mqtt_init();
         }
     }
@@ -142,7 +145,7 @@ static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {}
 
 static void tele_inet_mesh_ip_address(const char *tele_id, cJSON *json_root) {
     char ip[16];
-    mesh_lite_get_node_ip(ip, sizeof(ip));
+    inet_common_get_sta_ip(ip, sizeof(ip));
     cJSON_AddStringToObject(json_root, tele_id, ip);
 }
 

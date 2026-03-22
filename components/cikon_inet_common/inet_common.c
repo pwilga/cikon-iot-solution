@@ -20,6 +20,7 @@
 #include "metadata.h"
 #endif
 
+#include "esp_netif.h"
 #include "inet_common.h"
 
 #define TAG "cikon:inet_common"
@@ -97,6 +98,22 @@ void inet_common_ha_discovery_handler(const char *args_json_str) {
     publish_ha_mqtt_discovery(force_empty_payload == STATE_OFF);
 }
 #endif
+
+void inet_common_get_sta_ip(char *buf, size_t buflen) {
+    if (!buf || buflen == 0) {
+        return;
+    }
+
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_ip_info_t ip_info;
+
+    if (!sta_netif || esp_netif_get_ip_info(sta_netif, &ip_info) != ESP_OK) {
+        snprintf(buf, buflen, "0.0.0.0");
+        return;
+    }
+
+    snprintf(buf, buflen, IPSTR, IP2STR(&ip_info.ip));
+}
 
 const char *inet_common_get_hostname(void) {
     const char *hostname = config_get()->mdns_host;

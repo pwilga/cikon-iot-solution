@@ -32,10 +32,10 @@ __attribute__((weak)) void wifi_log_event_group_bits(void) {
     // Default: no-op if wifi component not linked
 }
 
-__attribute__((weak)) void wifi_get_interface_ip(char *buf, size_t len) {
+__attribute__((weak)) void inet_common_get_sta_ip(char *buf, size_t len) {
     // Default: "N/A" if wifi component not linked
     if (buf && len > 0) {
-        strncpy(buf, "N/A", len - 1);
+        strncpy(buf, "0.0.0.0", len - 1);
         buf[len - 1] = '\0';
     }
 }
@@ -223,7 +223,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         mqtt_log_event_group_bits();
 
         char ip[16];
-        wifi_get_interface_ip(ip, sizeof(ip));
+        inet_common_get_sta_ip(ip, sizeof(ip));
         ESP_LOGI(TAG, "IP: %s", ip);
 
         // Alert continuously if failed OTA detected (passive reporting)
