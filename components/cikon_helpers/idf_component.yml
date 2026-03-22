@@ -9,7 +9,6 @@ maintainers:
 dependencies:
   idf: ">=5.0"
   espressif/cjson: "*"
-  espressif/mdns: "*"
 
 targets:
   - esp32

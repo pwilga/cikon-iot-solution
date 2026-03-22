@@ -15,9 +15,9 @@
 #endif
 #include "https_server.h"
 #include "inet_adapter.h"
+#include "inet_common.h"
 #include "json_parser.h"
 #include "mqtt.h"
-#include "net.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tcp_monitor.h"
@@ -100,6 +100,7 @@ static void inet_restart_cb(void) {
     shutdown_ota = false; // Don't shutdown OTA before restart
 
     // SAFE MODE: Only clear boot counter
+    // It shuld be here, no tmie for tests now but shoudbe moved to platform services
     if (supervisor_is_safe_mode_active()) {
         ESP_LOGD(TAG, "SAFE MODE: Clearing boot counter before restart");
         config_set_boot_counter(0);
@@ -145,38 +146,6 @@ static const char *inet_get_or_generate_ap_ssid(void) {
     return ssid;
 }
 
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-static void inet_adapter_register_ha_entities(void) {
-    // Register inet's own HA entity
-    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "IP",
-                                             .icon = "mdi:ip-outline",
-                                             .entity_category = "diagnostic"});
-
-    // Iterate through all adapters and register their HA metadata
-    const supervisor_platform_adapter_t **adapters = supervisor_get_adapters();
-    for (int i = 0; adapters[i] != NULL; i++) {
-        if (adapters[i]->metadata == NULL) {
-            continue;
-        }
-
-        const ha_metadata_t *meta = (const ha_metadata_t *)adapters[i]->metadata;
-
-        // Check if this is HA metadata (magic signature)
-        if (meta->magic != HA_METADATA_MAGIC) {
-            continue;
-        }
-
-        // Register all entities from this adapter
-        for (int e = 0; meta->entities[e].type != HA_ENTITY_NONE; e++) {
-            ha_register_entity(&meta->entities[e]);
-        }
-    }
-}
-#else
-static inline void inet_adapter_register_ha_entities(void) {}
-#endif
-
 esp_err_t inet_adapter_init(void) {
 
     if (initialized) {
@@ -209,9 +178,9 @@ esp_err_t inet_adapter_init(void) {
         hostname = config_get()->dev_name;
     }
 
-    net_mdns_configure(hostname, config_get()->mdns_instance);
+    inet_common_mdns_configure(hostname, config_get()->mdns_instance);
 
-    net_sntp_configure(
+    inet_common_sntp_configure(
         (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3},
         inet_sntp_sync_cb);
 
@@ -287,7 +256,7 @@ esp_err_t inet_adapter_shutdown(void) {
     }
 
     inet_stop_services();
-    net_mdns_shutdown();
+    inet_common_mdns_shutdown();
 
     // Unregister callbacks
     set_restart_callback(NULL);
@@ -308,10 +277,18 @@ esp_err_t inet_adapter_shutdown(void) {
 
 static void inet_adapter_on_event(EventBits_t bits) {
 
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
-        // All adapters initialized, register HA entities from metadata
-        inet_adapter_register_ha_entities();
+        // Register all adapters' HA entities from metadata
+        inet_common_register_all_ha_entities();
+
+        // Register inet's own HA entity
+        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                                 .name = "IP",
+                                                 .icon = "mdi:ip-outline",
+                                                 .entity_category = "diagnostic"});
     }
+#endif
 
     if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
         mqtt_trigger_telemetry();
@@ -344,8 +321,8 @@ static void inet_adapter_on_event(EventBits_t bits) {
         tcp_monitor_init();
 
         if (!supervisor_is_safe_mode_active()) {
-            net_mdns_init();
-            net_sntp_init();
+            inet_common_mdns_init();
+            inet_common_sntp_init();
             mqtt_init();
         }
 
@@ -365,7 +342,7 @@ static void inet_adapter_on_event(EventBits_t bits) {
 
         if (!supervisor_is_safe_mode_active()) {
             https_init();
-            net_mdns_init();
+            inet_common_mdns_init();
         }
 
         ap_services_running = true;
@@ -442,19 +419,6 @@ static void sntp_handler(const char *args_json_str) {
     }
 }
 
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-static void ha_handler(const char *args_json_str) {
-    logic_state_t force_empty_payload = json_str_as_logic_state(args_json_str);
-    if (force_empty_payload == STATE_TOGGLE) {
-        ESP_LOGE(TAG, "Toggling is not permitted for HA discovery");
-        return;
-    }
-
-    ESP_LOGI(TAG, "Triggering Home Assistant MQTT discovery");
-    publish_ha_mqtt_discovery(force_empty_payload == STATE_OFF);
-}
-#endif
-
 static void ota_handler(const char *args_json_str) {
     logic_state_t ota_state = json_str_as_logic_state(args_json_str);
 
@@ -478,7 +442,7 @@ static void monitor_handler(const char *args_json_str) {
         tcp_monitor_shutdown();
     }
 }
-
+// Should be removed ?
 static void wifi_handler(const char *args_json_str) {
     logic_state_t wifi_state = json_str_as_logic_state(args_json_str);
 
@@ -505,7 +469,7 @@ static const command_entry_t inet_commands[] = {
     {"ota", "Control OTA service (on/off)", ota_handler},
     {"monitor", "Control TCP monitor (on/off)", monitor_handler},
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-    {"ha", "Trigger Home Assistant MQTT discovery", ha_handler},
+    {"ha", "Trigger Home Assistant MQTT discovery", inet_common_ha_discovery_handler},
 #endif
     {NULL, NULL, NULL}};
 

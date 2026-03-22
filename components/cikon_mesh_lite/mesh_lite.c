@@ -105,20 +105,10 @@ void mesh_lite_get_node_ip(char *buf, size_t buflen) {
         return;
     }
 
-    if (!initialized) {
-        buf[0] = '\0';
-        return;
-    }
-
-    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (!sta_netif) {
-        snprintf(buf, buflen, "0.0.0.0");
-        return;
-    }
-
+    esp_netif_t *sta_netif = initialized ? esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") : NULL;
     esp_netif_ip_info_t ip_info;
-    esp_err_t ret = esp_netif_get_ip_info(sta_netif, &ip_info);
-    if (ret != ESP_OK) {
+
+    if (!sta_netif || esp_netif_get_ip_info(sta_netif, &ip_info) != ESP_OK) {
         snprintf(buf, buflen, "0.0.0.0");
         return;
     }

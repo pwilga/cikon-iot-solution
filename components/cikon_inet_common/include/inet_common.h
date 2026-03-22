@@ -1,5 +1,10 @@
 #pragma once
 
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "esp_netif_sntp.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -40,6 +45,16 @@ static inline void inet_common_ha_discovery_handler(const char *args_json_str) {
 
 const char *inet_common_get_hostname(void);
 const char *inet_common_get_device_url(void);
+
+bool is_tcp_port_reachable(const char *ip, uint16_t port);
+bool is_internet_reachable(void);
+
+void inet_common_mdns_configure(const char *hostname, const char *instance);
+void inet_common_mdns_init(void);
+void inet_common_mdns_shutdown(void);
+
+void inet_common_sntp_configure(const char **servers, esp_sntp_time_cb_t callback);
+void inet_common_sntp_init(void);
 
 #ifdef __cplusplus
 }
