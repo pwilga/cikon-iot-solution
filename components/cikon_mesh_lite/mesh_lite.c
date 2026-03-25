@@ -51,6 +51,9 @@ esp_err_t mesh_lite_init(void) {
     esp_config.softap_ssid = config.ap_ssid;
     esp_config.softap_password = config.ap_password;
 
+    esp_config.join_mesh_ignore_router_status = true;
+    esp_config.join_mesh_without_configured_wifi = true;
+
     esp_mesh_lite_init(&esp_config);
     esp_mesh_lite_start();
 
@@ -124,7 +127,6 @@ void mesh_log_topology(void) {
     const node_info_list_t *nodes = esp_mesh_lite_get_nodes_list(&list_size);
 
     if (nodes && list_size > 0) {
-        ESP_LOGI(TAG, "Node list:");
         const node_info_list_t *current = nodes;
         while (current) {
             esp_ip4_addr_t ip_addr = {.addr = current->node->ip_addr};

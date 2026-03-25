@@ -27,28 +27,14 @@ static const esp_partition_t *failed_ota_partition = NULL;
 static esp_ota_img_states_t failed_ota_state = ESP_OTA_IMG_UNDEFINED;
 static char failed_ota_version[32] = "unknown";
 
-// Weak symbols for optional WiFi diagnostics (zero coupling)
-__attribute__((weak)) void wifi_log_event_group_bits(void) {
-    // Default: no-op if wifi component not linked
-}
+__attribute__((weak)) void wifi_log_event_group_bits(void) {}
 
-__attribute__((weak)) void inet_common_get_sta_ip(char *buf, size_t len) {
-    // Default: "N/A" if wifi component not linked
-    if (buf && len > 0) {
-        strncpy(buf, "0.0.0.0", len - 1);
-        buf[len - 1] = '\0';
-    }
-}
+__attribute__((weak)) bool inet_common_get_sta_ip(char *buf, size_t len) { return false; }
+__attribute__((weak)) bool inet_common_get_ap_ip(char *buf, size_t len) { return false; }
+__attribute__((weak)) void inet_common_log_ap_clients(void) {}
 
-// Weak symbol for optional MQTT diagnostics (zero coupling)
-__attribute__((weak)) void mqtt_log_event_group_bits(void) {
-    // Default: no-op if mqtt component not linked
-}
-
-// Weak symbols for optional Mesh diagnostics (zero coupling)
-__attribute__((weak)) void mesh_log_topology(void) {
-    // Default: no-op if mesh component not linked
-}
+__attribute__((weak)) void mqtt_log_event_group_bits(void) {}
+__attribute__((weak)) void mesh_log_topology(void) {}
 
 // Helper for random float generation
 static float random_float(float min, float max) {
@@ -223,8 +209,13 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         mqtt_log_event_group_bits();
 
         char ip[16];
-        inet_common_get_sta_ip(ip, sizeof(ip));
-        ESP_LOGI(TAG, "IP: %s", ip);
+        if (inet_common_get_sta_ip(ip, sizeof(ip))) {
+            ESP_LOGI(TAG, "STA IP: %s", ip);
+        }
+
+        if (inet_common_get_ap_ip(ip, sizeof(ip))) {
+            ESP_LOGI(TAG, "AP IP: %s", ip);
+        }
 
         // Alert continuously if failed OTA detected (passive reporting)
         if (failed_ota_partition != NULL) {
@@ -239,6 +230,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
 
     if (stage == SUPERVISOR_INTERVAL_10S) {
         mesh_log_topology();
+        inet_common_log_ap_clients();
     }
 }
 
