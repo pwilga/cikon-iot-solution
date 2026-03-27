@@ -11,6 +11,49 @@
 
 static bool initialized = false;
 static mesh_lite_config_t config = {0};
+static mesh_message_callback_t message_callback = NULL;
+
+// Internal mesh message handler
+static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
+    if (!payload) {
+        return NULL;
+    }
+
+    const char *target = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "target"));
+
+    ESP_LOGI(TAG, "Received mesh message");
+
+    // Check if message is for us (broadcast or matches our name)
+    bool for_me = false;
+    if (!target) {
+        // No target - broadcast
+        for_me = true;
+    } else if (strcmp(target, "broadcast") == 0 || strcmp(target, "all") == 0) {
+        // Explicit broadcast
+        for_me = true;
+    } else if (config.device_name && strcmp(target, config.device_name) == 0) {
+        // Targeted to our device name
+        for_me = true;
+        ESP_LOGI(TAG, "Message targeted to me (device: %s)", config.device_name);
+    }
+
+    // Process message if it's for us
+    if (for_me && message_callback) {
+        message_callback(payload);
+    }
+
+    // If root, always broadcast to children (relay)
+    if (is_mesh_root_node()) {
+        ESP_LOGI(TAG, "Root node - relaying to children");
+        char *json_str = cJSON_PrintUnformatted(payload);
+        if (json_str) {
+            esp_mesh_lite_send_broadcast_msg_to_child(json_str);
+            free(json_str);
+        }
+    }
+
+    return NULL;
+}
 
 void mesh_lite_configure(const mesh_lite_config_t *cfg) {
     if (cfg) {
@@ -57,6 +100,19 @@ esp_err_t mesh_lite_init(void) {
     esp_mesh_lite_init(&esp_config);
     esp_mesh_lite_start();
 
+    // Register mesh message handler
+    static const esp_mesh_lite_msg_action_t message_action = {
+        .type = "message",
+        .rsp_type = NULL,
+        .process = mesh_lite_message_handler,
+    };
+    esp_err_t ret = esp_mesh_lite_msg_action_list_register(&message_action);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to register message handler: %d", ret);
+    } else {
+        ESP_LOGI(TAG, "Registered mesh message handler");
+    }
+
     initialized = true;
     ESP_LOGI(TAG, "ESP-MESH Lite initialized successfully");
     return ESP_OK;
@@ -86,21 +142,6 @@ bool is_mesh_root_node(void) {
     }
 
     return esp_mesh_lite_get_level() == 1;
-}
-
-int mesh_lite_get_child_count(void) {
-    if (!initialized) {
-        return 0;
-    }
-
-    wifi_sta_list_t sta_list = {0};
-    esp_err_t ret = esp_wifi_ap_get_sta_list(&sta_list);
-    if (ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to get STA list: %d", ret);
-        return 0;
-    }
-
-    return sta_list.num;
 }
 
 void mesh_log_topology(void) {
@@ -140,24 +181,42 @@ void mesh_log_topology(void) {
 #endif
 }
 
-void mesh_get_info(char *buf, size_t buflen) {
-    if (!buf || buflen == 0) {
-        return;
-    }
+void mesh_lite_register_message_callback(mesh_message_callback_t callback) {
+    message_callback = callback;
+    // ESP_LOGI(TAG, "Message callback %s", callback ? "registered" : "unregistered");
+}
 
+esp_err_t mesh_lite_send_message(cJSON *payload) {
     if (!initialized) {
-        strncpy(buf, "N/A", buflen - 1);
-        buf[buflen - 1] = '\0';
-        return;
+        ESP_LOGE(TAG, "Mesh not initialized");
+        return ESP_ERR_INVALID_STATE;
     }
 
-    uint8_t level = esp_mesh_lite_get_level();
-    const char *role = (level == 1) ? "ROOT" : "CHILD";
+    if (!payload) {
+        ESP_LOGE(TAG, "Invalid argument: payload required");
+        return ESP_ERR_INVALID_ARG;
+    }
 
-#ifdef CONFIG_MESH_LITE_NODE_INFO_REPORT
-    uint32_t nodes = esp_mesh_lite_get_mesh_node_number();
-    snprintf(buf, buflen, "%s (L%d, %lu nodes)", role, level, (unsigned long)nodes);
-#else
-    snprintf(buf, buflen, "%s (L%d)", role, level);
-#endif
+    // Add type field if not present
+    if (!cJSON_GetObjectItem(payload, "type")) {
+        cJSON_AddStringToObject(payload, "type", "message");
+    }
+
+    char *json_str = cJSON_PrintUnformatted(payload);
+    esp_err_t ret = ESP_FAIL;
+
+    if (json_str) {
+        ESP_LOGI(TAG, "Sending message: %s", json_str);
+
+        if (is_mesh_root_node()) {
+            // Root broadcasts to children
+            ret = esp_mesh_lite_send_broadcast_msg_to_child(json_str);
+        } else {
+            // Children send to root
+            ret = esp_mesh_lite_send_msg_to_root(json_str);
+        }
+        free(json_str);
+    }
+
+    return ret;
 }

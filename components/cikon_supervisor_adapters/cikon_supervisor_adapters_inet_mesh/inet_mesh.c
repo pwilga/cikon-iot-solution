@@ -27,6 +27,12 @@ static bool initialized = false;
 static esp_event_handler_instance_t inet_mesh_wifi_handler = NULL;
 static esp_event_handler_instance_t inet_mesh_ip_handler = NULL;
 
+// Mesh message callback
+static void inet_mesh_message_callback(cJSON *payload) {
+    ESP_LOGI(TAG, "Received mesh message");
+    // TODO: Process message payload
+}
+
 static void inet_mesh_netif_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                           void *event_data) {
     if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -70,6 +76,9 @@ static esp_err_t inet_mesh_adapter_init(void) {
     ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
                                                         &inet_mesh_netif_event_handler, NULL,
                                                         &inet_mesh_ip_handler));
+
+    // Register message callback
+    mesh_lite_register_message_callback(inet_mesh_message_callback);
 
     initialized = true;
     return ESP_OK;
@@ -121,7 +130,7 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
     }
 
     if (bits & INET_EVENT_STA_READY) {
-        ESP_LOGI(TAG, "Mesh STA ready - connected to router");
+        // ESP_LOGI(TAG, "Mesh STA ready - connected to router");
 
         if (is_mesh_root_node()) {
             ESP_LOGI(TAG, "This node is MESH ROOT");
@@ -141,7 +150,18 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
     }
 }
 
-static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {}
+static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {
+    if (stage == SUPERVISOR_INTERVAL_10S) {
+        // Send test message every 10 seconds
+        cJSON *msg = cJSON_CreateObject();
+        cJSON_AddStringToObject(msg, "cmd", "ping");
+        cJSON_AddStringToObject(msg, "target", config_get()->dev_name);
+
+        ESP_LOGI(TAG, "Sending test message to: %s", config_get()->dev_name);
+        mesh_lite_send_message(msg);
+        cJSON_Delete(msg);
+    }
+}
 
 static void tele_inet_mesh_ip_address(const char *tele_id, cJSON *json_root) {
     char ip[16];
