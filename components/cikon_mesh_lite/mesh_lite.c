@@ -54,13 +54,20 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
         message_callback(payload);
     }
 
-    // If root, always broadcast to children (relay)
+    // If root, always broadcast to children (relay) using proper API
     if (is_mesh_root_node()) {
-        char *json_str = cJSON_PrintUnformatted(payload);
-        if (json_str) {
-            esp_mesh_lite_send_broadcast_msg_to_child(json_str);
-            free(json_str);
-        }
+        ESP_LOGI(TAG, "Root forwarding message to children");
+
+        esp_mesh_lite_msg_config_t forward_config = {
+            .json_msg = {.send_msg = "message",
+                         .expect_msg = NULL,
+                         .max_retry = 1,
+                         .retry_interval = 1000,
+                         .req_payload = payload, // Forward same payload
+                         .resend = &esp_mesh_lite_send_broadcast_msg_to_child,
+                         .send_fail = NULL}};
+
+        esp_mesh_lite_send_msg(ESP_MESH_LITE_JSON_MSG, &forward_config);
     }
 
     return NULL;
