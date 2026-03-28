@@ -13,28 +13,32 @@ static bool initialized = false;
 static mesh_lite_config_t config = {0};
 static mesh_message_callback_t message_callback = NULL;
 
+// Forward declaration
+static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq);
+
+// Message action list (compile-time initialization like official examples)
+static const esp_mesh_lite_msg_action_t msg_actions[] = {
+    {"message", NULL, mesh_lite_message_handler}, {NULL, NULL, NULL} /* Must be NULL terminated */
+};
+
 // Internal mesh message handler
 static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
+
+    ESP_LOGI(TAG, "Received mesh message");
     if (!payload) {
         return NULL;
     }
 
     const char *target = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "target"));
 
-    ESP_LOGI(TAG, "Received mesh message");
-
     // Check if message is for us (broadcast or matches our name)
     bool for_me = false;
     if (!target) {
-        // No target - broadcast
         for_me = true;
     } else if (strcmp(target, "broadcast") == 0 || strcmp(target, "all") == 0) {
-        // Explicit broadcast
         for_me = true;
     } else if (config.device_name && strcmp(target, config.device_name) == 0) {
-        // Targeted to our device name
         for_me = true;
-        ESP_LOGI(TAG, "Message targeted to me (device: %s)", config.device_name);
     }
 
     // Process message if it's for us
@@ -44,7 +48,6 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
 
     // If root, always broadcast to children (relay)
     if (is_mesh_root_node()) {
-        ESP_LOGI(TAG, "Root node - relaying to children");
         char *json_str = cJSON_PrintUnformatted(payload);
         if (json_str) {
             esp_mesh_lite_send_broadcast_msg_to_child(json_str);
@@ -100,13 +103,8 @@ esp_err_t mesh_lite_init(void) {
     esp_mesh_lite_init(&esp_config);
     esp_mesh_lite_start();
 
-    // Register mesh message handler
-    static const esp_mesh_lite_msg_action_t message_action = {
-        .type = "message",
-        .rsp_type = NULL,
-        .process = mesh_lite_message_handler,
-    };
-    esp_err_t ret = esp_mesh_lite_msg_action_list_register(&message_action);
+    // Register mesh message handler (array-based like official examples)
+    esp_err_t ret = esp_mesh_lite_msg_action_list_register(msg_actions);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to register message handler: %d", ret);
     } else {
