@@ -30,10 +30,10 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
         return NULL;
     }
 
-    // Log entire payload
+    // Log entire payload with seq
     char *payload_str = cJSON_PrintUnformatted(payload);
     if (payload_str) {
-        ESP_LOGI(TAG, "Received payload: %s", payload_str);
+        ESP_LOGI(TAG, "Received payload (seq=%lu): %s", (unsigned long)seq, payload_str);
         free(payload_str);
     }
 
@@ -61,7 +61,7 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
         esp_mesh_lite_msg_config_t forward_config = {
             .json_msg = {.send_msg = "message",
                          .expect_msg = NULL,
-                         .max_retry = 1,
+                         .max_retry = 0,
                          .retry_interval = 1000,
                          .req_payload = payload, // Forward same payload
                          .resend = &esp_mesh_lite_send_broadcast_msg_to_child,
@@ -214,7 +214,7 @@ esp_err_t mesh_lite_send_message(cJSON *payload) {
     esp_mesh_lite_msg_config_t config = {
         .json_msg = {.send_msg = "message", // Type must match msg_actions array
                      .expect_msg = NULL,    // No response expected
-                     .max_retry = 3,
+                     .max_retry = 0,
                      .retry_interval = 1000,
                      .req_payload = payload, // cJSON object, NOT string
                      .resend = is_mesh_root_node() ? &esp_mesh_lite_send_broadcast_msg_to_child
