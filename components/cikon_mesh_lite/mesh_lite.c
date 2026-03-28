@@ -24,18 +24,18 @@ static const esp_mesh_lite_msg_action_t msg_actions[] = {
 // Internal mesh message handler
 static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
 
-    ESP_LOGI(TAG, "Received mesh message");
+    // ESP_LOGI(TAG, "Received mesh message");
     if (!payload) {
         ESP_LOGW(TAG, "Payload is NULL");
         return NULL;
     }
 
-    // Log całego payloadu
-    char *payload_str = cJSON_PrintUnformatted(payload);
-    if (payload_str) {
-        ESP_LOGI(TAG, "Received payload: %s", payload_str);
-        free(payload_str);
-    }
+    // Log entire payload
+    // char *payload_str = cJSON_PrintUnformatted(payload);
+    // if (payload_str) {
+    //     ESP_LOGI(TAG, "Received payload: %s", payload_str);
+    //     free(payload_str);
+    // }
 
     const char *target = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "target"));
 
@@ -204,7 +204,6 @@ esp_err_t mesh_lite_send_message(cJSON *payload) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    // Use new API with proper message type structure
     esp_mesh_lite_msg_config_t config = {
         .json_msg = {.send_msg = "message", // Type must match msg_actions array
                      .expect_msg = NULL,    // No response expected

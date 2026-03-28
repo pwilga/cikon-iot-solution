@@ -42,9 +42,9 @@ void inet_mesh_on_message_received(cJSON *payload) {
     }
 
     // Extract command
-    const char *cmd = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "cmd"));
-    if (cmd) {
-        ESP_LOGI(TAG, "Processing command: %s", cmd);
+    const char *cmnd = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "cmnd"));
+    if (cmnd) {
+        ESP_LOGW(TAG, "Processing command: %s", cmnd);
         // TODO: Process specific commands
     }
 }
@@ -168,13 +168,19 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
 }
 
 static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {
+
     if (stage == SUPERVISOR_INTERVAL_10S) {
-        // Send test message every 10 seconds
+
+        // Only send if dev_name is "cikonesp"
+        const char *dev_name = config_get()->dev_name;
+        if (!dev_name || strcmp(dev_name, "cikonesp") != 0) {
+            return;
+        }
+
         cJSON *msg = cJSON_CreateObject();
-        cJSON_AddStringToObject(msg, "cmd", "ping");
-        cJSON_AddStringToObject(msg, "source", config_get()->dev_name);
+        cJSON_AddStringToObject(msg, "cmnd", "ping");
+        cJSON_AddStringToObject(msg, "source", dev_name);
         cJSON_AddStringToObject(msg, "target", "atom");
-        // cJSON_AddStringToObject(msg, "target", config_get()->dev_name);
 
         ESP_LOGI(TAG, "Sending test message");
         mesh_lite_send_message(msg);
