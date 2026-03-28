@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_mesh_lite.h"
+#include "esp_mesh_lite_core.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include <string.h>
@@ -26,7 +27,15 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
 
     ESP_LOGI(TAG, "Received mesh message");
     if (!payload) {
+        ESP_LOGW(TAG, "Payload is NULL");
         return NULL;
+    }
+
+    // Log całego payloadu
+    char *payload_str = cJSON_PrintUnformatted(payload);
+    if (payload_str) {
+        ESP_LOGI(TAG, "Received payload: %s", payload_str);
+        free(payload_str);
     }
 
     const char *target = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "target"));
@@ -196,26 +205,22 @@ esp_err_t mesh_lite_send_message(cJSON *payload) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    // Add type field if not present
-    if (!cJSON_GetObjectItem(payload, "type")) {
-        cJSON_AddStringToObject(payload, "type", "message");
-    }
+    // Use new API with proper message type structure
+    esp_mesh_lite_msg_config_t config = {
+        .json_msg = {.send_msg = "message", // Type must match msg_actions array
+                     .expect_msg = NULL,    // No response expected
+                     .max_retry = 3,
+                     .retry_interval = 1000,
+                     .req_payload = payload, // cJSON object, NOT string
+                     .resend = is_mesh_root_node() ? &esp_mesh_lite_send_broadcast_msg_to_child
+                                                   : &esp_mesh_lite_send_msg_to_root,
+                     .send_fail = NULL}};
 
     char *json_str = cJSON_PrintUnformatted(payload);
-    esp_err_t ret = ESP_FAIL;
-
     if (json_str) {
         ESP_LOGI(TAG, "Sending message: %s", json_str);
-
-        if (is_mesh_root_node()) {
-            // Root broadcasts to children
-            ret = esp_mesh_lite_send_broadcast_msg_to_child(json_str);
-        } else {
-            // Children send to root
-            ret = esp_mesh_lite_send_msg_to_root(json_str);
-        }
         free(json_str);
     }
 
-    return ret;
+    return esp_mesh_lite_send_msg(ESP_MESH_LITE_JSON_MSG, &config);
 }
