@@ -17,7 +17,6 @@ static mesh_message_callback_t message_callback = NULL;
 // Forward declaration
 static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq);
 
-// Message action list (compile-time initialization like official examples)
 static const esp_mesh_lite_msg_action_t msg_actions[] = {
     {"message", NULL, mesh_lite_message_handler}, {NULL, NULL, NULL} /* Must be NULL terminated */
 };

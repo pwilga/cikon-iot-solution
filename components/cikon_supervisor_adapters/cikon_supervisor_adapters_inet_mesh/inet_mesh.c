@@ -172,10 +172,11 @@ static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {
         // Send test message every 10 seconds
         cJSON *msg = cJSON_CreateObject();
         cJSON_AddStringToObject(msg, "cmd", "ping");
+        cJSON_AddStringToObject(msg, "source", config_get()->dev_name);
         cJSON_AddStringToObject(msg, "target", "atom");
         // cJSON_AddStringToObject(msg, "target", config_get()->dev_name);
 
-        ESP_LOGI(TAG, "Sending test message to: %s", config_get()->dev_name);
+        ESP_LOGI(TAG, "Sending test message");
         mesh_lite_send_message(msg);
         cJSON_Delete(msg);
     }
