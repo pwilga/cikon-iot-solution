@@ -101,15 +101,16 @@ esp_err_t mesh_lite_init(void) {
     esp_config.join_mesh_without_configured_wifi = true;
 
     esp_mesh_lite_init(&esp_config);
-    esp_mesh_lite_start();
 
-    // Register mesh message handler (array-based like official examples)
+    // Register mesh message handler BEFORE start (like official examples)
     esp_err_t ret = esp_mesh_lite_msg_action_list_register(msg_actions);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to register message handler: %d", ret);
     } else {
         ESP_LOGI(TAG, "Registered mesh message handler");
     }
+
+    esp_mesh_lite_start();
 
     initialized = true;
     ESP_LOGI(TAG, "ESP-MESH Lite initialized successfully");
