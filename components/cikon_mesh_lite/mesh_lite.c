@@ -31,11 +31,11 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
     }
 
     // Log entire payload
-    // char *payload_str = cJSON_PrintUnformatted(payload);
-    // if (payload_str) {
-    //     ESP_LOGI(TAG, "Received payload: %s", payload_str);
-    //     free(payload_str);
-    // }
+    char *payload_str = cJSON_PrintUnformatted(payload);
+    if (payload_str) {
+        ESP_LOGI(TAG, "Received payload: %s", payload_str);
+        free(payload_str);
+    }
 
     const char *target = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "target"));
 
