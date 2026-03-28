@@ -194,7 +194,36 @@ static void tele_inet_mesh_ip_address(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, ip);
 }
 
+static void cmnd_inet_mesh_send(const char *payload) {
+    if (!payload || strlen(payload) == 0) {
+        ESP_LOGW(TAG, "Empty payload for mesh send");
+        return;
+    }
+
+    // Parse payload as JSON
+    cJSON *msg = cJSON_Parse(payload);
+    if (!msg) {
+        ESP_LOGE(TAG, "Failed to parse mesh message payload: %s", payload);
+        return;
+    }
+
+    // Add source if not present
+    if (!cJSON_GetObjectItem(msg, "source")) {
+        cJSON_AddStringToObject(msg, "source", config_get()->dev_name);
+    }
+
+    ESP_LOGI(TAG, "Sending mesh message via command");
+    esp_err_t ret = mesh_lite_send_message(msg);
+
+    cJSON_Delete(msg);
+
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to send mesh message: %d", ret);
+    }
+}
+
 static const command_entry_t inet_mesh_commands[] = {
+    {"mesh", "Send mesh message (JSON payload)", cmnd_inet_mesh_send},
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     {"ha", "Trigger Home Assistant MQTT discovery", inet_common_ha_discovery_handler},
 #endif
