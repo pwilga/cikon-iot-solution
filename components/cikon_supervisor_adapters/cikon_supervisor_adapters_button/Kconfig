@@ -1,19 +1,32 @@
 menu "Cikon IoT Supervisor Button Adapter"
-    config BUTTON_GPIO
-        int "Button GPIO Pin"
-        default 0 if IDF_TARGET_ESP32
-        default 9 if IDF_TARGET_ESP32C3
-        default 0
+    config BUTTON_MAX_COUNT
+        int "Maximum number of buttons"
+        default 4
+        range 1 16
         help
-            GPIO pin connected to the physical button.
-            Default: GPIO0 (BOOT button on most dev boards)
+            Maximum number of buttons that can be configured.
+            Adjust based on available GPIOs and memory constraints.
 
-    config BUTTON_ACTIVE_LEVEL
-        int "Button Active Level"
-        default 0
-        range 0 1
+    config BUTTON_GPIO_LIST
+        string "Button GPIO List (gpio:active_level pairs, comma-separated)"
+        default "0:0"
         help
-            Active level of the button:
-            0 = Active low (button connects to GND when pressed)
-            1 = Active high (button connects to VCC when pressed)
+            Comma-separated list of GPIO:active_level pairs for buttons.
+            Format: "gpio:active_level" where active_level is 0 (LOW) or 1 (HIGH).
+            Example: "0:0,9:0" for two buttons (GPIO0 active-low, GPIO9 active-low).
+            Example: "2:1,4:0" for GPIO2 active-high, GPIO4 active-low.
+
+    config BUTTON_SHORT_PRESS_TIME_MS
+        int "Short Press Time (ms)"
+        default 180
+        range 50 1000
+        help
+            Maximum time for a short press event (single click detection).
+
+    config BUTTON_LONG_PRESS_TIME_MS
+        int "Long Press Time (ms)"
+        default 3000
+        range 500 10000
+        help
+            Minimum time to trigger long press event.
 endmenu

@@ -5,7 +5,6 @@
 #include "esp_mesh_lite.h"
 #include "esp_mesh_lite_core.h"
 #include "esp_netif.h"
-#include "esp_wifi.h"
 #include <string.h>
 
 #define TAG "cikon:mesh_lite"
@@ -55,7 +54,7 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
     }
 
     // If root, always broadcast to children (relay) using proper API
-    if (is_mesh_root_node()) {
+    if (is_mesh_root_node() && !for_me) {
         ESP_LOGI(TAG, "Root forwarding message to children");
 
         esp_mesh_lite_msg_config_t forward_config = {
