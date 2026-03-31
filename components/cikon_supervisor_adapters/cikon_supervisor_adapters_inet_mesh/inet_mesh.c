@@ -45,6 +45,7 @@ void inet_mesh_on_message_received(cJSON *payload) {
     const char *cmnd = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "cmnd"));
     if (cmnd) {
         ESP_LOGW(TAG, "Processing command: %s", cmnd);
+        cmnd_submit("onboard_led", "\"toggle\"");
         // TODO: Process specific commands
     }
 }
