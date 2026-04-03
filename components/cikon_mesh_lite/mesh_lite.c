@@ -42,7 +42,7 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
     }
 
     if (!for_me) {
-        ESP_LOGI(TAG, "Received message not for us (target=%s), ignoring", target);
+        ESP_LOGW(TAG, "Received message not for us (target=%s), ignoring", target);
 
         // If root, always broadcast to children (relay) using proper API
         if (is_mesh_root_node()) {

@@ -18,6 +18,9 @@
 
 static bool initialized = false;
 static uint32_t last_rf_code = 0;
+static rf433_event_callback_t user_callback = NULL;
+
+void rf433_adapter_register_callback(rf433_event_callback_t callback) { user_callback = callback; }
 
 static void rf433_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data) {
 
@@ -25,20 +28,8 @@ static void rf433_event_handler(void *arg, esp_event_base_t base, int32_t id, vo
 
     ESP_LOGI(TAG, "Received code: 0x%06" PRIX32 " (%d bits)", rf_event->code, rf_event->bits);
 
-    switch (rf_event->code) {
-    case 0x5447C2:
-        ESP_LOGI(TAG, "Sonoff button pressed");
-        cmnd_submit("onboard_led", "\"toggle\"");
-        break;
-
-    case 0xB9F9C1:
-        ESP_LOGI(TAG, "Blue button pressed");
-        cmnd_submit("onboard_led", "\"toggle\"");
-        break;
-
-    default:
-        ESP_LOGW(TAG, "Unknown code: 0x%06" PRIX32, rf_event->code);
-        break;
+    if (user_callback) {
+        user_callback(rf_event->code, rf_event->bits);
     }
 
     last_rf_code = rf_event->code;
