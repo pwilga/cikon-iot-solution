@@ -29,13 +29,6 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
         return NULL;
     }
 
-    // Log entire payload with seq
-    char *payload_str = cJSON_PrintUnformatted(payload);
-    if (payload_str) {
-        ESP_LOGI(TAG, "Received payload (seq=%lu): %s", (unsigned long)seq, payload_str);
-        free(payload_str);
-    }
-
     const char *target = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "target"));
 
     // Check if message is for us (broadcast or matches our name)
@@ -48,25 +41,35 @@ static cJSON *mesh_lite_message_handler(cJSON *payload, uint32_t seq) {
         for_me = true;
     }
 
-    // Process message if it's for us
-    if (for_me && message_callback) {
-        message_callback(payload);
-    }
+    if (!for_me) {
+        ESP_LOGI(TAG, "Received message not for us (target=%s), ignoring", target);
 
-    // If root, always broadcast to children (relay) using proper API
-    if (is_mesh_root_node() && !for_me) {
-        ESP_LOGI(TAG, "Root forwarding message to children");
+        // If root, always broadcast to children (relay) using proper API
+        if (is_mesh_root_node()) {
+            ESP_LOGI(TAG, "Root forwarding message to children");
 
-        esp_mesh_lite_msg_config_t forward_config = {
-            .json_msg = {.send_msg = "message",
-                         .expect_msg = NULL,
-                         .max_retry = 0,
-                         .retry_interval = 1000,
-                         .req_payload = payload, // Forward same payload
-                         .resend = &esp_mesh_lite_send_broadcast_msg_to_child,
-                         .send_fail = NULL}};
+            esp_mesh_lite_msg_config_t forward_config = {
+                .json_msg = {.send_msg = "message",
+                             .expect_msg = NULL,
+                             .max_retry = 0,
+                             .retry_interval = 1000,
+                             .req_payload = payload, // Forward same payload
+                             .resend = &esp_mesh_lite_send_broadcast_msg_to_child,
+                             .send_fail = NULL}};
 
-        esp_mesh_lite_send_msg(ESP_MESH_LITE_JSON_MSG, &forward_config);
+            esp_mesh_lite_send_msg(ESP_MESH_LITE_JSON_MSG, &forward_config);
+        }
+
+    } else {
+        // Log entire payload with seq
+        char *payload_str = cJSON_PrintUnformatted(payload);
+        if (payload_str) {
+            ESP_LOGI(TAG, "Received payload (seq=%lu): %s", (unsigned long)seq, payload_str);
+            free(payload_str);
+        }
+        if (message_callback) {
+            message_callback(payload);
+        }
     }
 
     return NULL;
@@ -196,7 +199,6 @@ void mesh_log_topology(void) {
 
 void mesh_lite_register_message_callback(mesh_message_callback_t callback) {
     message_callback = callback;
-    // ESP_LOGI(TAG, "Message callback %s", callback ? "registered" : "unregistered");
 }
 
 esp_err_t mesh_lite_send_message(cJSON *payload) {

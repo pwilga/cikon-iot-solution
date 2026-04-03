@@ -28,25 +28,20 @@ static esp_event_handler_instance_t inet_mesh_wifi_handler = NULL;
 static esp_event_handler_instance_t inet_mesh_ip_handler = NULL;
 
 // Mesh message callback
-void inet_mesh_on_message_received(cJSON *payload) {
-    if (!payload) {
-        ESP_LOGW(TAG, "Received NULL payload");
+static void inet_mesh_on_message_received(cJSON *payload) {
+    if (!payload)
+        return;
+
+    cJSON *cmnd = cJSON_GetObjectItem(payload, "cmnd");
+    if (cmnd) {
+        char *str = cJSON_PrintUnformatted(cmnd);
+        cmnd_process_json(str);
+        free(str);
         return;
     }
 
-    // Log received message
-    char *msg_str = cJSON_PrintUnformatted(payload);
-    if (msg_str) {
-        ESP_LOGI(TAG, "Mesh message: %s", msg_str);
-        free(msg_str);
-    }
-
-    // Extract command
-    const char *cmnd = cJSON_GetStringValue(cJSON_GetObjectItem(payload, "cmnd"));
-    if (cmnd) {
-        ESP_LOGW(TAG, "Processing command: %s", cmnd);
-        cmnd_submit("onboard_led", "\"toggle\"");
-        // TODO: Process specific commands
+    if (cJSON_GetObjectItem(payload, "tele")) {
+        // TODO: handle incoming telemetry
     }
 }
 
@@ -72,7 +67,7 @@ static esp_err_t inet_mesh_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing inet_mesh adapter");
 
-    // Register message callback BEFORE mesh init to avoid race condition
+    // Register generic cmnd/tele dispatch BEFORE mesh init to avoid race condition
     mesh_lite_register_message_callback(inet_mesh_on_message_received);
 
     mesh_lite_config_t mesh_cfg = {
@@ -168,27 +163,6 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
     }
 }
 
-static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {
-
-    if (stage == SUPERVISOR_INTERVAL_10S) {
-
-        // Only send if dev_name is "cikonesp"
-        const char *dev_name = config_get()->dev_name;
-        if (!dev_name || strcmp(dev_name, "cikonesp") != 0) {
-            return;
-        }
-
-        cJSON *msg = cJSON_CreateObject();
-        cJSON_AddStringToObject(msg, "cmnd", "ping");
-        cJSON_AddStringToObject(msg, "source", dev_name);
-        cJSON_AddStringToObject(msg, "target", "atom");
-
-        ESP_LOGI(TAG, "Sending test message");
-        mesh_lite_send_message(msg);
-        cJSON_Delete(msg);
-    }
-}
-
 static void tele_inet_mesh_ip_address(const char *tele_id, cJSON *json_root) {
     char ip[16];
     inet_common_get_sta_ip(ip, sizeof(ip));
@@ -201,14 +175,12 @@ static void cmnd_inet_mesh_send(const char *payload) {
         return;
     }
 
-    // Parse payload as JSON
     cJSON *msg = cJSON_Parse(payload);
     if (!msg) {
         ESP_LOGE(TAG, "Failed to parse mesh message payload: %s", payload);
         return;
     }
 
-    // Add source if not present
     if (!cJSON_GetObjectItem(msg, "source")) {
         cJSON_AddStringToObject(msg, "source", config_get()->dev_name);
     }
@@ -224,7 +196,7 @@ static void cmnd_inet_mesh_send(const char *payload) {
 }
 
 static const command_entry_t inet_mesh_commands[] = {
-    {"mesh", "Send mesh message (JSON payload)", cmnd_inet_mesh_send},
+    {"mesh_send", "Send mesh message (JSON payload)", cmnd_inet_mesh_send},
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     {"ha", "Trigger Home Assistant MQTT discovery", inet_common_ha_discovery_handler},
 #endif
@@ -235,7 +207,6 @@ supervisor_platform_adapter_t inet_mesh_adapter = {
     .init = inet_mesh_adapter_init,
     .shutdown = inet_mesh_adapter_shutdown,
     .on_event = inet_mesh_adapter_on_event,
-    .on_interval = inet_mesh_adapter_on_interval,
     .tele_group = (const tele_entry_t[]){{"ip", tele_inet_mesh_ip_address}, {NULL, NULL}},
     .cmnd_group = inet_mesh_commands,
 };
