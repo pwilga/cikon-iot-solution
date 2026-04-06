@@ -1,0 +1,43 @@
+menu "Cikon NeoPixel Configuration"
+
+    config NEOPIXEL_GPIO_PIN
+        int "NeoPixel GPIO Pin"
+        default 38 if IDF_TARGET_ESP32S3
+        default 27 if IDF_TARGET_ESP32
+        default 8  if IDF_TARGET_ESP32C3
+        default 27
+        help
+            GPIO pin connected to the NeoPixel data line.
+
+    config NEOPIXEL_LED_COUNT
+        int "Number of LEDs"
+        default 1
+        range 1 1024
+        help
+            Total number of LEDs in the strip or matrix.
+            For 8x8 matrix set this to 64.
+
+    config NEOPIXEL_MATRIX_WIDTH
+        int "Matrix width (1 for linear strip)"
+        default 1
+        range 1 64
+        help
+            Width of the LED matrix. Set to 1 for a linear strip.
+            For an 8x8 matrix set to 8.
+
+    config NEOPIXEL_MATRIX_SNAKE
+        bool "Use snake/zigzag pixel mapping for matrix"
+        default y
+        depends on NEOPIXEL_MATRIX_WIDTH > 1
+        help
+            When enabled, odd rows are reversed (snake/zigzag wiring).
+            Disable for linear row-by-row wiring.
+
+    config NEOPIXEL_DEFAULT_BRIGHTNESS
+        int "Default brightness (0-255)"
+        default 128
+        range 0 255
+        help
+            Initial brightness applied to all pixels.
+
+endmenu
