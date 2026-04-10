@@ -1,6 +1,6 @@
 name: cikon_neopixel
 version: "1.0.0"
-description: "Cikon IoT Solution - NeoPixel LED strip driver with effects and matrix support"
+description: "Cikon IoT Solution - NeoPixel LED strip driver with basic effects"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:

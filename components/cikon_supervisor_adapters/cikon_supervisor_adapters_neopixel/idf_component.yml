@@ -1,0 +1,27 @@
+name: cikon_supervisor_adapters_neopixel
+version: "1.0.0"
+description: "Supervisor NeoPixel adapter - WS2812 LED strip control with effects"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_neopixel:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_neopixel
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
+  espressif/cjson: "*"
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6

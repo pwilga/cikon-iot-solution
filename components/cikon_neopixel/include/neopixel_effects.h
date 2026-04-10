@@ -12,8 +12,6 @@ typedef enum {
     NEOPIXEL_EFFECT_BLINK,
     NEOPIXEL_EFFECT_PULSE,
     NEOPIXEL_EFFECT_RAINBOW,
-    NEOPIXEL_EFFECT_SCAN,
-    NEOPIXEL_EFFECT_MATRIX,
 } neopixel_effect_t;
 
 /**
@@ -22,7 +20,7 @@ typedef enum {
  * Stops any currently running effect and starts the new one in a FreeRTOS task.
  *
  * @param effect  Effect type
- * @param color   RGB color packed as 0x00RRGGBB (ignored for rainbow/matrix)
+ * @param color   RGB color packed as 0x00RRGGBB (ignored for rainbow)
  * @param speed   Effect speed (1=slow, 10=fast)
  */
 void neopixel_effect_start(neopixel_effect_t effect, uint32_t color, uint8_t speed);
