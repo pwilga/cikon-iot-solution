@@ -8,8 +8,27 @@ maintainers:
 
 dependencies:
   idf: ">=5.4"
-  espressif/mesh_lite: "*"
-  espressif/iot_bridge: "*"
+
+  # IMPORTANT: Conditional dependencies prevent unwanted component pulling when using EXTRA_COMPONENT_DIRS
+  # Without conditions, ESP Component Manager would scan ALL components in the directory and attempt to
+  # resolve their dependencies unconditionally, even if the component is not used in the project.
+  # This causes issues when external components (mesh_lite, iot_bridge) have strict IDF version requirements
+  # or heavy dependencies that should only be pulled when explicitly needed.
+  #
+  # The condition CONFIG{ENABLE_SUPERVISOR_INET_MESH} ensures mesh_lite dependencies are ONLY resolved when:
+  # 1. cikon_supervisor_adapters_inet_mesh is enabled in the project
+  # 2. The project actually needs mesh functionality
+  # This keeps builds clean and avoids IDF version conflicts in non-mesh projects.
+
+  espressif/mesh_lite:
+    version: "*"
+    matches:
+      - if: "$CONFIG{ENABLE_SUPERVISOR_INET_MESH} == True"
+
+  espressif/iot_bridge:
+    version: "*"
+    matches:
+      - if: "$CONFIG{ENABLE_SUPERVISOR_INET_MESH} == True"
 
 targets:
   - esp32

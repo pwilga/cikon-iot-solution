@@ -23,6 +23,7 @@
 #define TAG "cikon:adapter:inet_mesh"
 
 static bool initialized = false;
+static bool last_internet_reachable = false;
 
 static esp_event_handler_instance_t inet_mesh_wifi_handler = NULL;
 static esp_event_handler_instance_t inet_mesh_ip_handler = NULL;
@@ -47,15 +48,34 @@ static void inet_mesh_on_message_received(cJSON *payload) {
 
 static void inet_mesh_netif_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                           void *event_data) {
+
     if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         supervisor_notify_event(INET_EVENT_STA_READY);
-    }
-
-    if (event_base == WIFI_EVENT) {
+    } else if (event_base == WIFI_EVENT) {
         switch (event_id) {
+        case WIFI_EVENT_STA_DISCONNECTED:
+            supervisor_notify_event(INET_EVENT_STA_LOST);
+            break;
         case WIFI_EVENT_AP_START:
             supervisor_notify_event(INET_EVENT_AP_READY);
             break;
+        }
+    }
+}
+
+static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {
+
+    if (stage == SUPERVISOR_INTERVAL_5S) {
+        bool current_state = is_internet_reachable();
+
+        // Only notify on state change
+        if (current_state != last_internet_reachable) {
+            if (current_state) {
+                supervisor_notify_event(INET_INTERNET_READY);
+            } else {
+                supervisor_notify_event(INET_INTERNET_LOST);
+            }
+            last_internet_reachable = current_state;
         }
     }
 }
@@ -207,6 +227,7 @@ supervisor_platform_adapter_t inet_mesh_adapter = {
     .init = inet_mesh_adapter_init,
     .shutdown = inet_mesh_adapter_shutdown,
     .on_event = inet_mesh_adapter_on_event,
+    .on_interval = inet_mesh_adapter_on_interval,
     .tele_group = (const tele_entry_t[]){{"ip", tele_inet_mesh_ip_address}, {NULL, NULL}},
     .cmnd_group = inet_mesh_commands,
 };

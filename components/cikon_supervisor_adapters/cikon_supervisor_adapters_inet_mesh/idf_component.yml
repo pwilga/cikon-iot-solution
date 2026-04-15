@@ -17,6 +17,8 @@ dependencies:
   cikon_core:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_core
+  # Conditional dependency prevents pulling mesh_lite (and its heavy external deps) when EXTRA_COMPONENT_DIRS is used
+  # Avoids IDF version conflicts and unwanted component scanning in non-mesh projects
   cikon_mesh_lite:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_mesh_lite

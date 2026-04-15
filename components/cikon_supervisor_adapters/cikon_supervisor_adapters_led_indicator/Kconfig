@@ -1,0 +1,17 @@
+menu "Cikon IoT Supervisor LED Indicator Adapter"
+    config LED_INDICATOR_GPIO
+        int "LED Indicator GPIO number"
+        default 35
+        range 0 48
+        help
+            GPIO pin connected to status LED (SK6812/WS2812).
+            For AtomS3 Lite: GPIO 35 (built-in RGB LED).
+
+    config LED_INDICATOR_BRIGHTNESS
+        int "LED Indicator brightness (0-255)"
+        default 90
+        range 0 255
+        help
+            Global brightness for all LED effects.
+            0 = off, 255 = full brightness.
+endmenu
