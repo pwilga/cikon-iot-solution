@@ -21,7 +21,7 @@ dependencies:
   # This keeps builds clean and avoids IDF version conflicts in non-mesh projects.
 
   espressif/mesh_lite:
-    version: "*"
+    version: "^1.0.2"
     matches:
       - if: "$CONFIG{ENABLE_SUPERVISOR_INET_MESH} == True"
 
