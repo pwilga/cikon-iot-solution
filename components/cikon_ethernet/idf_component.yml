@@ -1,0 +1,22 @@
+name: cikon_ethernet
+version: "1.0.0"
+description: "Cikon IoT Ethernet abstraction layer (W5500 SPI + ESP32-P4 OpenETH)"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=6.0"
+
+  # W5500 SPI Ethernet controller (from ESP Component Registry)
+  espressif/w5500: "*"
+
+
+targets:
+  - esp32
+  - esp32s2
+  - esp32s3
+  - esp32c3
+  - esp32c6
+  - esp32p4

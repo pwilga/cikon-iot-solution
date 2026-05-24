@@ -1,0 +1,156 @@
+menu "Cikon Ethernet Hardware"
+
+choice CIKON_ETHERNET_HARDWARE
+    prompt "Ethernet Hardware Type"
+    default CIKON_ETHERNET_W5500 if !IDF_TARGET_ESP32P4
+    default CIKON_ETHERNET_OPENETH if IDF_TARGET_ESP32P4
+    help
+        Select the physical Ethernet hardware to use.
+        
+        W5500: External SPI Ethernet controller with integrated MAC+PHY.
+        Supports ESP32, ESP32-S3, ESP32-C3, ESP32-C6.
+        
+        OpenETH: ESP32-P4 built-in Ethernet MAC with external PHY.
+        Requires ESP32-P4 SoC.
+    
+config CIKON_ETHERNET_W5500
+    bool "W5500 (SPI)"
+    depends on !IDF_TARGET_ESP32P4
+    help
+        WIZnet W5500 SPI Ethernet controller with integrated MAC+PHY+TCP/IP stack.
+        Requires SPI interface (MOSI/MISO/SCK/CS/INT pins).
+        
+        Typical use case: Add Ethernet to ESP32/S3/C3/C6 via SPI.
+    
+config CIKON_ETHERNET_OPENETH
+    bool "ESP32-P4 OpenETH + External PHY"
+    depends on IDF_TARGET_ESP32P4
+    help
+        ESP32-P4 built-in Ethernet MAC (OpenETH core) with external PHY chip.
+        Uses RMII interface (pins are fixed by hardware).
+        
+        Typical use case: M5Stack PoE-P4 with IP101 PHY + PoE support.
+endchoice
+
+# ===== W5500 Configuration =====
+if CIKON_ETHERNET_W5500
+    menu "W5500 SPI Configuration"
+        config W5500_SPI_HOST
+            int "SPI Host"
+            default 2
+            range 1 3
+            help
+                SPI peripheral to use (SPI2 or SPI3).
+                SPI1 is reserved for flash.
+        
+        config W5500_SPI_CLOCK_MHZ
+            int "SPI Clock Speed (MHz)"
+            default 20
+            range 1 80
+            help
+                SPI clock frequency in MHz. W5500 supports up to 80MHz.
+                Recommended: 20MHz for reliable operation.
+        
+        config W5500_SPI_SCLK_GPIO
+            int "SPI SCLK GPIO"
+            default 18
+            help
+                GPIO number for SPI clock signal.
+        
+        config W5500_SPI_MOSI_GPIO
+            int "SPI MOSI GPIO"
+            default 23
+            help
+                GPIO number for SPI Master Out Slave In.
+        
+        config W5500_SPI_MISO_GPIO
+            int "SPI MISO GPIO"
+            default 19
+            help
+                GPIO number for SPI Master In Slave Out.
+        
+        config W5500_SPI_CS_GPIO
+            int "SPI CS GPIO"
+            default 15
+            help
+                GPIO number for SPI Chip Select.
+        
+        config W5500_INT_GPIO
+            int "Interrupt GPIO (-1 = polling mode)"
+            default 4
+            help
+                GPIO number for W5500 interrupt signal.
+                Set to -1 to use polling mode instead (not recommended).
+        
+        config W5500_POLLING_MS
+            int "Polling Interval (ms) if no interrupt"
+            default 1000
+            range 100 10000
+            depends on W5500_INT_GPIO < 0
+            help
+                Polling period in milliseconds when interrupt is not used.
+                Only applies if W5500_INT_GPIO is set to -1.
+        
+        config W5500_PHY_RST_GPIO
+            int "PHY Reset GPIO (-1 = no reset)"
+            default -1
+            help
+                GPIO number for W5500 hardware reset.
+                Set to -1 if reset pin is not connected.
+        
+        config W5500_PHY_ADDR
+            int "PHY Address"
+            default 1
+            range 0 31
+            help
+                PHY address for W5500 (typically 1).
+    endmenu
+endif
+
+# ===== ESP32-P4 OpenETH Configuration =====
+if CIKON_ETHERNET_OPENETH
+    choice CIKON_ETHERNET_PHY
+        prompt "External PHY Chip"
+        default CIKON_ETHERNET_PHY_IP101
+        help
+            Select the physical Ethernet PHY chip connected to ESP32-P4 MAC.
+            
+            IP101: Used in M5Stack PoE-P4 (IP101GRI).
+            Generic: Auto-detect any IEEE 802.3 compliant PHY.
+        
+    config CIKON_ETHERNET_PHY_IP101
+        bool "IP101 (e.g., M5Stack PoE-P4)"
+        help
+            IC Plus IP101GRI Ethernet PHY.
+            Used in M5Stack PoE-P4 development board.
+    
+    config CIKON_ETHERNET_PHY_GENERIC
+        bool "Generic IEEE 802.3 PHY"
+        help
+            Auto-detect any standard-compliant Ethernet PHY.
+            Compatible with most RMII PHY chips.
+    endchoice
+    
+    menu "PHY Configuration"
+        config ETHERNET_PHY_ADDR
+            int "PHY Address (SMI/MDIO)"
+            default 1
+            range 0 31
+            help
+                PHY address on MDIO bus. Typically 0 or 1.
+                Check your hardware schematic for the correct value.
+                
+                M5Stack PoE-P4: Use default value 1.
+        
+        config ETHERNET_PHY_RST_GPIO
+            int "PHY Reset GPIO (-1 = no reset)"
+            default -1
+            help
+                GPIO number for PHY hardware reset.
+                Set to -1 if reset pin is not used.
+                
+                M5Stack PoE-P4: Reset is handled by hardware, use -1.
+    endmenu
+endif
+
+endmenu
