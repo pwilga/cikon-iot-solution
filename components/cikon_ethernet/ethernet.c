@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_netif.h"
 #include "ethernet.h"
 #include "ethernet_backend.h"
@@ -87,7 +88,21 @@ esp_err_t ethernet_init(void) {
         return ret;
     }
 
-    // Step 4: Start driver (like all adapters - init does EVERYTHING)
+    // Step 4: Set MAC address from ESP32 base MAC (W5500 has no EEPROM)
+    uint8_t mac[6];
+    ret = esp_efuse_mac_get_default(mac);
+    if (ret == ESP_OK) {
+        ret = esp_eth_ioctl(s_eth_handle, ETH_CMD_S_MAC_ADDR, mac);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to set MAC address: %s", esp_err_to_name(ret));
+        } else {
+            ESP_LOGI(TAG, "MAC address set: " MACSTR, MAC2STR(mac));
+        }
+    } else {
+        ESP_LOGW(TAG, "Failed to read base MAC: %s", esp_err_to_name(ret));
+    }
+
+    // Step 5: Start driver (like all adapters - init does EVERYTHING)
     ret = esp_eth_start(s_eth_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start driver: %s", esp_err_to_name(ret));

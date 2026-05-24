@@ -118,14 +118,30 @@ static esp_err_t inet_ethernet_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing Ethernet network adapter");
 
-    // Step 1: Initialize Ethernet stack (hardware + netif + glue)
+    // Step 1: Register event handlers BEFORE initializing hardware
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        ETH_EVENT, ESP_EVENT_ANY_ID, &inet_ethernet_netif_event_handler, NULL, &inet_eth_handler));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_ETH_GOT_IP, &inet_ethernet_netif_event_handler, NULL, &inet_ip_handler));
+
+    // Step 2: Initialize Ethernet stack (hardware + netif + glue + start driver)
     esp_err_t ret = ethernet_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Ethernet stack init failed: %s", esp_err_to_name(ret));
+        // Cleanup event handlers on failure
+        if (inet_ip_handler) {
+            esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, inet_ip_handler);
+            inet_ip_handler = NULL;
+        }
+        if (inet_eth_handler) {
+            esp_event_handler_instance_unregister(ETH_EVENT, ESP_EVENT_ANY_ID, inet_eth_handler);
+            inet_eth_handler = NULL;
+        }
         return ret;
     }
 
-    // Step 2: Configure network services (mdns, sntp, mqtt)
+    // Step 3: Configure network services (mdns, sntp, mqtt)
     const char *hostname = inet_common_get_hostname();
     inet_common_mdns_configure(hostname, config_get()->mdns_instance);
 
@@ -134,13 +150,6 @@ static esp_err_t inet_ethernet_adapter_init(void) {
         inet_ethernet_sntp_sync_cb);
 
     inet_common_configure_mqtt();
-
-    // Step 3: Register event handlers for Ethernet events
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        ETH_EVENT, ESP_EVENT_ANY_ID, &inet_ethernet_netif_event_handler, NULL, &inet_eth_handler));
-
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT, IP_EVENT_ETH_GOT_IP, &inet_ethernet_netif_event_handler, NULL, &inet_ip_handler));
 
     // Step 4: Register platform callbacks
     set_restart_callback(inet_ethernet_restart_cb);

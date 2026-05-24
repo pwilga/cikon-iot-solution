@@ -165,8 +165,6 @@ static esp_err_t w5500_backend_shutdown(esp_eth_handle_t handle) {
     return ESP_OK;
 }
 
-// ===== Backend Registration =====
-
 const ethernet_backend_t ethernet_backend_w5500 = {
     .init = w5500_backend_init, .shutdown = w5500_backend_shutdown, .name = "W5500"};
 
