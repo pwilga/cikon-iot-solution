@@ -5,6 +5,8 @@
  * Copyright (c) 2026 Piotr Wilga
  */
 
+#include "sdkconfig.h"
+
 #ifdef CONFIG_CIKON_ETHERNET_OPENETH
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep

@@ -20,5 +20,6 @@ idf_component_register(
     PRIV_REQUIRES
         esp_eth
         esp_netif
-        driver  # For SPI (W5500)
+        esp_driver_gpio  # For GPIO (W5500 reset/interrupt)
+        esp_driver_spi   # For SPI (W5500)
 )

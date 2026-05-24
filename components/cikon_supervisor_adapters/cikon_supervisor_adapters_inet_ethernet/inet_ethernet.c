@@ -1,16 +1,7 @@
-/*
- * SPDX-License-Identifier: MIT
- *
- * Cikon IoT Supervisor - Ethernet Network Adapter
- * Copyright (c) 2026 Piotr Wilga
- */
-
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
-#include <string.h>
 #include <time.h>
 
-#include "esp_eth.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -41,16 +32,10 @@ static bool initialized = false;
 static bool services_running = false;
 static bool last_internet_reachable = false;
 
-static esp_eth_handle_t s_eth_handle = NULL;
-static esp_netif_t *s_eth_netif = NULL;
-static esp_eth_netif_glue_handle_t s_eth_glue = NULL;
-
 static esp_event_handler_instance_t inet_eth_handler = NULL;
 static esp_event_handler_instance_t inet_ip_handler = NULL;
 
 static bool shutdown_ota = true;
-
-// ===== Lifecycle Management =====
 
 static void inet_ethernet_stop_services(void) {
     if (!services_running) {
@@ -104,7 +89,7 @@ static void inet_ethernet_netif_event_handler(void *arg, esp_event_base_t event_
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Ethernet Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
         supervisor_notify_event(INET_EVENT_STA_READY); // Reuse STA_READY event
-    } else if (event_base == ETHERNET_EVENT) {
+    } else if (event_base == ETH_EVENT) {
         switch (event_id) {
         case ETHERNET_EVENT_CONNECTED:
             ESP_LOGI(TAG, "Ethernet Link Up");
@@ -133,43 +118,32 @@ static esp_err_t inet_ethernet_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing Ethernet network adapter");
 
-    // Step 1: Initialize TCP/IP network interface (once)
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-    // Step 2: Initialize Ethernet hardware (cikon_ethernet)
-    esp_err_t ret = ethernet_init(&s_eth_handle);
+    // Step 1: Initialize Ethernet stack (hardware + netif + glue)
+    esp_err_t ret = ethernet_init();
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Ethernet hardware init failed: %s", esp_err_to_name(ret));
+        ESP_LOGE(TAG, "Ethernet stack init failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    // Step 3: Create network interface for Ethernet
-    esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
-    s_eth_netif = esp_netif_new(&cfg);
-    if (s_eth_netif == NULL) {
-        ESP_LOGE(TAG, "Failed to create esp_netif");
-        ethernet_shutdown(s_eth_handle);
-        return ESP_FAIL;
-    }
+    // Step 2: Configure network services (mdns, sntp, mqtt)
+    const char *hostname = inet_common_get_hostname();
+    inet_common_mdns_configure(hostname, config_get()->mdns_instance);
 
-    // Step 4: Attach Ethernet driver to TCP/IP stack
-    s_eth_glue = esp_eth_new_netif_glue(s_eth_handle);
-    ESP_ERROR_CHECK(esp_netif_attach(s_eth_netif, s_eth_glue));
+    inet_common_sntp_configure(
+        (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3},
+        inet_ethernet_sntp_sync_cb);
 
-    // Step 5: Register event handlers
+    inet_common_configure_mqtt();
+
+    // Step 3: Register event handlers for Ethernet events
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         ETH_EVENT, ESP_EVENT_ANY_ID, &inet_ethernet_netif_event_handler, NULL, &inet_eth_handler));
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_ETH_GOT_IP, &inet_ethernet_netif_event_handler, NULL, &inet_ip_handler));
 
-    // Step 6: Register platform callbacks
+    // Step 4: Register platform callbacks
     set_restart_callback(inet_ethernet_restart_cb);
-    inet_common_sntp_set_sync_cb(inet_ethernet_sntp_sync_cb);
-
-    // Step 7: Start Ethernet driver
-    ESP_ERROR_CHECK(esp_eth_start(s_eth_handle));
 
     initialized = true;
     ESP_LOGI(TAG, "Ethernet adapter initialized, waiting for IP...");
@@ -184,12 +158,7 @@ static esp_err_t inet_ethernet_adapter_shutdown(void) {
 
     ESP_LOGI(TAG, "Shutting down Ethernet adapter");
 
-    // Step 1: Stop Ethernet driver
-    if (s_eth_handle) {
-        esp_eth_stop(s_eth_handle);
-    }
-
-    // Step 2: Unregister event handlers
+    // Step 1: Unregister event handlers
     if (inet_ip_handler) {
         esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, inet_ip_handler);
         inet_ip_handler = NULL;
@@ -200,28 +169,14 @@ static esp_err_t inet_ethernet_adapter_shutdown(void) {
         inet_eth_handler = NULL;
     }
 
-    // Step 3: Stop all services
+    // Step 2: Stop all services
     inet_ethernet_stop_services();
 
-    // Step 4: Unregister callbacks
+    // Step 3: Unregister callbacks
     set_restart_callback(NULL);
 
-    // Step 5: Cleanup network interface
-    if (s_eth_glue) {
-        esp_eth_del_netif_glue(s_eth_glue);
-        s_eth_glue = NULL;
-    }
-
-    if (s_eth_netif) {
-        esp_netif_destroy(s_eth_netif);
-        s_eth_netif = NULL;
-    }
-
-    // Step 6: Shutdown Ethernet hardware
-    if (s_eth_handle) {
-        ethernet_shutdown(s_eth_handle);
-        s_eth_handle = NULL;
-    }
+    // Step 4: Shutdown Ethernet stack (hardware + netif + glue)
+    ethernet_shutdown();
 
     shutdown_ota = true;
     initialized = false;
@@ -320,8 +275,6 @@ static void inet_ethernet_adapter_on_interval(supervisor_interval_stage_t stage)
     }
 }
 
-// ===== Command Handlers =====
-
 static void sntp_handler(const char *args_json_str) {
     logic_state_t sntp_state = json_str_as_logic_state(args_json_str);
 
@@ -360,30 +313,16 @@ static void monitor_handler(const char *args_json_str) {
     }
 }
 
-// ===== Telemetry =====
-
 static void tele_inet_ethernet_ip_address(const char *tele_id, cJSON *json_root) {
-    if (!s_eth_netif) {
-        cJSON_AddStringToObject(json_root, tele_id, "N/A");
-        return;
-    }
-
-    esp_netif_ip_info_t ip_info;
-    if (esp_netif_get_ip_info(s_eth_netif, &ip_info) == ESP_OK) {
-        char ip_str[16];
-        snprintf(ip_str, sizeof(ip_str), IPSTR, IP2STR(&ip_info.ip));
-        cJSON_AddStringToObject(json_root, tele_id, ip_str);
-    } else {
-        cJSON_AddStringToObject(json_root, tele_id, "0.0.0.0");
-    }
+    char ip_str[16];
+    ethernet_get_interface_ip(ip_str, sizeof(ip_str));
+    cJSON_AddStringToObject(json_root, tele_id, ip_str);
 }
 
 static void tele_inet_ethernet_backend(const char *tele_id, cJSON *json_root) {
     const char *backend = ethernet_get_backend_name();
     cJSON_AddStringToObject(json_root, tele_id, backend);
 }
-
-// ===== Adapter Registration =====
 
 static const command_entry_t inet_ethernet_commands[] = {
     {"sntp", "Control SNTP service (on/off)", sntp_handler},
