@@ -1,0 +1,31 @@
+dependencies:
+  idf: ">=6.0"
+  
+  # Internal dependencies (from same repo)
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
+  
+  cikon_inet_common:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_inet_common
+  
+  cikon_ethernet:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_ethernet
+  
+  cikon_mqtt:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_mqtt
+  
+  cikon_tcp_ota:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_tcp_ota
+  
+  cikon_tcp_monitor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_tcp_monitor
