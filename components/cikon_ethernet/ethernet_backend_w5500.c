@@ -79,10 +79,8 @@ static esp_err_t w5500_backend_init(esp_eth_handle_t *out_handle) {
     ESP_LOGI(TAG, "Configuration: CS=%d, INT=%d, RST=%d, PHY_ADDR=%d", CONFIG_W5500_SPI_CS_GPIO,
              CONFIG_W5500_INT_GPIO, CONFIG_W5500_PHY_RST_GPIO, CONFIG_W5500_PHY_ADDR);
 
-    // Step 1: Initialize SPI bus
     ESP_RETURN_ON_ERROR(w5500_init_spi_bus(), TAG, "SPI bus init failed");
 
-    // Step 2: Configure SPI device for W5500
     spi_device_interface_config_t devcfg = {
         .mode = 0,
         .clock_speed_hz = CONFIG_W5500_SPI_CLOCK_MHZ * 1000 * 1000,
@@ -90,7 +88,6 @@ static esp_err_t w5500_backend_init(esp_eth_handle_t *out_handle) {
         .spics_io_num = CONFIG_W5500_SPI_CS_GPIO,
     };
 
-    // Step 3: Create W5500-specific MAC configuration
     eth_w5500_config_t w5500_config = ETH_W5500_DEFAULT_CONFIG(CONFIG_W5500_SPI_HOST, &devcfg);
 
     // Configure interrupt or polling mode
@@ -103,14 +100,12 @@ static esp_err_t w5500_backend_init(esp_eth_handle_t *out_handle) {
     ESP_LOGI(TAG, "Using polling mode (%d ms)", CONFIG_W5500_POLLING_MS);
 #endif
 
-    // Step 4: Create common MAC and PHY configs
     eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
 
     phy_config.phy_addr = CONFIG_W5500_PHY_ADDR;
     phy_config.reset_gpio_num = CONFIG_W5500_PHY_RST_GPIO;
 
-    // Step 5: Create W5500 MAC and PHY instances
     esp_eth_mac_t *mac = esp_eth_mac_new_w5500(&w5500_config, &mac_config);
     ESP_RETURN_ON_FALSE(mac, ESP_FAIL, TAG, "Failed to create W5500 MAC");
 
@@ -121,7 +116,6 @@ static esp_err_t w5500_backend_init(esp_eth_handle_t *out_handle) {
         return ESP_FAIL;
     }
 
-    // Step 6: Install Ethernet driver
     esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
     esp_eth_handle_t eth_handle = NULL;
 
@@ -141,16 +135,13 @@ static esp_err_t w5500_backend_init(esp_eth_handle_t *out_handle) {
 static esp_err_t w5500_backend_shutdown(esp_eth_handle_t handle) {
     ESP_LOGI(TAG, "Shutting down W5500");
 
-    // Step 1: Get MAC and PHY instances before uninstalling driver
     esp_eth_mac_t *mac = NULL;
     esp_eth_phy_t *phy = NULL;
     esp_eth_get_mac_instance(handle, &mac);
     esp_eth_get_phy_instance(handle, &phy);
 
-    // Step 2: Uninstall driver
     ESP_RETURN_ON_ERROR(esp_eth_driver_uninstall(handle), TAG, "Ethernet driver uninstall failed");
 
-    // Step 3: Delete MAC and PHY instances
     if (mac != NULL) {
         mac->del(mac);
     }
@@ -158,7 +149,6 @@ static esp_err_t w5500_backend_shutdown(esp_eth_handle_t handle) {
         phy->del(phy);
     }
 
-    // Step 4: Deinitialize SPI bus
     w5500_deinit_spi_bus();
 
     ESP_LOGI(TAG, "W5500 shutdown complete");

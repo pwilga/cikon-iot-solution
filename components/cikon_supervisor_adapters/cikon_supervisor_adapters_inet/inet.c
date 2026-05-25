@@ -89,11 +89,6 @@ void inet_switch_to_sta_mode(void) {
     xSemaphoreGive(network_transition_mutex);
 }
 
-static void inet_sntp_sync_cb(struct timeval *tv) {
-    ESP_LOGI(TAG, "SNTP time synchronized");
-    supervisor_notify_event(INET_EVENT_TIME_SYNCED);
-}
-
 static void inet_restart_cb(void) {
     // Unregister event handlers first (safe for both modes)
     wifi_unregister_event_handlers();
@@ -175,41 +170,6 @@ esp_err_t inet_adapter_init(void) {
                                 .ap_password = NULL};
 
     wifi_configure(&creds);
-
-    const char *hostname = config_get()->mdns_host;
-    if (strlen(hostname) == 0) {
-        hostname = config_get()->dev_name;
-    }
-
-    inet_common_mdns_configure(hostname, config_get()->mdns_instance);
-
-    inet_common_sntp_configure(
-        (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3},
-        inet_sntp_sync_cb);
-
-    static char device_url[64];
-
-    // TODO: Ethernet support ? Check both interfaces
-    snprintf(device_url, sizeof(device_url), "%s.local", hostname);
-
-    mqtt_config_t mqtt_cfg = {.client_id = get_client_id(),
-                              .device_name = config_get()->dev_name,
-                              .device_manufacturer = "Cikon Systems",
-                              .device_model = CONFIG_IDF_TARGET,
-                              .device_sw_version = "v1.0.0",
-                              .device_hw_version = CONFIG_IDF_INIT_VERSION,
-                              .device_uri = device_url,
-                              .mqtt_node = config_get()->mqtt_node,
-                              .mqtt_broker = config_get()->mqtt_broker,
-                              .mqtt_user = config_get()->mqtt_user,
-                              .mqtt_pass = config_get()->mqtt_pass,
-                              .mqtt_mtls_en = config_get()->mqtt_mtls_en,
-                              .mqtt_max_retry = config_get()->mqtt_max_retry,
-                              .mqtt_disc_pref = config_get()->mqtt_disc_pref,
-                              .command_cb = cmnd_process_json,
-                              .telemetry_cb = tele_append_all};
-
-    mqtt_configure(&mqtt_cfg);
 
     static const https_endpoint_config_t inet_https_endpoints[] = {
         {.uri = "/cmnd", .method = HTTP_POST, .json_cmnd = cmnd_process_json},
@@ -297,18 +257,6 @@ static void inet_adapter_on_event(EventBits_t bits) {
         mqtt_trigger_telemetry();
     }
 
-    if (bits & INET_EVENT_TIME_SYNCED) {
-        time_t now_sec = 0;
-        time(&now_sec);
-
-        struct tm tm_now = {0};
-        localtime_r(&now_sec, &tm_now);
-
-        char buf[32];
-        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_now);
-        ESP_LOGW(TAG, "Time synced: %s", buf);
-    }
-
     if (bits & INET_EVENT_STA_READY) {
 
         if (sta_services_running) {
@@ -326,7 +274,7 @@ static void inet_adapter_on_event(EventBits_t bits) {
         if (!supervisor_is_safe_mode_active()) {
             inet_common_mdns_init();
             inet_common_sntp_init();
-            mqtt_init();
+            inet_common_mqtt_init();
         }
 
         sta_services_running = true;

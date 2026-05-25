@@ -7,6 +7,7 @@
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
+#include "esp_eth_netif_glue.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
@@ -41,21 +42,19 @@ esp_err_t ethernet_init(void) {
     const ethernet_backend_t *backend = ethernet_get_backend();
     ESP_LOGI(TAG, "Initializing Ethernet stack: %s", backend->name);
 
-    // Step 0: Initialize TCP/IP adapter (required before creating netif)
     esp_err_t ret = esp_netif_init();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, "esp_netif_init failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    // Step 1: Initialize hardware backend (SPI/MAC/PHY)
     ret = backend->init(&s_eth_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Backend init failed: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    // Step 1.5: Set MAC address BEFORE creating netif (W5500 has no EEPROM)
+    // W5500 has no EEPROM - set MAC address from ESP32 eFuse before creating netif
     uint8_t mac[6];
     ret = esp_efuse_mac_get_default(mac);
     if (ret == ESP_OK) {
@@ -69,7 +68,6 @@ esp_err_t ethernet_init(void) {
         ESP_LOGW(TAG, "Failed to read base MAC: %s", esp_err_to_name(ret));
     }
 
-    // Step 2: Create network interface
     esp_netif_config_t cfg = ESP_NETIF_DEFAULT_ETH();
     s_eth_netif = esp_netif_new(&cfg);
     if (s_eth_netif == NULL) {
@@ -79,7 +77,6 @@ esp_err_t ethernet_init(void) {
         return ESP_FAIL;
     }
 
-    // Step 3: Create glue layer and attach netif to driver
     s_eth_glue = esp_eth_new_netif_glue(s_eth_handle);
     if (s_eth_glue == NULL) {
         ESP_LOGE(TAG, "Failed to create netif glue");
@@ -102,7 +99,6 @@ esp_err_t ethernet_init(void) {
         return ret;
     }
 
-    // Step 5: Start driver (like all adapters - init does EVERYTHING)
     ret = esp_eth_start(s_eth_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start driver: %s", esp_err_to_name(ret));
@@ -129,22 +125,18 @@ esp_err_t ethernet_shutdown(void) {
     const ethernet_backend_t *backend = ethernet_get_backend();
     ESP_LOGI(TAG, "Shutting down Ethernet stack: %s", backend->name);
 
-    // Step 1: Stop driver
     esp_eth_stop(s_eth_handle);
 
-    // Step 2: Detach and destroy glue
     if (s_eth_glue) {
         esp_eth_del_netif_glue(s_eth_glue);
         s_eth_glue = NULL;
     }
 
-    // Step 3: Destroy network interface
     if (s_eth_netif) {
         esp_netif_destroy(s_eth_netif);
         s_eth_netif = NULL;
     }
 
-    // Step 4: Shutdown hardware backend
     esp_err_t ret = backend->shutdown(s_eth_handle);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Backend shutdown failed: %s", esp_err_to_name(ret));

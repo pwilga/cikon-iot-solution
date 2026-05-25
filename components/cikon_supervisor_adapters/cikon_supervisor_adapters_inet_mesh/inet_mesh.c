@@ -102,10 +102,6 @@ static esp_err_t inet_mesh_adapter_init(void) {
 
     mesh_lite_init();
 
-    inet_common_configure_mqtt();
-    inet_common_sntp_configure(
-        (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3}, NULL);
-
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                         &inet_mesh_netif_event_handler, NULL,
                                                         &inet_mesh_wifi_handler));
@@ -174,7 +170,7 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
         }
         if (!supervisor_is_safe_mode_active()) {
             inet_common_sntp_init();
-            mqtt_init();
+            inet_common_mqtt_init();
         }
     }
 

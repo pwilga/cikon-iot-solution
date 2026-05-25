@@ -21,13 +21,14 @@
 #define SUPERVISOR_EVENT_CMND_COMPLETED BIT0
 #define SUPERVISOR_EVENT_PLATFORM_INITIALIZED BIT1
 
-// BIT2-3: Available
+// BIT2-4: Available
 
-#define INET_EVENT_TIME_SYNCED BIT4
-#define INET_EVENT_STA_READY BIT5
-#define INET_EVENT_STA_LOST BIT6
+#define INET_EVENT_STA_READY BIT5  // WiFi STA got IP
+#define INET_EVENT_STA_LOST BIT6   // WiFi STA disconnected
 #define INET_EVENT_AP_READY BIT7
 #define INET_INTERNET_READY BIT8
 #define INET_INTERNET_LOST BIT9
+#define INET_ETH_READY BIT10       // Ethernet got IP
+#define INET_ETH_LOST BIT11        // Ethernet link down
 
-// BIT10-23: Available (14 bits)
+// BIT12-23: Available (12 bits)

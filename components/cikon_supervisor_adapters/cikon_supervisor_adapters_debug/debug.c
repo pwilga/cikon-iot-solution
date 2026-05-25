@@ -177,9 +177,6 @@ static void debug_adapter_on_event(EventBits_t bits) {
     }
 
     // Inet adapter events
-    if (bits & INET_EVENT_TIME_SYNCED) {
-        ESP_LOGI(TAG, "  -> INET_EVENT_TIME_SYNCED");
-    }
     if (bits & INET_EVENT_STA_READY) {
         ESP_LOGI(TAG, "  -> INET_EVENT_STA_READY");
     }

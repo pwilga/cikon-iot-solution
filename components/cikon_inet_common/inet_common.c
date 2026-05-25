@@ -16,6 +16,7 @@
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
+#include "time_helpers.h"
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 #include "ha.h"
 #include "metadata.h"
@@ -29,15 +30,13 @@
 
 static char s_device_url[64];
 
-// mDNS configuration
-static const char *mdns_host = NULL;
-static const char *mdns_instance = NULL;
+static void sntp_sync_callback(struct timeval *tv) {
+    char time_str[32];
+    format_current_time(time_str, sizeof(time_str), NULL);
+    ESP_LOGW(TAG, "SNTP time synchronized: %s", time_str);
+}
 
-// SNTP configuration
-static const char *sntp_servers[CONFIG_LWIP_SNTP_MAX_SERVERS] = {NULL};
-static esp_sntp_time_cb_t sntp_cb = NULL;
-
-void inet_common_configure_mqtt(void) {
+void inet_common_mqtt_init(void) {
     const char *device_url = inet_common_get_device_url();
 
     mqtt_config_t mqtt_cfg = {
@@ -60,8 +59,7 @@ void inet_common_configure_mqtt(void) {
     };
 
     mqtt_configure(&mqtt_cfg);
-    ESP_LOGI(TAG, "MQTT configured (broker: %s, node: %s)", mqtt_cfg.mqtt_broker,
-             mqtt_cfg.mqtt_node);
+    mqtt_init();
 }
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
@@ -214,19 +212,17 @@ bool is_tcp_port_reachable(const char *host, uint16_t port) {
     }
 }
 
-void inet_common_mdns_configure(const char *hostname, const char *instance_name) {
-    mdns_host = hostname;
-    mdns_instance = instance_name;
-}
-
 void inet_common_mdns_init(void) {
-    esp_err_t ret = (mdns_init() != ESP_OK || mdns_hostname_set(mdns_host) != ESP_OK ||
-                     mdns_instance_name_set(mdns_instance) != ESP_OK)
+    const char *hostname = inet_common_get_hostname();
+    const char *instance = config_get()->mdns_instance;
+
+    esp_err_t ret = (mdns_init() != ESP_OK || mdns_hostname_set(hostname) != ESP_OK ||
+                     mdns_instance_name_set(instance) != ESP_OK)
                         ? ESP_FAIL
                         : ESP_OK;
 
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "mDNS started with hostname: %s.local", mdns_host);
+        ESP_LOGI(TAG, "mDNS started with hostname: %s.local", hostname);
     } else {
         ESP_LOGE(TAG, "mDNS init failed: %s", esp_err_to_name(ret));
     }
@@ -234,20 +230,20 @@ void inet_common_mdns_init(void) {
 
 void inet_common_mdns_shutdown(void) { mdns_free(); }
 
-void inet_common_sntp_configure(const char **servers, esp_sntp_time_cb_t cb) {
+void inet_common_sntp_init(void) {
+
+    const char *servers[] = {config_get()->sntp1, config_get()->sntp2, config_get()->sntp3};
+
+    // Check if any server configured
+    bool has_server = false;
     for (int i = 0; i < CONFIG_LWIP_SNTP_MAX_SERVERS; ++i) {
         if (servers[i] && strlen(servers[i]) > 0) {
-            sntp_servers[i] = servers[i];
-        } else {
-            sntp_servers[i] = NULL;
+            has_server = true;
+            break;
         }
     }
-    sntp_cb = cb;
-}
 
-void inet_common_sntp_init(void) {
-    if (memcmp(sntp_servers, (const char *[CONFIG_LWIP_SNTP_MAX_SERVERS]){NULL},
-               sizeof(sntp_servers)) == 0) {
+    if (!has_server) {
         ESP_LOGW(TAG, "No SNTP servers configured, skipping SNTP init.");
         return;
     }
@@ -257,17 +253,13 @@ void inet_common_sntp_init(void) {
         .server_from_dhcp = false,
         .wait_for_sync = true,
         .start = true,
-        .sync_cb = sntp_cb,
+        .sync_cb = sntp_sync_callback,
         .renew_servers_after_new_IP = false,
         .ip_event_to_renew = IP_EVENT_STA_GOT_IP,
         .index_of_first_server = 0,
         .num_of_servers = CONFIG_LWIP_SNTP_MAX_SERVERS,
-        .servers = {NULL},
+        .servers = {servers[0], servers[1], servers[2]},
     };
-
-    for (int i = 0; i < CONFIG_LWIP_SNTP_MAX_SERVERS; ++i) {
-        config.servers[i] = sntp_servers[i];
-    }
 
     esp_netif_sntp_init(&config);
     ESP_LOGI(TAG, "SNTP service initialized, servers: %s, %s, %s",

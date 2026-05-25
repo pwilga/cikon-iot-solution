@@ -1,7 +1,6 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
-#include <time.h>
-
+#include "esp_eth.h" // IWYU pragma: keep
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -71,24 +70,16 @@ static void inet_ethernet_restart_cb(void) {
         return;
     }
 
-    // NORMAL MODE: Full shutdown sequence
     mqtt_publish_offline_state();
     mqtt_shutdown();
 }
-
-static void inet_ethernet_sntp_sync_cb(struct timeval *tv) {
-    ESP_LOGI(TAG, "SNTP time synchronized");
-    supervisor_notify_event(INET_EVENT_TIME_SYNCED);
-}
-
-// ===== Event Handlers =====
 
 static void inet_ethernet_netif_event_handler(void *arg, esp_event_base_t event_base,
                                               int32_t event_id, void *event_data) {
     if (event_base == IP_EVENT && event_id == IP_EVENT_ETH_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "Ethernet Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
-        supervisor_notify_event(INET_EVENT_STA_READY); // Reuse STA_READY event
+        supervisor_notify_event(INET_ETH_READY);
     } else if (event_base == ETH_EVENT) {
         switch (event_id) {
         case ETHERNET_EVENT_CONNECTED: {
@@ -109,19 +100,17 @@ static void inet_ethernet_netif_event_handler(void *arg, esp_event_base_t event_
         }
         case ETHERNET_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "Ethernet Link Down");
-            supervisor_notify_event(INET_EVENT_STA_LOST); // Reuse STA_LOST event
+            supervisor_notify_event(INET_ETH_LOST);
             break;
         case ETHERNET_EVENT_START:
-            ESP_LOGD(TAG, "Ethernet Started");
+            // ESP_LOGD(TAG, "Ethernet Started");
             break;
         case ETHERNET_EVENT_STOP:
-            ESP_LOGD(TAG, "Ethernet Stopped");
+            // ESP_LOGD(TAG, "Ethernet Stopped");
             break;
         }
     }
 }
-
-// ===== Adapter Lifecycle =====
 
 static esp_err_t inet_ethernet_adapter_init(void) {
     if (initialized) {
@@ -131,18 +120,15 @@ static esp_err_t inet_ethernet_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing Ethernet network adapter");
 
-    // Step 1: Register event handlers BEFORE initializing hardware
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         ETH_EVENT, ESP_EVENT_ANY_ID, &inet_ethernet_netif_event_handler, NULL, &inet_eth_handler));
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_ETH_GOT_IP, &inet_ethernet_netif_event_handler, NULL, &inet_ip_handler));
 
-    // Step 2: Initialize Ethernet stack (hardware + netif + glue + start driver)
     esp_err_t ret = ethernet_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Ethernet stack init failed: %s", esp_err_to_name(ret));
-        // Cleanup event handlers on failure
         if (inet_ip_handler) {
             esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, inet_ip_handler);
             inet_ip_handler = NULL;
@@ -154,17 +140,6 @@ static esp_err_t inet_ethernet_adapter_init(void) {
         return ret;
     }
 
-    // Step 3: Configure network services (mdns, sntp, mqtt)
-    const char *hostname = inet_common_get_hostname();
-    inet_common_mdns_configure(hostname, config_get()->mdns_instance);
-
-    inet_common_sntp_configure(
-        (const char *[]){config_get()->sntp1, config_get()->sntp2, config_get()->sntp3},
-        inet_ethernet_sntp_sync_cb);
-
-    inet_common_configure_mqtt();
-
-    // Step 4: Register platform callbacks
     set_restart_callback(inet_ethernet_restart_cb);
 
     initialized = true;
@@ -180,7 +155,6 @@ static esp_err_t inet_ethernet_adapter_shutdown(void) {
 
     ESP_LOGI(TAG, "Shutting down Ethernet adapter");
 
-    // Step 1: Unregister event handlers
     if (inet_ip_handler) {
         esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_ETH_GOT_IP, inet_ip_handler);
         inet_ip_handler = NULL;
@@ -191,13 +165,8 @@ static esp_err_t inet_ethernet_adapter_shutdown(void) {
         inet_eth_handler = NULL;
     }
 
-    // Step 2: Stop all services
     inet_ethernet_stop_services();
-
-    // Step 3: Unregister callbacks
     set_restart_callback(NULL);
-
-    // Step 4: Shutdown Ethernet stack (hardware + netif + glue)
     ethernet_shutdown();
 
     shutdown_ota = true;
@@ -226,19 +195,7 @@ static void inet_ethernet_adapter_on_event(EventBits_t bits) {
         mqtt_trigger_telemetry();
     }
 
-    if (bits & INET_EVENT_TIME_SYNCED) {
-        time_t now_sec = 0;
-        time(&now_sec);
-
-        struct tm tm_now = {0};
-        localtime_r(&now_sec, &tm_now);
-
-        char buf[32];
-        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm_now);
-        ESP_LOGW(TAG, "Time synced: %s", buf);
-    }
-
-    if (bits & INET_EVENT_STA_READY) { // Got IP
+    if (bits & INET_ETH_READY) { // Got IP
         if (services_running) {
             ESP_LOGW(TAG, "Services already running, ignoring");
             if (!supervisor_is_safe_mode_active()) {
@@ -254,13 +211,13 @@ static void inet_ethernet_adapter_on_event(EventBits_t bits) {
         if (!supervisor_is_safe_mode_active()) {
             inet_common_mdns_init();
             inet_common_sntp_init();
-            mqtt_init();
+            inet_common_mqtt_init();
         }
 
         services_running = true;
     }
 
-    if (bits & INET_EVENT_STA_LOST) { // Link down
+    if (bits & INET_ETH_LOST) { // Link down
         ESP_LOGW(TAG, "Ethernet link lost");
         inet_ethernet_stop_services();
     }

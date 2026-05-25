@@ -1,7 +1,7 @@
 #pragma once
 
 #include "esp_err.h"
-#include "esp_eth.h"
+#include "esp_eth_driver.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -9,27 +9,27 @@ extern "C" {
 
 /**
  * @brief Ethernet backend interface
- * 
+ *
  * Each backend (W5500, OpenETH, etc.) implements this interface.
  * Main wrapper (ethernet.c) selects backend at compile-time based on Kconfig.
  */
 typedef struct {
     /**
      * @brief Initialize hardware and create Ethernet driver
-     * 
+     *
      * @param[out] out_handle Ethernet driver handle
      * @return ESP_OK on success, error code otherwise
      */
     esp_err_t (*init)(esp_eth_handle_t *out_handle);
-    
+
     /**
      * @brief Shutdown hardware and destroy Ethernet driver
-     * 
+     *
      * @param[in] handle Ethernet driver handle
      * @return ESP_OK on success, error code otherwise
      */
     esp_err_t (*shutdown)(esp_eth_handle_t handle);
-    
+
     /**
      * @brief Backend name (for logging/debugging)
      */

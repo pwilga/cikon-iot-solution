@@ -1,12 +1,13 @@
 #pragma once
 
 #include "esp_err.h"
-#include "esp_eth.h"
-#include "esp_netif.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Forward declaration - full type defined in esp_netif.h
+typedef struct esp_netif_obj esp_netif_t;
 
 /**
  * @brief Initialize Ethernet stack (hardware + netif + glue + start driver)
@@ -18,8 +19,6 @@ extern "C" {
  * - Glue layer (connects driver to TCP/IP stack)
  * - Attaches netif to driver
  * - Starts driver (link negotiation)
- *
- * Pattern matches all adapters - init does EVERYTHING.
  *
  * @return
  *      - ESP_OK on success
