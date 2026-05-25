@@ -85,7 +85,7 @@ if CIKON_ETHERNET_W5500
         config W5500_POLLING_MS
             int "Polling Interval (ms) if no interrupt"
             default 1000
-            range 100 10000
+            range 1 10000
             depends on W5500_INT_GPIO < 0
             help
                 Polling period in milliseconds when interrupt is not used.
