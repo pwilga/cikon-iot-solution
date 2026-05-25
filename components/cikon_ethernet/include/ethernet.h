@@ -53,6 +53,15 @@ const char *ethernet_get_backend_name(void);
  */
 void ethernet_get_interface_ip(char *buf, size_t buflen);
 
+/**
+ * @brief Get esp_netif handle for Ethernet interface
+ *
+ * Used for DHCP control (start/stop/status) and IP configuration.
+ *
+ * @return esp_netif_t* handle or NULL if not initialized
+ */
+esp_netif_t *ethernet_get_netif(void);
+
 #ifdef __cplusplus
 }
 #endif

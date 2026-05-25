@@ -178,3 +178,5 @@ void ethernet_get_interface_ip(char *buf, size_t buflen) {
         snprintf(buf, buflen, "0.0.0.0");
     }
 }
+
+esp_netif_t *ethernet_get_netif(void) { return s_eth_netif; }

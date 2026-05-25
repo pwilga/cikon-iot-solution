@@ -91,9 +91,22 @@ static void inet_ethernet_netif_event_handler(void *arg, esp_event_base_t event_
         supervisor_notify_event(INET_EVENT_STA_READY); // Reuse STA_READY event
     } else if (event_base == ETH_EVENT) {
         switch (event_id) {
-        case ETHERNET_EVENT_CONNECTED:
+        case ETHERNET_EVENT_CONNECTED: {
             ESP_LOGI(TAG, "Ethernet Link Up");
+            // CRITICAL: Start DHCP client (not automatic like WiFi!)
+            esp_netif_t *eth_netif = ethernet_get_netif();
+            if (eth_netif) {
+                esp_err_t ret = esp_netif_dhcpc_start(eth_netif);
+                if (ret == ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+                    ESP_LOGD(TAG, "DHCP client already started");
+                } else if (ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to start DHCP client: %s", esp_err_to_name(ret));
+                } else {
+                    ESP_LOGI(TAG, "DHCP client started");
+                }
+            }
             break;
+        }
         case ETHERNET_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "Ethernet Link Down");
             supervisor_notify_event(INET_EVENT_STA_LOST); // Reuse STA_LOST event
