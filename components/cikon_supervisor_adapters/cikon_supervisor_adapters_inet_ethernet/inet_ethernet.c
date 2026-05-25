@@ -4,7 +4,6 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
-#include "esp_netif_sntp.h"
 
 #include "bits_helper.h"
 #include "cmnd.h"
@@ -48,9 +47,10 @@ static void inet_ethernet_stop_services(void) {
     tcp_monitor_shutdown();
 
     mqtt_publish_offline_state();
-    mqtt_shutdown();
+
+    inet_common_mqtt_shutdown();
     inet_common_mdns_shutdown();
-    esp_netif_sntp_deinit();
+    inet_common_sntp_shutdown();
 
     if (shutdown_ota) {
         tcp_ota_shutdown();
@@ -71,7 +71,7 @@ static void inet_ethernet_restart_cb(void) {
     }
 
     mqtt_publish_offline_state();
-    mqtt_shutdown();
+    inet_common_mqtt_shutdown();
 }
 
 static void inet_ethernet_netif_event_handler(void *arg, esp_event_base_t event_base,
@@ -262,7 +262,7 @@ static void sntp_handler(const char *args_json_str) {
         inet_common_sntp_init();
     } else if (sntp_state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping SNTP service");
-        esp_netif_sntp_deinit();
+        inet_common_sntp_shutdown();
     } else {
         ESP_LOGW(TAG, "Invalid SNTP state");
     }

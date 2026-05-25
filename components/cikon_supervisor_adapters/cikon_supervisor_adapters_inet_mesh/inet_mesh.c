@@ -121,7 +121,7 @@ static esp_err_t inet_mesh_adapter_shutdown(void) {
     ESP_LOGI(TAG, "Shutting down inet_mesh adapter");
 
     mqtt_publish_offline_state();
-    mqtt_shutdown();
+    inet_common_mqtt_shutdown();
 
     if (inet_mesh_ip_handler) {
         esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, inet_mesh_ip_handler);

@@ -49,11 +49,11 @@ static void inet_stop_services(void) {
     tcp_monitor_shutdown();
 
     mqtt_publish_offline_state();
-    mqtt_shutdown();
+    inet_common_mqtt_shutdown();
     https_shutdown();
     // Keep mDNS running - it works for both STA and AP interfaces
     // mdns_free();
-    esp_netif_sntp_deinit();
+    inet_common_sntp_shutdown();
 
     if (shutdown_ota) {
         tcp_ota_shutdown();
@@ -106,7 +106,7 @@ static void inet_restart_cb(void) {
 
     // NORMAL MODE: Full shutdown sequence
     mqtt_publish_offline_state();
-    mqtt_shutdown();
+    inet_common_mqtt_shutdown();
 }
 
 static void inet_netif_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
@@ -373,10 +373,10 @@ static void sntp_handler(const char *args_json_str) {
 
     if (sntp_state == STATE_ON) {
         ESP_LOGI(TAG, "Starting SNTP service");
-        esp_netif_sntp_deinit();
+        inet_common_sntp_init();
     } else if (sntp_state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping SNTP service");
-        esp_netif_sntp_deinit();
+        inet_common_sntp_shutdown();
     } else {
         ESP_LOGW(TAG, "Invalid SNTP state");
     }

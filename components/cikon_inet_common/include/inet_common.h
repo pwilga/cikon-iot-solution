@@ -35,8 +35,16 @@ void inet_common_mdns_init(void);
 void inet_common_mdns_shutdown(void);
 
 void inet_common_sntp_init(void);
+static inline void inet_common_sntp_shutdown(void) {
+    extern void esp_netif_sntp_deinit(void);
+    esp_netif_sntp_deinit();
+}
 
 void inet_common_mqtt_init(void);
+static inline void inet_common_mqtt_shutdown(void) {
+    extern void mqtt_shutdown(void);
+    mqtt_shutdown();
+}
 
 #ifdef __cplusplus
 }
