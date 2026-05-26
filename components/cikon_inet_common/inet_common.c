@@ -26,6 +26,8 @@
 #include "esp_netif.h"
 #include "esp_wifi.h"
 #include "inet_common.h"
+#include "tcp_monitor.h"
+#include "tcp_ota.h"
 
 #define TAG "cikon:inet_common"
 
@@ -257,6 +259,41 @@ void inet_common_mdns_init(void) {
 }
 
 void inet_common_mdns_shutdown(void) { mdns_free(); }
+
+void inet_common_sntp_handler(const char *args_json_str) {
+    logic_state_t state = json_str_as_logic_state(args_json_str);
+    if (state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting SNTP service");
+        inet_common_sntp_init();
+    } else if (state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping SNTP service");
+        inet_common_sntp_shutdown();
+    } else {
+        ESP_LOGW(TAG, "Invalid SNTP state");
+    }
+}
+
+void inet_common_ota_handler(const char *args_json_str) {
+    logic_state_t state = json_str_as_logic_state(args_json_str);
+    if (state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting OTA update");
+        tcp_ota_init();
+    } else if (state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping OTA update");
+        tcp_ota_shutdown();
+    }
+}
+
+void inet_common_monitor_handler(const char *args_json_str) {
+    logic_state_t state = json_str_as_logic_state(args_json_str);
+    if (state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting TCP monitor");
+        tcp_monitor_init();
+    } else if (state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping TCP monitor");
+        tcp_monitor_shutdown();
+    }
+}
 
 void inet_common_sntp_init(void) {
 

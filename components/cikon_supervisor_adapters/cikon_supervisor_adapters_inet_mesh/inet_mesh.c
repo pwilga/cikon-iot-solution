@@ -184,6 +184,9 @@ static void cmnd_inet_mesh_send(const char *payload) {
 
 static const command_entry_t inet_mesh_commands[] = {
     {"mesh_send", "Send mesh message (JSON payload)", cmnd_inet_mesh_send},
+    {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
+    {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
+    {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     {"ha", "Trigger Home Assistant MQTT discovery", inet_common_ha_discovery_handler},
 #endif

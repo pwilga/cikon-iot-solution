@@ -7,11 +7,11 @@
 #include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
-#include "metadata.h"
 #include "https_server.h"
 #include "inet_adapter.h"
 #include "inet_common.h"
 #include "json_parser.h"
+#include "metadata.h"
 #include "mqtt.h"
 #include "platform_services.h"
 #include "supervisor.h"
@@ -336,43 +336,6 @@ static void https_handler(const char *args_json_str) {
     }
 }
 
-static void sntp_handler(const char *args_json_str) {
-    logic_state_t sntp_state = json_str_as_logic_state(args_json_str);
-
-    if (sntp_state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting SNTP service");
-        inet_common_sntp_init();
-    } else if (sntp_state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping SNTP service");
-        inet_common_sntp_shutdown();
-    } else {
-        ESP_LOGW(TAG, "Invalid SNTP state");
-    }
-}
-
-static void ota_handler(const char *args_json_str) {
-    logic_state_t ota_state = json_str_as_logic_state(args_json_str);
-
-    if (ota_state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting OTA update");
-        tcp_ota_init();
-    } else if (ota_state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping OTA update");
-        tcp_ota_shutdown();
-    }
-}
-
-static void monitor_handler(const char *args_json_str) {
-    logic_state_t monitor_state = json_str_as_logic_state(args_json_str);
-
-    if (monitor_state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting TCP monitor");
-        tcp_monitor_init();
-    } else if (monitor_state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping TCP monitor");
-        tcp_monitor_shutdown();
-    }
-}
 // Should be removed ?
 static void wifi_handler(const char *args_json_str) {
     logic_state_t wifi_state = json_str_as_logic_state(args_json_str);
@@ -396,9 +359,9 @@ static const command_entry_t inet_commands[] = {
     {"ap", "Switch to AP mode", set_ap_handler},
     {"sta", "Switch to STA mode", set_sta_handler},
     {"https", "Control HTTPS server (on/off)", https_handler},
-    {"sntp", "Control SNTP service (on/off)", sntp_handler},
-    {"ota", "Control OTA service (on/off)", ota_handler},
-    {"monitor", "Control TCP monitor (on/off)", monitor_handler},
+    {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
+    {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
+    {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     {"ha", "Trigger Home Assistant MQTT discovery", inet_common_ha_discovery_handler},
 #endif

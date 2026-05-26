@@ -52,6 +52,10 @@ static inline void inet_common_mqtt_shutdown(void) {
     mqtt_shutdown();
 }
 
+void inet_common_sntp_handler(const char *args_json_str);
+void inet_common_ota_handler(const char *args_json_str);
+void inet_common_monitor_handler(const char *args_json_str);
+
 #ifdef __cplusplus
 }
 #endif
