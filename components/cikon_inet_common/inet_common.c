@@ -224,6 +224,22 @@ bool is_tcp_port_reachable(const char *host, uint16_t port) {
     }
 }
 
+void inet_common_on_event(EventBits_t bits) {
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
+        inet_common_register_all_ha_entities();
+        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                                 .name = "IP",
+                                                 .icon = "mdi:ip-outline",
+                                                 .entity_category = "diagnostic"});
+    }
+#endif
+
+    if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
+        mqtt_trigger_telemetry();
+    }
+}
+
 void inet_common_mdns_init(void) {
     const char *hostname = inet_common_get_hostname();
     const char *instance = config_get()->mdns_instance;

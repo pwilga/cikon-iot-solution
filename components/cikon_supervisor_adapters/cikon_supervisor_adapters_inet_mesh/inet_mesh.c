@@ -12,9 +12,6 @@
 #include "inet_mesh_adapter.h"
 #include "mesh_lite.h"
 #include "mqtt.h"
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-#include "ha.h"
-#endif
 #include "supervisor.h"
 #include "tcp_monitor.h"
 #include "tcp_ota.h"
@@ -130,22 +127,7 @@ static esp_err_t inet_mesh_adapter_shutdown(void) {
 
 static void inet_mesh_adapter_on_event(EventBits_t bits) {
 
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-    if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
-        // Register all adapters' HA entities from metadata
-        inet_common_register_all_ha_entities();
-
-        // Register inet's own HA entity
-        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                                 .name = "IP",
-                                                 .icon = "mdi:ip-outline",
-                                                 .entity_category = "diagnostic"});
-    }
-#endif
-
-    if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
-        mqtt_trigger_telemetry();
-    }
+    inet_common_on_event(bits);
 
     if (bits & INET_EVENT_STA_READY) {
         // ESP_LOGI(TAG, "Mesh STA ready - connected to router");

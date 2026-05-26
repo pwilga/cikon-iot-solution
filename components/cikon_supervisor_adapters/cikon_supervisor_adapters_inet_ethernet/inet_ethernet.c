@@ -20,10 +20,6 @@
 #include "tcp_ota.h"
 #include "tele.h"
 
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-#include "ha.h"
-#endif
-
 #define TAG "cikon:adapter:inet_ethernet"
 
 static bool initialized = false;
@@ -177,22 +173,7 @@ static esp_err_t inet_ethernet_adapter_shutdown(void) {
 
 static void inet_ethernet_adapter_on_event(EventBits_t bits) {
 
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-    if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
-        // Register all adapters' HA entities from metadata
-        inet_common_register_all_ha_entities();
-
-        // Register inet_ethernet's own HA entity
-        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                                 .name = "IP",
-                                                 .icon = "mdi:ip-outline",
-                                                 .entity_category = "diagnostic"});
-    }
-#endif
-
-    if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
-        mqtt_trigger_telemetry();
-    }
+    inet_common_on_event(bits);
 
     if (bits & INET_ETH_READY) { // Got IP
         if (services_running) {

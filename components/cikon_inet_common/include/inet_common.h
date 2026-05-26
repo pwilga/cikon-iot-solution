@@ -3,6 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
+#include "freertos/event_groups.h"
+
 #include "esp_netif_sntp.h"
 
 #ifdef __cplusplus
@@ -20,6 +23,8 @@ void inet_common_ha_discovery_handler(const char *args_json_str);
 #else
 static inline void inet_common_ha_discovery_handler(const char *args_json_str) {}
 #endif
+
+void inet_common_on_event(EventBits_t bits);
 
 const char *inet_common_get_hostname(void);
 const char *inet_common_get_device_url(void);

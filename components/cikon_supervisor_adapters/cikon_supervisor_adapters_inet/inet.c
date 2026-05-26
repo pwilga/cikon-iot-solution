@@ -8,9 +8,6 @@
 #include "cmnd.h"
 #include "config_manager.h"
 #include "metadata.h"
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-#include "ha.h"
-#endif
 #include "https_server.h"
 #include "inet_adapter.h"
 #include "inet_common.h"
@@ -237,22 +234,7 @@ esp_err_t inet_adapter_shutdown(void) {
 
 static void inet_adapter_on_event(EventBits_t bits) {
 
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-    if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
-        // Register all adapters' HA entities from metadata
-        inet_common_register_all_ha_entities();
-
-        // Register inet's own HA entity
-        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                                 .name = "IP",
-                                                 .icon = "mdi:ip-outline",
-                                                 .entity_category = "diagnostic"});
-    }
-#endif
-
-    if (bits & SUPERVISOR_EVENT_CMND_COMPLETED) {
-        mqtt_trigger_telemetry();
-    }
+    inet_common_on_event(bits);
 
     if (bits & INET_EVENT_STA_READY) {
 
