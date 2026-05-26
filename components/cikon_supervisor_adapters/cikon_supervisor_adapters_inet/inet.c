@@ -1,9 +1,7 @@
 #include <string.h>
-#include <time.h>
 
 #include "esp_event.h"
 #include "esp_log.h"
-#include "esp_netif_sntp.h"
 #include "esp_wifi_types_generic.h"
 
 #include "bits_helper.h"
@@ -28,7 +26,6 @@
 #define TAG "cikon:adapter:inet"
 
 static bool initialized = false;
-static bool last_internet_reachable = false;
 
 // Forward declaration for wifi command handler (used in inet_adapter_init)
 static void wifi_handler(const char *args_json_str);
@@ -307,18 +304,7 @@ static void inet_adapter_on_interval(supervisor_interval_stage_t stage) {
         break;
 
     case SUPERVISOR_INTERVAL_5S:
-        bool current_state = is_internet_reachable();
-
-        // Only notify on state change
-        if (current_state != last_internet_reachable) {
-            if (current_state) {
-                supervisor_notify_event(INET_INTERNET_READY);
-            } else {
-                supervisor_notify_event(INET_INTERNET_LOST);
-            }
-            last_internet_reachable = current_state;
-        }
-
+        inet_common_poll_internet_reachability();
         break;
 
     case SUPERVISOR_INTERVAL_60S:

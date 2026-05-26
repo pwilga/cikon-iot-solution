@@ -30,6 +30,7 @@ void inet_common_log_ap_clients(void);
 
 bool is_tcp_port_reachable(const char *ip, uint16_t port);
 bool is_internet_reachable(void);
+void inet_common_poll_internet_reachability(void);
 
 void inet_common_mdns_init(void);
 void inet_common_mdns_shutdown(void);

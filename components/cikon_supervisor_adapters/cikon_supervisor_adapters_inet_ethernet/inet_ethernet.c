@@ -28,7 +28,6 @@
 
 static bool initialized = false;
 static bool services_running = false;
-static bool last_internet_reachable = false;
 
 static esp_event_handler_instance_t inet_eth_handler = NULL;
 static esp_event_handler_instance_t inet_ip_handler = NULL;
@@ -217,7 +216,7 @@ static void inet_ethernet_adapter_on_event(EventBits_t bits) {
         services_running = true;
     }
 
-    if (bits & INET_ETH_LOST) { // Link down
+    if (bits & INET_ETH_LOST) {
         ESP_LOGW(TAG, "Ethernet link lost");
         inet_ethernet_stop_services();
     }
@@ -228,20 +227,9 @@ static void inet_ethernet_adapter_on_interval(supervisor_interval_stage_t stage)
     case SUPERVISOR_INTERVAL_1S:
         break;
 
-    case SUPERVISOR_INTERVAL_5S: {
-        bool current_state = is_internet_reachable();
-
-        // Only notify on state change
-        if (current_state != last_internet_reachable) {
-            if (current_state) {
-                supervisor_notify_event(INET_INTERNET_READY);
-            } else {
-                supervisor_notify_event(INET_INTERNET_LOST);
-            }
-            last_internet_reachable = current_state;
-        }
+    case SUPERVISOR_INTERVAL_5S:
+        inet_common_poll_internet_reachability();
         break;
-    }
 
     case SUPERVISOR_INTERVAL_10M:
         if (services_running) {

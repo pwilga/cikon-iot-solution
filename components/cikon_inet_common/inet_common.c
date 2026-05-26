@@ -9,6 +9,7 @@
 #include "esp_mac.h"
 #include "mdns.h"
 
+#include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
 #include "json_parser.h"
@@ -161,6 +162,17 @@ const char *inet_common_get_device_url(void) {
 }
 
 bool is_internet_reachable(void) { return is_tcp_port_reachable("8.8.8.8", 53); }
+
+void inet_common_poll_internet_reachability(void) {
+
+    static bool last_internet_reachable = false;
+
+    bool current_state = is_internet_reachable();
+    if (current_state != last_internet_reachable) {
+        supervisor_notify_event(current_state ? INET_INTERNET_READY : INET_INTERNET_LOST);
+        last_internet_reachable = current_state;
+    }
+}
 
 bool is_tcp_port_reachable(const char *host, uint16_t port) {
     struct sockaddr_in addr;

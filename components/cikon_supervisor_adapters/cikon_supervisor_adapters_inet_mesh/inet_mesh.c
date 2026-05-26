@@ -23,7 +23,6 @@
 #define TAG "cikon:adapter:inet_mesh"
 
 static bool initialized = false;
-static bool last_internet_reachable = false;
 
 static esp_event_handler_instance_t inet_mesh_wifi_handler = NULL;
 static esp_event_handler_instance_t inet_mesh_ip_handler = NULL;
@@ -66,17 +65,7 @@ static void inet_mesh_netif_event_handler(void *arg, esp_event_base_t event_base
 static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {
 
     if (stage == SUPERVISOR_INTERVAL_5S) {
-        bool current_state = is_internet_reachable();
-
-        // Only notify on state change
-        if (current_state != last_internet_reachable) {
-            if (current_state) {
-                supervisor_notify_event(INET_INTERNET_READY);
-            } else {
-                supervisor_notify_event(INET_INTERNET_LOST);
-            }
-            last_internet_reachable = current_state;
-        }
+        inet_common_poll_internet_reachability();
     }
 }
 
