@@ -234,6 +234,7 @@ static void tele_inet_ethernet_backend(const char *tele_id, cJSON *json_root) {
 }
 
 static const command_entry_t inet_ethernet_commands[] = {
+    {"https", "Control HTTPS server (on/off)", inet_common_https_handler},
     {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
     {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
     {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},

@@ -12,6 +12,7 @@
 #include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
+#include "https_server.h"
 #include "json_parser.h"
 #include "mqtt.h"
 #include "platform_services.h"
@@ -292,6 +293,29 @@ void inet_common_monitor_handler(const char *args_json_str) {
     } else if (state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping TCP monitor");
         tcp_monitor_shutdown();
+    }
+}
+
+void inet_common_https_init(void) {
+    static const https_endpoint_config_t endpoints[] = {
+        {.uri = "/cmnd", .method = HTTP_POST, .json_cmnd = cmnd_process_json},
+        {.uri = "/tele", .method = HTTP_GET, .json_tele = tele_append_all},
+        {.uri = NULL}
+    };
+    https_configure(endpoints, config_get()->http_auth);
+    https_init();
+}
+
+void inet_common_https_handler(const char *args_json_str) {
+    logic_state_t state = json_str_as_logic_state(args_json_str);
+    if (state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting HTTPS server");
+        inet_common_https_init();
+    } else if (state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping HTTPS server");
+        https_shutdown();
+    } else {
+        ESP_LOGW(TAG, "Invalid HTTPS state");
     }
 }
 

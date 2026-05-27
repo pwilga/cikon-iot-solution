@@ -30,6 +30,9 @@ dependencies:
   cikon_tcp_ota:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_tcp_ota
+  cikon_https:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_https
 
 targets:
   - esp32

@@ -7,7 +7,6 @@
 #include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
-#include "https_server.h"
 #include "inet_adapter.h"
 #include "inet_common.h"
 #include "json_parser.h"
@@ -44,7 +43,7 @@ static void inet_stop_services(void) {
 
     mqtt_publish_offline_state();
     inet_common_mqtt_shutdown();
-    https_shutdown();
+    inet_common_https_shutdown();
     // Keep mDNS running - it works for both STA and AP interfaces
     // mdns_free();
     inet_common_sntp_shutdown();
@@ -165,14 +164,6 @@ esp_err_t inet_adapter_init(void) {
 
     wifi_configure(&creds);
 
-    static const https_endpoint_config_t inet_https_endpoints[] = {
-        {.uri = "/cmnd", .method = HTTP_POST, .json_cmnd = cmnd_process_json},
-        {.uri = "/tele", .method = HTTP_GET, .json_tele = tele_append_all},
-        {.uri = NULL} // sentinel
-    };
-
-    https_configure(inet_https_endpoints, config_get()->http_auth);
-
     set_restart_callback(inet_restart_cb);
 
     // Register callback for AP timeout -> STA mode switch
@@ -271,7 +262,7 @@ static void inet_adapter_on_event(EventBits_t bits) {
         tcp_monitor_init();
 
         if (!supervisor_is_safe_mode_active()) {
-            https_init();
+            inet_common_https_init();
             inet_common_mdns_init();
         }
 
@@ -322,20 +313,6 @@ static void set_sta_handler(const char *args_json_str) {
     inet_switch_to_sta_mode();
 }
 
-static void https_handler(const char *args_json_str) {
-    logic_state_t https_state = json_str_as_logic_state(args_json_str);
-
-    if (https_state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting HTTPS server");
-        https_init();
-    } else if (https_state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping HTTPS server");
-        https_shutdown();
-    } else {
-        ESP_LOGW(TAG, "Invalid HTTPS state");
-    }
-}
-
 // Should be removed ?
 static void wifi_handler(const char *args_json_str) {
     logic_state_t wifi_state = json_str_as_logic_state(args_json_str);
@@ -358,7 +335,7 @@ static void tele_inet_ip_address(const char *tele_id, cJSON *json_root) {
 static const command_entry_t inet_commands[] = {
     {"ap", "Switch to AP mode", set_ap_handler},
     {"sta", "Switch to STA mode", set_sta_handler},
-    {"https", "Control HTTPS server (on/off)", https_handler},
+    {"https", "Control HTTPS server (on/off)", inet_common_https_handler},
     {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
     {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
     {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},

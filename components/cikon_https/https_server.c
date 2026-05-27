@@ -190,6 +190,11 @@ static esp_err_t https_post_handler(httpd_req_t *req) {
 }
 
 void https_server_start(void) {
+    if (!certs_available()) {
+        ESP_LOGE(TAG, "Certificates not available, cannot start HTTPS server");
+        return;
+    }
+
     httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
 
     conf.servercert = (const uint8_t *)get_client_pem_start();

@@ -56,6 +56,13 @@ void inet_common_sntp_handler(const char *args_json_str);
 void inet_common_ota_handler(const char *args_json_str);
 void inet_common_monitor_handler(const char *args_json_str);
 
+void inet_common_https_init(void);
+void inet_common_https_handler(const char *args_json_str);
+static inline void inet_common_https_shutdown(void) {
+    extern void https_shutdown(void);
+    https_shutdown();
+}
+
 #ifdef __cplusplus
 }
 #endif
