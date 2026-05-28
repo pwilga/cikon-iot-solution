@@ -29,8 +29,7 @@ static char failed_ota_version[32] = "unknown";
 
 __attribute__((weak)) void wifi_log_event_group_bits(void) {}
 
-__attribute__((weak)) bool inet_common_get_sta_ip(char *buf, size_t len) { return false; }
-__attribute__((weak)) bool inet_common_get_ap_ip(char *buf, size_t len) { return false; }
+__attribute__((weak)) bool get_netif_ip(const char *if_key, char *buf, size_t len) { return false; }
 __attribute__((weak)) void inet_common_log_ap_clients(void) {}
 
 __attribute__((weak)) void mqtt_log_event_group_bits(void) {}
@@ -215,12 +214,14 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         mqtt_log_event_group_bits();
 
         char ip[16];
-        if (inet_common_get_sta_ip(ip, sizeof(ip))) {
+        if (get_netif_ip("WIFI_STA_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "STA IP: %s", ip);
         }
-
-        if (inet_common_get_ap_ip(ip, sizeof(ip))) {
+        if (get_netif_ip("WIFI_AP_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "AP IP: %s", ip);
+        }
+        if (get_netif_ip("ETH_DEF", ip, sizeof(ip))) {
+            ESP_LOGI(TAG, "ETH IP: %s", ip);
         }
 
         // Alert continuously if failed OTA detected (passive reporting)

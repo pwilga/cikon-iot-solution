@@ -45,14 +45,6 @@ esp_err_t ethernet_shutdown(void);
 const char *ethernet_get_backend_name(void);
 
 /**
- * @brief Get Ethernet interface IP address
- *
- * @param[out] buf Buffer for IP string (e.g. "192.168.1.100")
- * @param[in] buflen Buffer size
- */
-void ethernet_get_interface_ip(char *buf, size_t buflen);
-
-/**
  * @brief Get esp_netif handle for Ethernet interface
  *
  * Used for DHCP control (start/stop/status) and IP configuration.

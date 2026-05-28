@@ -60,10 +60,7 @@ static void inet_mesh_netif_event_handler(void *arg, esp_event_base_t event_base
 }
 
 static void inet_mesh_adapter_on_interval(supervisor_interval_stage_t stage) {
-
-    if (stage == SUPERVISOR_INTERVAL_5S) {
-        inet_common_poll_internet_reachability();
-    }
+    inet_common_on_interval(stage);
 }
 
 static esp_err_t inet_mesh_adapter_init(void) {
@@ -152,7 +149,7 @@ static void inet_mesh_adapter_on_event(EventBits_t bits) {
 
 static void tele_inet_mesh_ip_address(const char *tele_id, cJSON *json_root) {
     char ip[16];
-    inet_common_get_sta_ip(ip, sizeof(ip));
+    get_netif_ip("WIFI_STA_DEF", ip, sizeof(ip));
     cJSON_AddStringToObject(json_root, tele_id, ip);
 }
 

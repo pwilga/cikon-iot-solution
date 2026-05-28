@@ -272,34 +272,10 @@ static void inet_adapter_on_event(EventBits_t bits) {
 }
 
 static void inet_adapter_on_interval(supervisor_interval_stage_t stage) {
-    switch (stage) {
-    case SUPERVISOR_INTERVAL_1S:
-        break;
+    inet_common_on_interval(stage);
 
-    case SUPERVISOR_INTERVAL_5S:
-        inet_common_poll_internet_reachability();
-        break;
-
-    case SUPERVISOR_INTERVAL_60S:
-        break;
-
-    case SUPERVISOR_INTERVAL_5M:
-        break;
-
-    case SUPERVISOR_INTERVAL_10M:
-        if (sta_services_running) {
-            mqtt_init();
-        }
-        break;
-
-    case SUPERVISOR_INTERVAL_2H:
-        break;
-
-    case SUPERVISOR_INTERVAL_12H:
-        break;
-
-    default:
-        break;
+    if (stage == SUPERVISOR_INTERVAL_10M && sta_services_running) {
+        mqtt_init();
     }
 }
 

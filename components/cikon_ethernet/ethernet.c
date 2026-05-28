@@ -154,21 +154,5 @@ const char *ethernet_get_backend_name(void) {
     return backend->name;
 }
 
-void ethernet_get_interface_ip(char *buf, size_t buflen) {
-    if (!buf || buflen == 0)
-        return;
-
-    if (!s_eth_netif) {
-        snprintf(buf, buflen, "0.0.0.0");
-        return;
-    }
-
-    esp_netif_ip_info_t ip_info;
-    if (esp_netif_get_ip_info(s_eth_netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
-        snprintf(buf, buflen, IPSTR, IP2STR(&ip_info.ip));
-    } else {
-        snprintf(buf, buflen, "0.0.0.0");
-    }
-}
 
 esp_netif_t *ethernet_get_netif(void) { return s_eth_netif; }

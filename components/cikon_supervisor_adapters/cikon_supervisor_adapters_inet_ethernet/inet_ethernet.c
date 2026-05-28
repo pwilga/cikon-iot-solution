@@ -203,28 +203,17 @@ static void inet_ethernet_adapter_on_event(EventBits_t bits) {
 }
 
 static void inet_ethernet_adapter_on_interval(supervisor_interval_stage_t stage) {
-    switch (stage) {
-    case SUPERVISOR_INTERVAL_1S:
-        break;
 
-    case SUPERVISOR_INTERVAL_5S:
-        inet_common_poll_internet_reachability();
-        break;
+    inet_common_on_interval(stage);
 
-    case SUPERVISOR_INTERVAL_10M:
-        if (services_running) {
-            mqtt_init(); // Reconnect MQTT if needed
-        }
-        break;
-
-    default:
-        break;
+    if (stage == SUPERVISOR_INTERVAL_10M && services_running) {
+        mqtt_init();
     }
 }
 
 static void tele_inet_ethernet_ip_address(const char *tele_id, cJSON *json_root) {
     char ip_str[16];
-    ethernet_get_interface_ip(ip_str, sizeof(ip_str));
+    get_netif_ip("ETH_DEF", ip_str, sizeof(ip_str));
     cJSON_AddStringToObject(json_root, tele_id, ip_str);
 }
 

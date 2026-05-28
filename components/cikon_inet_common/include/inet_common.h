@@ -7,6 +7,7 @@
 #include "freertos/event_groups.h"
 
 #include "esp_netif_sntp.h"
+#include "supervisor.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,13 +25,13 @@ void inet_common_ha_discovery_handler(const char *args_json_str);
 static inline void inet_common_ha_discovery_handler(const char *args_json_str) {}
 #endif
 
+void inet_common_on_interval(supervisor_interval_stage_t stage);
 void inet_common_on_event(EventBits_t bits);
 
 const char *inet_common_get_hostname(void);
 const char *inet_common_get_device_url(void);
 
-bool inet_common_get_sta_ip(char *buf, size_t buflen);
-bool inet_common_get_ap_ip(char *buf, size_t buflen);
+bool get_netif_ip(const char *if_key, char *buf, size_t buflen);
 void inet_common_log_ap_clients(void);
 
 bool is_tcp_port_reachable(const char *ip, uint16_t port);

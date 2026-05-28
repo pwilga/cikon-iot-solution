@@ -103,7 +103,7 @@ void inet_common_ha_discovery_handler(const char *args_json_str) {
 }
 #endif
 
-static bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
+bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
     if (!buf || buflen == 0) {
         return false;
     }
@@ -118,14 +118,6 @@ static bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
 
     snprintf(buf, buflen, IPSTR, IP2STR(&ip_info.ip));
     return true;
-}
-
-bool inet_common_get_sta_ip(char *buf, size_t buflen) {
-    return get_netif_ip("WIFI_STA_DEF", buf, buflen);
-}
-
-bool inet_common_get_ap_ip(char *buf, size_t buflen) {
-    return get_netif_ip("WIFI_AP_DEF", buf, buflen);
 }
 
 void inet_common_log_ap_clients(void) {
@@ -224,6 +216,12 @@ bool is_tcp_port_reachable(const char *host, uint16_t port) {
     } else {
         close(sock);
         return false;
+    }
+}
+
+void inet_common_on_interval(supervisor_interval_stage_t stage) {
+    if (stage == SUPERVISOR_INTERVAL_5S) {
+        inet_common_poll_internet_reachability();
     }
 }
 
