@@ -1,0 +1,43 @@
+menu "Thread Border Router Adapter"
+
+    config THREAD_BR_RCP_UART_PORT
+        int "UART port number for RCP"
+        default 1
+        range 0 2
+
+    config THREAD_BR_RCP_TX_PIN
+        int "GPIO: S3 TX → RCP RX"
+        default 17
+        range 0 48
+
+    config THREAD_BR_RCP_RX_PIN
+        int "GPIO: S3 RX ← RCP TX"
+        default 18
+        range 0 48
+
+    config THREAD_BR_RCP_BAUD
+        int "UART baud rate for RCP"
+        default 460800
+
+    config THREAD_BR_NETWORK_NAME
+        string "Thread network name"
+        default "cikon-thread"
+
+    config THREAD_BR_CHANNEL
+        int "Thread channel (11-26, avoid WiFi ch 1/6/11 overlap)"
+        default 15
+        range 11 26
+
+    config THREAD_BR_WAKEUP_CHANNEL
+        int "Wake-up channel for CSL sleepy devices (0 = same as main channel)"
+        default 25
+        range 0 26
+
+    config THREAD_BR_PROVISIONED_DATASET
+        string "Provisioned dataset hex (from 'ot dataset active -x', empty = generate new)"
+        default ""
+        help
+            Full dataset backup. Used when NVS is empty (e.g. after controller swap).
+            Get value by running: ot dataset active -x
+
+endmenu
