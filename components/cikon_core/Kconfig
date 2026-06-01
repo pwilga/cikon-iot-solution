@@ -6,4 +6,13 @@ menu "Cikon IoT Board Configuration"
         help
             GPIO number for the status LED. Set to -1 to disable.
             Indicates device status (booting, WiFi connection, errors, etc.)
+    config CIKON_VFS_EVENTFD_MAX_FDS
+        int "Max eventfd file descriptors (0 = disabled)"
+        default 0
+        range 0 16
+        help
+            Register esp_vfs_eventfd at platform init with this many fds.
+            Set > 0 when using OpenThread (needs ~4: netif, task queue,
+            border router, spinel). Can only be registered once globally.
+
 endmenu

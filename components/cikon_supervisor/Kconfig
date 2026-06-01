@@ -31,8 +31,8 @@ menu "Cikon IoT Supervisor Core Configuration"
 
     config SUPERVISOR_TASK_STACK_SIZE
         int "Supervisor task stack size"
-        default 4096
-        range 2048 8192
+        default 8192
+        range 2048 16384
         help
             Stack size for the main supervisor task.
 

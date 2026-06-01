@@ -2,56 +2,93 @@
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
-#include "driver/uart.h"
 #include "esp_log.h"
-#include "esp_mac.h"
 #include "esp_netif.h"
 #include "esp_openthread.h"
 #include "esp_openthread_border_router.h"
 #include "esp_openthread_lock.h"
+#include "esp_openthread_netif_glue.h"
 #include "esp_openthread_types.h"
 #include "openthread/dataset_ftd.h"
-#include "openthread/instance.h"
 
 #include "bits_helper.h"
 #include "supervisor.h"
+
+#if CONFIG_OPENTHREAD_BORDER_ROUTER && CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM
+#include "lwip/pbuf.h"
+#include "lwip/netif.h"
+#include "lwip/ip6_addr.h"
+int lwip_hook_ip6_input(struct pbuf *p, struct netif *inp)
+{
+    if (ip6_addr_isany(ip_2_ip6(&inp->ip6_addr[0]))) {
+        pbuf_free(p);
+        return 1;
+    }
+    return 0;
+}
+#endif
 
 #define TAG "cikon:adapter:thread_br"
 
 static bool initialized = false;
 
+#ifdef CONFIG_THREAD_BR_PROVISIONED_DATASET
+static bool hex_str_to_dataset_tlvs(const char *hex, otOperationalDatasetTlvs *tlvs) {
+    size_t hex_len = strlen(hex);
+    if (hex_len == 0 || hex_len % 2 != 0 || hex_len / 2 > OT_OPERATIONAL_DATASET_MAX_LENGTH) {
+        return false;
+    }
+    for (size_t i = 0; i < hex_len; i += 2) {
+        char byte_str[3] = {hex[i], hex[i + 1], '\0'};
+        char *end;
+        long val = strtol(byte_str, &end, 16);
+        if (*end != '\0') {
+            return false;
+        }
+        tlvs->mTlvs[i / 2] = (uint8_t)val;
+    }
+    tlvs->mLength = (uint8_t)(hex_len / 2);
+    return true;
+}
+#endif
+
 static const esp_openthread_config_t s_ot_config = {
     .netif_config = ESP_NETIF_DEFAULT_OPENTHREAD(),
-    .platform_config = {
-        .radio_config = {
-            .radio_mode = RADIO_MODE_UART_RCP,
-            .radio_uart_config = {
-                .port = CONFIG_THREAD_BR_RCP_UART_PORT,
-                .uart_config = {
-                    .baud_rate  = CONFIG_THREAD_BR_RCP_BAUD,
-                    .data_bits  = UART_DATA_8_BITS,
-                    .parity     = UART_PARITY_DISABLE,
-                    .stop_bits  = UART_STOP_BITS_1,
-                    .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
-                    .source_clk = UART_SCLK_DEFAULT,
+    .platform_config =
+        {
+            .radio_config =
+                {
+                    .radio_mode = RADIO_MODE_UART_RCP,
+                    .radio_uart_config =
+                        {
+                            .port = CONFIG_THREAD_BR_RCP_UART_PORT,
+                            .uart_config =
+                                {
+                                    .baud_rate = CONFIG_THREAD_BR_RCP_BAUD,
+                                    .data_bits = UART_DATA_8_BITS,
+                                    .parity = UART_PARITY_DISABLE,
+                                    .stop_bits = UART_STOP_BITS_1,
+                                    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+                                    .source_clk = UART_SCLK_DEFAULT,
+                                },
+                            .rx_pin = CONFIG_THREAD_BR_RCP_RX_PIN,
+                            .tx_pin = CONFIG_THREAD_BR_RCP_TX_PIN,
+                        },
                 },
-                .rx_pin = CONFIG_THREAD_BR_RCP_RX_PIN,
-                .tx_pin = CONFIG_THREAD_BR_RCP_TX_PIN,
-            },
+            .host_config =
+                {
+                    .host_connection_mode = HOST_CONNECTION_MODE_NONE,
+                },
+            .port_config =
+                {
+                    .storage_partition_name = "nvs",
+                    .netif_queue_size = 10,
+                    .task_queue_size = 10,
+                },
         },
-        .host_config = {
-            .host_connection_mode = HOST_CONNECTION_MODE_NONE,
-        },
-        .port_config = {
-            .storage_partition_name = "nvs",
-            .netif_queue_size = 10,
-            .task_queue_size  = 10,
-        },
-    },
 };
 
-static esp_err_t thread_br_adapter_init(void)
-{
+static esp_err_t thread_br_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -64,13 +101,11 @@ static esp_err_t thread_br_adapter_init(void)
         return err;
     }
 
-    initialized = true;
     ESP_LOGI(TAG, "OpenThread stack started, waiting for backbone IP");
     return ESP_OK;
 }
 
-static esp_err_t thread_br_adapter_shutdown(void)
-{
+static esp_err_t thread_br_adapter_shutdown(void) {
     if (!initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -84,8 +119,8 @@ static esp_err_t thread_br_adapter_shutdown(void)
     return ESP_OK;
 }
 
-static void thread_br_adapter_on_event(EventBits_t bits)
-{
+
+static void thread_br_adapter_on_event(EventBits_t bits) {
     const EventBits_t backbone_ready = INET_ETH_READY | INET_EVENT_STA_READY;
     if (!(bits & backbone_ready) || initialized) {
         return;
@@ -100,7 +135,11 @@ static void thread_br_adapter_on_event(EventBits_t bits)
     esp_openthread_lock_acquire(portMAX_DELAY);
 
     esp_openthread_set_backbone_netif(backbone);
+    esp_openthread_lock_release();
 
+    esp_netif_create_ip6_linklocal(backbone);
+
+    esp_openthread_lock_acquire(portMAX_DELAY);
     if (esp_openthread_border_router_init() != ESP_OK) {
         ESP_LOGE(TAG, "Border router init failed");
         esp_openthread_lock_release();
@@ -110,8 +149,8 @@ static void thread_br_adapter_on_event(EventBits_t bits)
     otOperationalDatasetTlvs dataset;
     bool dataset_ready = false;
 
-#if defined(CONFIG_THREAD_BR_PROVISIONED_DATASET) && strlen(CONFIG_THREAD_BR_PROVISIONED_DATASET) > 0
-    if (otDatasetParseTlvs(CONFIG_THREAD_BR_PROVISIONED_DATASET, &dataset) == OT_ERROR_NONE) {
+#ifdef CONFIG_THREAD_BR_PROVISIONED_DATASET
+    if (hex_str_to_dataset_tlvs(CONFIG_THREAD_BR_PROVISIONED_DATASET, &dataset)) {
         ESP_LOGI(TAG, "Using provisioned dataset");
         dataset_ready = true;
     } else {
@@ -124,7 +163,12 @@ static void thread_br_adapter_on_event(EventBits_t bits)
             ESP_LOGI(TAG, "Using dataset from NVS");
         } else {
             otOperationalDataset config_dataset;
-            otDatasetCreateNewNetwork(esp_openthread_get_instance(), &config_dataset);
+            if (otDatasetCreateNewNetwork(esp_openthread_get_instance(), &config_dataset) !=
+                OT_ERROR_NONE) {
+                ESP_LOGE(TAG, "Failed to create new Thread dataset");
+                esp_openthread_lock_release();
+                return;
+            }
 
             memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BR_NETWORK_NAME,
                    strlen(CONFIG_THREAD_BR_NETWORK_NAME) + 1);
@@ -153,9 +197,9 @@ static void thread_br_adapter_on_event(EventBits_t bits)
 }
 
 supervisor_platform_adapter_t thread_br_adapter = {
-    .name             = "thread_br",
+    .name = "thread_br",
     .enable_in_safe_mode = false,
-    .init             = thread_br_adapter_init,
-    .shutdown         = thread_br_adapter_shutdown,
-    .on_event         = thread_br_adapter_on_event,
+    .init = thread_br_adapter_init,
+    .shutdown = thread_br_adapter_shutdown,
+    .on_event = thread_br_adapter_on_event,
 };

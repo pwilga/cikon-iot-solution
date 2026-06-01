@@ -11,6 +11,10 @@
 
 #include "platform_services.h"
 
+#if CONFIG_CIKON_VFS_EVENTFD_MAX_FDS > 0
+#include "esp_vfs_eventfd.h"
+#endif
+
 #define TAG "cikon:platform"
 
 static void (*restart_callback)(void) = NULL;
@@ -21,6 +25,11 @@ void core_system_init(void) {
 
     ESP_ERROR_CHECK(nvs_flash_safe_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+#if CONFIG_CIKON_VFS_EVENTFD_MAX_FDS > 0
+    esp_vfs_eventfd_config_t efd_cfg = { .max_fds = CONFIG_CIKON_VFS_EVENTFD_MAX_FDS };
+    ESP_ERROR_CHECK(esp_vfs_eventfd_register(&efd_cfg));
+#endif
 
     // onboard_led
     ESP_ERROR_CHECK(gpio_reset_pin(CONFIG_BOARD_STATUS_LED_GPIO));
