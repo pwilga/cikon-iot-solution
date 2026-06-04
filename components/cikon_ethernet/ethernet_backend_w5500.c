@@ -1,6 +1,6 @@
 #include "sdkconfig.h"
 
-#ifdef CONFIG_CIKON_ETHERNET_W5500
+#ifdef CONFIG_ETHERNET_W5500
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
@@ -158,4 +158,4 @@ static esp_err_t w5500_backend_shutdown(esp_eth_handle_t handle) {
 const ethernet_backend_t ethernet_backend_w5500 = {
     .init = w5500_backend_init, .shutdown = w5500_backend_shutdown, .name = "W5500"};
 
-#endif // CONFIG_CIKON_ETHERNET_W5500
+#endif // CONFIG_ETHERNET_W5500

@@ -6,3 +6,4 @@ dependencies:
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers
+  espressif/esp_ot_cli_extension: ">=2.0.0"

@@ -1,7 +1,9 @@
 #include "thread_br_adapter.h"
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
+#include "freertos/task.h"
 
+#include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_openthread.h"
@@ -14,23 +16,16 @@
 #include "bits_helper.h"
 #include "supervisor.h"
 
-#if CONFIG_OPENTHREAD_BORDER_ROUTER && CONFIG_LWIP_HOOK_IP6_INPUT_CUSTOM
-#include "lwip/pbuf.h"
-#include "lwip/netif.h"
-#include "lwip/ip6_addr.h"
-int lwip_hook_ip6_input(struct pbuf *p, struct netif *inp)
-{
-    if (ip6_addr_isany(ip_2_ip6(&inp->ip6_addr[0]))) {
-        pbuf_free(p);
-        return 1;
-    }
-    return 0;
-}
+#if CONFIG_OPENTHREAD_CLI
+#include "esp_console.h"
+#include "esp_ot_cli_extension.h"
 #endif
+
 
 #define TAG "cikon:adapter:thread_br"
 
 static bool initialized = false;
+static bool s_ot_started = false;
 
 #ifdef CONFIG_THREAD_BR_PROVISIONED_DATASET
 static bool hex_str_to_dataset_tlvs(const char *hex, otOperationalDatasetTlvs *tlvs) {
@@ -94,12 +89,36 @@ static esp_err_t thread_br_adapter_init(void) {
     }
 
     // esp_netif_init() already called by ethernet/wifi adapter before us
+#if CONFIG_OPENTHREAD_CLI
+    {
+        esp_console_repl_t *repl = NULL;
+        esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+        repl_config.prompt = "ot>";
+        repl_config.max_cmdline_length = 256;
+#if defined(CONFIG_ESP_CONSOLE_UART_DEFAULT) || defined(CONFIG_ESP_CONSOLE_UART_CUSTOM)
+        esp_console_dev_uart_config_t hw = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_console_new_repl_uart(&hw, &repl_config, &repl));
+#elif defined(CONFIG_ESP_CONSOLE_USB_CDC)
+        esp_console_dev_usb_cdc_config_t hw = ESP_CONSOLE_DEV_CDC_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_console_new_repl_usb_cdc(&hw, &repl_config, &repl));
+#elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
+        esp_console_dev_usb_serial_jtag_config_t hw = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
+        ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&hw, &repl_config, &repl));
+#endif
+        ESP_ERROR_CHECK(esp_console_start_repl(repl));
+    }
+#endif
     ESP_LOGI(TAG, "Starting OpenThread stack");
     esp_err_t err = esp_openthread_start(&s_ot_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_openthread_start failed: %s", esp_err_to_name(err));
         return err;
     }
+    s_ot_started = true;
+
+#if CONFIG_OPENTHREAD_CLI
+    esp_cli_custom_command_init();
+#endif
 
     ESP_LOGI(TAG, "OpenThread stack started, waiting for backbone IP");
     return ESP_OK;
@@ -120,26 +139,13 @@ static esp_err_t thread_br_adapter_shutdown(void) {
 }
 
 
-static void thread_br_adapter_on_event(EventBits_t bits) {
-    const EventBits_t backbone_ready = INET_ETH_READY | INET_EVENT_STA_READY;
-    if (!(bits & backbone_ready) || initialized) {
-        return;
-    }
+static esp_event_handler_instance_t s_ip6_handler = NULL;
+static esp_netif_t *s_backbone_netif = NULL;
 
-    esp_netif_t *backbone = esp_netif_get_default_netif();
-    if (!backbone) {
-        ESP_LOGE(TAG, "No backbone netif");
-        return;
-    }
-
+static void border_router_start(void) {
     esp_openthread_lock_acquire(portMAX_DELAY);
 
-    esp_openthread_set_backbone_netif(backbone);
-    esp_openthread_lock_release();
-
-    esp_netif_create_ip6_linklocal(backbone);
-
-    esp_openthread_lock_acquire(portMAX_DELAY);
+    esp_openthread_set_backbone_netif(s_backbone_netif);
     if (esp_openthread_border_router_init() != ESP_OK) {
         ESP_LOGE(TAG, "Border router init failed");
         esp_openthread_lock_release();
@@ -194,6 +200,45 @@ static void thread_br_adapter_on_event(EventBits_t bits) {
     initialized = true;
     supervisor_notify_event(THREAD_BR_READY);
     ESP_LOGI(TAG, "Thread Border Router started");
+}
+
+static void border_router_start_task(void *arg) {
+    border_router_start();
+    vTaskDelete(NULL);
+}
+
+static void on_backbone_ip6(void *arg, esp_event_base_t base, int32_t id, void *data) {
+    ip_event_got_ip6_t *evt = (ip_event_got_ip6_t *)data;
+    if (evt->esp_netif != s_backbone_netif || initialized) {
+        return;
+    }
+    esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_GOT_IP6, s_ip6_handler);
+    s_ip6_handler = NULL;
+    ESP_LOGI(TAG, "Backbone IPv6 link-local ready, starting Border Router");
+    xTaskCreate(border_router_start_task, "br_start", 6144, NULL, 5, NULL);
+}
+
+static void thread_br_adapter_on_event(EventBits_t bits) {
+    const EventBits_t backbone_ready = INET_ETH_READY | INET_EVENT_STA_READY;
+    if (!(bits & backbone_ready) || initialized) {
+        return;
+    }
+
+    if (!s_ot_started) {
+        ESP_LOGW(TAG, "OpenThread not started, skipping border router init");
+        return;
+    }
+
+    s_backbone_netif = esp_netif_get_default_netif();
+    if (!s_backbone_netif) {
+        ESP_LOGE(TAG, "No backbone netif");
+        return;
+    }
+
+    esp_netif_create_ip6_linklocal(s_backbone_netif);
+    ESP_LOGI(TAG, "Waiting for backbone IPv6 link-local...");
+    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_GOT_IP6, on_backbone_ip6, NULL,
+                                        &s_ip6_handler);
 }
 
 supervisor_platform_adapter_t thread_br_adapter = {

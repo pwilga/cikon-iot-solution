@@ -37,11 +37,11 @@ typedef struct {
 } ethernet_backend_t;
 
 // Backend instances (defined in backend .c files)
-#ifdef CONFIG_CIKON_ETHERNET_W5500
+#ifdef CONFIG_ETHERNET_W5500
 extern const ethernet_backend_t ethernet_backend_w5500;
 #endif
 
-#ifdef CONFIG_CIKON_ETHERNET_OPENETH
+#ifdef CONFIG_ETHERNET_OPENETH
 extern const ethernet_backend_t ethernet_backend_openeth;
 #endif
 

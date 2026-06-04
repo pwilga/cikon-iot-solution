@@ -5,4 +5,5 @@ idf_component_register(
         esp_netif
         openthread
         esp_driver_uart
+        console
 )

@@ -7,7 +7,7 @@
 
 #include "sdkconfig.h"
 
-#ifdef CONFIG_CIKON_ETHERNET_OPENETH
+#ifdef CONFIG_ETHERNET_OPENETH
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
@@ -24,9 +24,9 @@
 // ===== PHY Selection =====
 
 static const char* openeth_get_phy_name(void) {
-#ifdef CONFIG_CIKON_ETHERNET_PHY_IP101
+#ifdef CONFIG_ETHERNET_PHY_IP101
     return "IP101";
-#elif defined(CONFIG_CIKON_ETHERNET_PHY_GENERIC)
+#elif defined(CONFIG_ETHERNET_PHY_GENERIC)
     return "Generic";
 #else
     return "Unknown";
@@ -34,14 +34,14 @@ static const char* openeth_get_phy_name(void) {
 }
 
 static esp_eth_phy_t* openeth_create_phy(const eth_phy_config_t *config) {
-#ifdef CONFIG_CIKON_ETHERNET_PHY_IP101
+#ifdef CONFIG_ETHERNET_PHY_IP101
     ESP_LOGI(TAG, "Creating IP101 PHY instance");
     return esp_eth_phy_new_ip101(config);
-#elif defined(CONFIG_CIKON_ETHERNET_PHY_GENERIC)
+#elif defined(CONFIG_ETHERNET_PHY_GENERIC)
     ESP_LOGI(TAG, "Creating Generic PHY instance (auto-detect)");
     return esp_eth_phy_new_generic(config);
 #else
-    #error "No PHY type selected! Configure in Kconfig (CIKON_ETHERNET_PHY_*)."
+    #error "No PHY type selected! Configure in Kconfig (ETHERNET_PHY_*)."
     return NULL;
 #endif
 }
@@ -127,4 +127,4 @@ const ethernet_backend_t ethernet_backend_openeth = {
     .name = "OpenETH"
 };
 
-#endif // CONFIG_CIKON_ETHERNET_OPENETH
+#endif // CONFIG_ETHERNET_OPENETH

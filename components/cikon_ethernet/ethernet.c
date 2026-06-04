@@ -23,9 +23,9 @@ static esp_netif_t *s_eth_netif = NULL;
 static esp_eth_netif_glue_handle_t s_eth_glue = NULL;
 
 static const ethernet_backend_t *ethernet_get_backend(void) {
-#ifdef CONFIG_CIKON_ETHERNET_W5500
+#ifdef CONFIG_ETHERNET_W5500
     return &ethernet_backend_w5500;
-#elif CONFIG_CIKON_ETHERNET_OPENETH
+#elif CONFIG_ETHERNET_OPENETH
     return &ethernet_backend_openeth;
 #else
 #error                                                                                             \
@@ -153,6 +153,5 @@ const char *ethernet_get_backend_name(void) {
     const ethernet_backend_t *backend = ethernet_get_backend();
     return backend->name;
 }
-
 
 esp_netif_t *ethernet_get_netif(void) { return s_eth_netif; }
