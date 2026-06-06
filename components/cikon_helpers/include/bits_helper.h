@@ -32,5 +32,6 @@
 #define INET_ETH_LOST BIT11        // Ethernet link down
 
 #define THREAD_BR_READY BIT12      // Thread border router initialized
+#define THREAD_DEVICE_READY BIT13  // Thread device joined network
 
-// BIT13-23: Available (11 bits)
+// BIT14-23: Available (10 bits)

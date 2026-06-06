@@ -1,0 +1,21 @@
+menu "Thread Device Adapter"
+    depends on ENABLE_SUPERVISOR_THREAD_DEVICE
+
+    config THREAD_DEVICE_PROVISIONED_DATASET
+        string "Provisioned dataset hex (from 'ot dataset active -x', empty = use NVS)"
+        default ""
+        help
+            Full dataset backup from the Thread network leader.
+            Get value by running on any joined device: ot dataset active -x
+            Used when NVS is empty (e.g. after factory reset or first boot).
+
+    config THREAD_DEVICE_POLL_PERIOD_MS
+        int "SED poll period (ms)"
+        default 3000
+        range 100 10000
+        depends on OPENTHREAD_MTD
+        help
+            How often the Sleepy End Device polls its parent for queued messages.
+            Lower = faster response, higher = better power savings.
+
+endmenu

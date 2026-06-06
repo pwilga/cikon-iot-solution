@@ -21,8 +21,10 @@
 #include "esp_ot_cli_extension.h"
 #endif
 
-
 #define TAG "cikon:adapter:thread_br"
+
+static esp_event_handler_instance_t s_ip6_handler = NULL;
+static esp_netif_t *s_backbone_netif = NULL;
 
 static bool initialized = false;
 static bool s_ot_started = false;
@@ -102,7 +104,8 @@ static esp_err_t thread_br_adapter_init(void) {
         esp_console_dev_usb_cdc_config_t hw = ESP_CONSOLE_DEV_CDC_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_console_new_repl_usb_cdc(&hw, &repl_config, &repl));
 #elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
-        esp_console_dev_usb_serial_jtag_config_t hw = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
+        esp_console_dev_usb_serial_jtag_config_t hw =
+            ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&hw, &repl_config, &repl));
 #endif
         ESP_ERROR_CHECK(esp_console_start_repl(repl));
@@ -138,18 +141,14 @@ static esp_err_t thread_br_adapter_shutdown(void) {
     return ESP_OK;
 }
 
-
-static esp_event_handler_instance_t s_ip6_handler = NULL;
-static esp_netif_t *s_backbone_netif = NULL;
-
-static void border_router_start(void) {
+static void border_router_start_task(void *arg) {
     esp_openthread_lock_acquire(portMAX_DELAY);
 
     esp_openthread_set_backbone_netif(s_backbone_netif);
     if (esp_openthread_border_router_init() != ESP_OK) {
         ESP_LOGE(TAG, "Border router init failed");
         esp_openthread_lock_release();
-        return;
+        goto done;
     }
 
     otOperationalDatasetTlvs dataset;
@@ -173,7 +172,7 @@ static void border_router_start(void) {
                 OT_ERROR_NONE) {
                 ESP_LOGE(TAG, "Failed to create new Thread dataset");
                 esp_openthread_lock_release();
-                return;
+                goto done;
             }
 
             memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BR_NETWORK_NAME,
@@ -200,10 +199,8 @@ static void border_router_start(void) {
     initialized = true;
     supervisor_notify_event(THREAD_BR_READY);
     ESP_LOGI(TAG, "Thread Border Router started");
-}
 
-static void border_router_start_task(void *arg) {
-    border_router_start();
+done:
     vTaskDelete(NULL);
 }
 

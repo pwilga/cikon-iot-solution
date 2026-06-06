@@ -32,37 +32,36 @@ if ETHERNET_W5500
 
         config W5500_SPI_CLOCK_MHZ
             int "SPI Clock Speed (MHz)"
-            default 20
+            default 40
             range 1 80
             help
                 SPI clock frequency in MHz. W5500 supports up to 80MHz.
-                Recommended: 20MHz for reliable operation.
 
         config W5500_SPI_SCLK_GPIO
             int "SPI SCLK GPIO"
-            default 18
+            default 5
 
         config W5500_SPI_MOSI_GPIO
             int "SPI MOSI GPIO"
-            default 23
+            default 8
 
         config W5500_SPI_MISO_GPIO
             int "SPI MISO GPIO"
-            default 19
+            default 7
 
         config W5500_SPI_CS_GPIO
             int "SPI CS GPIO"
-            default 15
+            default 6
 
         config W5500_INT_GPIO
             int "Interrupt GPIO (-1 = polling mode)"
-            default 4
+            default -1
             help
                 Set to -1 to use polling mode instead.
 
         config W5500_POLLING_MS
             int "Polling Interval (ms) if no interrupt"
-            default 1000
+            default 5
             range 1 10000
             depends on W5500_INT_GPIO < 0
 
