@@ -9,7 +9,7 @@ set(PRIV_FIELDS_HEADER_EXAMPLE "${PRIV_FIELDS_HEADER}.example")
 # Use DEVICE_CONFIG_DIR if defined, otherwise fallback to PROJECT_DIR/config/cikon_config
 idf_build_get_property(DEVICE_CONFIG_DIR DEVICE_CONFIG_DIR)
 message(STATUS "cikon_config DEBUG: DEVICE_CONFIG_DIR='${DEVICE_CONFIG_DIR}'")
-if(DEVICE_CONFIG_DIR AND EXISTS "${DEVICE_CONFIG_DIR}")
+if(DEVICE_CONFIG_DIR)
     set(PROJECT_CONFIG_DIR "${DEVICE_CONFIG_DIR}/cikon_config")
     message(STATUS "cikon_config: Using device profile config dir")
 else()

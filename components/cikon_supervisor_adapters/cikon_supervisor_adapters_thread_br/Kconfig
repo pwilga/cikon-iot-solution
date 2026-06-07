@@ -1,24 +1,5 @@
 menu "Thread Border Router Adapter"
 
-    config THREAD_BR_RCP_UART_PORT
-        int "UART port number for RCP"
-        default 1
-        range 0 2
-
-    config THREAD_BR_RCP_TX_PIN
-        int "GPIO: S3 TX → RCP RX"
-        default 2
-        range 0 48
-
-    config THREAD_BR_RCP_RX_PIN
-        int "GPIO: S3 RX ← RCP TX"
-        default 1
-        range 0 48
-
-    config THREAD_BR_RCP_BAUD
-        int "UART baud rate for RCP"
-        default 460800
-
     config THREAD_BR_NETWORK_NAME
         string "Thread network name"
         default "cikon-thread"

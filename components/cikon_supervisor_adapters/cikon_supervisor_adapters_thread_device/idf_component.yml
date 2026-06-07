@@ -6,3 +6,9 @@ dependencies:
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers
+  cikon_config:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_config
+  cikon_thread_common:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_thread_common

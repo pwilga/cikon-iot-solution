@@ -1,0 +1,26 @@
+menu "Thread Common - Radio"
+
+    config THREAD_RADIO_RCP_UART_PORT
+        int "UART port number for RCP"
+        depends on OPENTHREAD_RADIO_SPINEL_UART
+        default 1
+        range 0 2
+
+    config THREAD_RADIO_RCP_TX_PIN
+        int "GPIO: host TX → RCP RX"
+        depends on OPENTHREAD_RADIO_SPINEL_UART
+        default 2
+        range 0 48
+
+    config THREAD_RADIO_RCP_RX_PIN
+        int "GPIO: host RX ← RCP TX"
+        depends on OPENTHREAD_RADIO_SPINEL_UART
+        default 1
+        range 0 48
+
+    config THREAD_RADIO_RCP_BAUD
+        int "UART baud rate for RCP"
+        depends on OPENTHREAD_RADIO_SPINEL_UART
+        default 460800
+
+endmenu

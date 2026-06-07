@@ -1,5 +1,6 @@
 #include "thread_device_adapter.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
@@ -9,54 +10,22 @@
 #include "esp_netif.h"
 #include "esp_openthread.h"
 #include "esp_openthread_lock.h"
-#include "esp_openthread_netif_glue.h"
+#include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
 #include "openthread/dataset.h"
 #include "openthread/link.h"
 
 #include "bits_helper.h"
+#include "config_manager.h"
 #include "supervisor.h"
+#include "thread_common.h"
+#include "thread_radio_config.h"
 
 #define TAG "cikon:adapter:thread_device"
 
 static bool initialized = false;
 
-#ifdef CONFIG_THREAD_DEVICE_PROVISIONED_DATASET
-static bool hex_str_to_dataset_tlvs(const char *hex, otOperationalDatasetTlvs *tlvs) {
-    size_t hex_len = strlen(hex);
-    if (hex_len == 0 || hex_len % 2 != 0 || hex_len / 2 > OT_OPERATIONAL_DATASET_MAX_LENGTH) {
-        return false;
-    }
-    for (size_t i = 0; i < hex_len; i += 2) {
-        char byte_str[3] = {hex[i], hex[i + 1], '\0'};
-        char *end;
-        long val = strtol(byte_str, &end, 16);
-        if (*end != '\0') {
-            return false;
-        }
-        tlvs->mTlvs[i / 2] = (uint8_t)val;
-    }
-    tlvs->mLength = (uint8_t)(hex_len / 2);
-    return true;
-}
-#endif
-
-static const esp_openthread_config_t s_ot_config = {
-    .netif_config = ESP_NETIF_DEFAULT_OPENTHREAD(),
-    .platform_config = {
-        .radio_config = {
-            .radio_mode = RADIO_MODE_NATIVE,
-        },
-        .host_config = {
-            .host_connection_mode = HOST_CONNECTION_MODE_NONE,
-        },
-        .port_config = {
-            .storage_partition_name = "nvs",
-            .netif_queue_size = 10,
-            .task_queue_size = 10,
-        },
-    },
-};
+static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
 
 static void thread_device_start_task(void *arg) {
     esp_openthread_lock_acquire(portMAX_DELAY);
@@ -66,7 +35,7 @@ static void thread_device_start_task(void *arg) {
 
 #ifdef CONFIG_THREAD_DEVICE_PROVISIONED_DATASET
     if (strlen(CONFIG_THREAD_DEVICE_PROVISIONED_DATASET) > 0 &&
-        hex_str_to_dataset_tlvs(CONFIG_THREAD_DEVICE_PROVISIONED_DATASET, &dataset)) {
+        thread_dataset_parse_hex(CONFIG_THREAD_DEVICE_PROVISIONED_DATASET, &dataset)) {
         ESP_LOGI(TAG, "Using provisioned dataset");
         dataset_ready = true;
     } else {
@@ -80,7 +49,8 @@ static void thread_device_start_task(void *arg) {
             dataset_ready = true;
         } else {
             ESP_LOGW(TAG, "No dataset — Thread will not join automatically");
-            ESP_LOGW(TAG, "Provision via: ot dataset active -x (from BR), then ot ifconfig up / ot thread start");
+            ESP_LOGW(TAG, "Provision via: ot dataset active -x (from BR), then ot ifconfig up / ot "
+                          "thread start");
         }
     }
 
@@ -114,12 +84,24 @@ static esp_err_t thread_device_adapter_init(void) {
         return err;
     }
 
+#if CONFIG_OPENTHREAD_CLI
+    {
+        static char repl_prompt[20];
+        snprintf(repl_prompt, sizeof(repl_prompt), "%s>", config_get()->dev_name);
+        thread_console_start(repl_prompt);
+    }
+#endif
+
     ESP_LOGI(TAG, "Starting OpenThread stack (native radio)");
     err = esp_openthread_start(&s_ot_config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_openthread_start failed: %s", esp_err_to_name(err));
         return err;
     }
+
+#if CONFIG_OPENTHREAD_CLI
+    thread_cli_commands_init();
+#endif
 
     xTaskCreate(thread_device_start_task, "td_start", 4096, NULL, 5, NULL);
     return ESP_OK;

@@ -6,7 +6,9 @@ dependencies:
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers
-  espressif/esp_ot_cli_extension:
-    version: ">=2.0.0"
-    matches:
-      - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_BR} == True"
+  cikon_config:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_config
+  cikon_thread_common:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_thread_common
