@@ -1,0 +1,12 @@
+name: cikon_thread_common
+version: "0.1.0"
+description: "Shared utilities for Cikon Thread adapters"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=6.0"
+  espressif/esp_ot_cli_extension:
+    version: ">=2.0.0"
