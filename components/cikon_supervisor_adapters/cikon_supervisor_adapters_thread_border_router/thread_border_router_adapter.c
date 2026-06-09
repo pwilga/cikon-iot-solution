@@ -1,4 +1,4 @@
-#include "thread_br_adapter.h"
+#include "thread_border_router_adapter.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -22,7 +22,7 @@
 #include "thread_common.h"
 #include "thread_radio_config.h"
 
-#define TAG "cikon:adapter:thread_br"
+#define TAG "cikon:adapter:thread_border_router"
 
 static esp_event_handler_instance_t s_ip6_handler = NULL;
 static esp_netif_t *s_backbone_netif = NULL;
@@ -32,7 +32,7 @@ static bool s_ot_started = false;
 
 static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
 
-static esp_err_t thread_br_adapter_init(void) {
+static esp_err_t thread_border_router_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -61,7 +61,7 @@ static esp_err_t thread_br_adapter_init(void) {
     return ESP_OK;
 }
 
-static esp_err_t thread_br_adapter_shutdown(void) {
+static esp_err_t thread_border_router_adapter_shutdown(void) {
     if (!initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -88,8 +88,8 @@ static void border_router_start_task(void *arg) {
     otOperationalDatasetTlvs dataset;
     bool dataset_ready = false;
 
-#ifdef CONFIG_THREAD_BR_PROVISIONED_DATASET
-    if (thread_dataset_parse_hex(CONFIG_THREAD_BR_PROVISIONED_DATASET, &dataset)) {
+#ifdef CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET
+    if (thread_dataset_parse_hex(CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET, &dataset)) {
         ESP_LOGI(TAG, "Using provisioned dataset");
         dataset_ready = true;
     } else {
@@ -109,21 +109,21 @@ static void border_router_start_task(void *arg) {
                 goto done;
             }
 
-            memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BR_NETWORK_NAME,
-                   strlen(CONFIG_THREAD_BR_NETWORK_NAME) + 1);
+            memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
+                   strlen(CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME) + 1);
             config_dataset.mComponents.mIsNetworkNamePresent = true;
 
-            config_dataset.mChannel = CONFIG_THREAD_BR_CHANNEL;
+            config_dataset.mChannel = CONFIG_THREAD_BORDER_ROUTER_CHANNEL;
             config_dataset.mComponents.mIsChannelPresent = true;
 
-#if CONFIG_THREAD_BR_WAKEUP_CHANNEL > 0
-            config_dataset.mWakeupChannel = CONFIG_THREAD_BR_WAKEUP_CHANNEL;
+#if CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL > 0
+            config_dataset.mWakeupChannel = CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL;
             config_dataset.mComponents.mIsWakeupChannelPresent = true;
 #endif
 
             otDatasetConvertToTlvs(&config_dataset, &dataset);
-            ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d", CONFIG_THREAD_BR_NETWORK_NAME,
-                     CONFIG_THREAD_BR_CHANNEL);
+            ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d", CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
+                     CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
         }
     }
 
@@ -131,7 +131,7 @@ static void border_router_start_task(void *arg) {
     esp_openthread_lock_release();
 
     initialized = true;
-    supervisor_notify_event(THREAD_BR_READY);
+    supervisor_notify_event(THREAD_BORDER_ROUTER_READY);
     ESP_LOGI(TAG, "Thread Border Router started");
 
 done:
@@ -149,14 +149,8 @@ static void on_backbone_ip6(void *arg, esp_event_base_t base, int32_t id, void *
     xTaskCreate(border_router_start_task, "br_start", 6144, NULL, 5, NULL);
 }
 
-static void thread_br_adapter_on_event(EventBits_t bits) {
-    const EventBits_t backbone_ready = INET_ETH_READY | INET_EVENT_STA_READY;
-    if (!(bits & backbone_ready) || initialized) {
-        return;
-    }
-
-    if (!s_ot_started) {
-        ESP_LOGW(TAG, "OpenThread not started, skipping border router init");
+static void on_backbone_ready(void) {
+    if (initialized || !s_ot_started) {
         return;
     }
 
@@ -172,10 +166,16 @@ static void thread_br_adapter_on_event(EventBits_t bits) {
                                         &s_ip6_handler);
 }
 
-supervisor_platform_adapter_t thread_br_adapter = {
-    .name = "thread_br",
+static void thread_border_router_adapter_on_event(EventBits_t bits) {
+    if (bits & (INET_ETH_READY | INET_EVENT_STA_READY)) {
+        on_backbone_ready();
+    }
+}
+
+supervisor_platform_adapter_t thread_border_router_adapter = {
+    .name = "thread_border_router",
     .enable_in_safe_mode = false,
-    .init = thread_br_adapter_init,
-    .shutdown = thread_br_adapter_shutdown,
-    .on_event = thread_br_adapter_on_event,
+    .init = thread_border_router_adapter_init,
+    .shutdown = thread_border_router_adapter_shutdown,
+    .on_event = thread_border_router_adapter_on_event,
 };

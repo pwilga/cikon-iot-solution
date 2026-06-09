@@ -237,7 +237,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
 
     if (stage == SUPERVISOR_INTERVAL_10S) {
         mesh_log_topology();
-        inet_common_log_ap_clients();
+        mesh_log_ap_clients();
     }
 }
 

@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "thread_br_adapter.c"
+    SRCS "thread_border_router_adapter.c"
     INCLUDE_DIRS "include"
     PRIV_REQUIRES
         esp_netif

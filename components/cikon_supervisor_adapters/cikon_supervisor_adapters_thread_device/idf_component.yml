@@ -12,3 +12,6 @@ dependencies:
   cikon_thread_common:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_thread_common
+  cikon_inet_common:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_inet_common

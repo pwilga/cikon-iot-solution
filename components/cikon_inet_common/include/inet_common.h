@@ -32,7 +32,6 @@ const char *inet_common_get_hostname(void);
 const char *inet_common_get_device_url(void);
 
 bool get_netif_ip(const char *if_key, char *buf, size_t buflen);
-void inet_common_log_ap_clients(void);
 
 bool is_tcp_port_reachable(const char *ip, uint16_t port);
 bool is_internet_reachable(void);

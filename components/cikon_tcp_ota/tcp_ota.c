@@ -224,12 +224,13 @@ void tcp_ota_task(void *args) {
 
     struct sockaddr_storage dest_addr;
 
-    struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
-    dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
-    dest_addr_ip4->sin_family = AF_INET;
-    dest_addr_ip4->sin_port = htons(ota_listen_port);
+    struct sockaddr_in6 *dest_addr_ip6 = (struct sockaddr_in6 *)&dest_addr;
+    memset(dest_addr_ip6, 0, sizeof(*dest_addr_ip6));
+    dest_addr_ip6->sin6_family = AF_INET6;
+    dest_addr_ip6->sin6_port = htons(ota_listen_port);
+    dest_addr_ip6->sin6_addr = in6addr_any;
 
-    ota_listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    ota_listen_sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_IPV6);
     if (ota_listen_sock < 0) {
         ESP_LOGE(TAG, "Unable to create socket. System error code: %d", errno);
         ota_listen_sock = -1;
@@ -238,12 +239,10 @@ void tcp_ota_task(void *args) {
         return;
     }
 
-    /*
-        SO_REUSEADDR option allows to reuse the same IP address and port even
-        if they were recently used and are still in the TIME_WAIT state.
-    */
     int opt = 1;
     setsockopt(ota_listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    int v6only = 0;
+    setsockopt(ota_listen_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
 
     if (bind(ota_listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) ||
         listen(ota_listen_sock, 1)) {
@@ -273,8 +272,11 @@ void tcp_ota_task(void *args) {
             break;
         }
 
-        char addr_str[16];
-        inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
+        char addr_str[46];
+        void *sin_addr = source_addr.ss_family == AF_INET6
+                             ? (void *)&((struct sockaddr_in6 *)&source_addr)->sin6_addr
+                             : (void *)&((struct sockaddr_in *)&source_addr)->sin_addr;
+        inet_ntop(source_addr.ss_family, sin_addr, addr_str, sizeof(addr_str));
         ESP_LOGI(TAG, "Incoming connection from %s", addr_str);
 
         handle_ota(client_sock);

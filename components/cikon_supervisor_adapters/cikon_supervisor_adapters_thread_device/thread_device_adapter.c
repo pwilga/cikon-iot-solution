@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 
+#include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_openthread.h"
@@ -17,6 +18,7 @@
 
 #include "bits_helper.h"
 #include "config_manager.h"
+#include "inet_common.h"
 #include "supervisor.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
@@ -24,6 +26,7 @@
 #define TAG "cikon:adapter:thread_device"
 
 static bool initialized = false;
+static bool s_mqtt_started = false;
 
 static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
 
@@ -72,6 +75,15 @@ static void thread_device_start_task(void *arg) {
     vTaskDelete(NULL);
 }
 
+static void on_dns_server_ready(void *arg, esp_event_base_t base, int32_t id, void *data) {
+    if (s_mqtt_started) {
+        return;
+    }
+    s_mqtt_started = true;
+    inet_common_sntp_init();
+    inet_common_mqtt_init();
+}
+
 static esp_err_t thread_device_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -103,9 +115,14 @@ static esp_err_t thread_device_adapter_init(void) {
     thread_cli_commands_init();
 #endif
 
+    esp_event_handler_register(OPENTHREAD_EVENT, OPENTHREAD_EVENT_SET_DNS_SERVER,
+                               on_dns_server_ready, NULL);
+
     xTaskCreate(thread_device_start_task, "td_start", 4096, NULL, 5, NULL);
     return ESP_OK;
 }
+
+static void thread_device_adapter_on_event(EventBits_t bits) { inet_common_on_event(bits); }
 
 static esp_err_t thread_device_adapter_shutdown(void) {
     if (!initialized) {
@@ -115,9 +132,20 @@ static esp_err_t thread_device_adapter_shutdown(void) {
     return ESP_OK;
 }
 
+static const command_entry_t s_thread_device_cmnd[] = {
+    {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
+    {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    {"ha", "Trigger HA MQTT discovery", inet_common_ha_discovery_handler},
+#endif
+    {NULL, NULL, NULL},
+};
+
 supervisor_platform_adapter_t thread_device_adapter = {
     .name = "thread_device",
     .enable_in_safe_mode = false,
     .init = thread_device_adapter_init,
     .shutdown = thread_device_adapter_shutdown,
+    .on_event = thread_device_adapter_on_event,
+    .cmnd_group = s_thread_device_cmnd,
 };

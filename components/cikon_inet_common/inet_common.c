@@ -6,7 +6,6 @@
 #include <unistd.h>
 
 #include "esp_log.h"
-#include "esp_mac.h"
 #include "mdns.h"
 
 #include "bits_helper.h"
@@ -25,7 +24,6 @@
 #endif
 
 #include "esp_netif.h"
-#include "esp_wifi.h"
 #include "inet_common.h"
 #include "tcp_monitor.h"
 #include "tcp_ota.h"
@@ -120,27 +118,6 @@ bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
     return true;
 }
 
-void inet_common_log_ap_clients(void) {
-
-    wifi_mode_t mode;
-    if (esp_wifi_get_mode(&mode) != ESP_OK || (mode != WIFI_MODE_AP && mode != WIFI_MODE_APSTA)) {
-        return;
-    }
-
-    wifi_sta_list_t sta_list = {0};
-    esp_err_t ret = esp_wifi_ap_get_sta_list(&sta_list);
-    if (ret != ESP_OK) {
-        // ESP_LOGW(TAG, "Failed to get AP station list: %d", ret);
-        return;
-    }
-
-    if (sta_list.num > 0) {
-        ESP_LOGI(TAG, "Connected AP clients: %d", sta_list.num);
-        for (int i = 0; i < sta_list.num; i++) {
-            ESP_LOGI(TAG, "  MAC: " MACSTR, MAC2STR(sta_list.sta[i].mac));
-        }
-    }
-}
 
 const char *inet_common_get_hostname(void) {
     const char *hostname = config_get()->mdns_host;

@@ -3,6 +3,7 @@
 #include "cJSON.h"
 #include "esp_event.h"
 #include "esp_log.h"
+#include "esp_wifi.h"
 #include "esp_wifi_types_generic.h"
 
 #include "bits_helper.h"
@@ -23,6 +24,20 @@ static bool initialized = false;
 
 static esp_event_handler_instance_t inet_mesh_wifi_handler = NULL;
 static esp_event_handler_instance_t inet_mesh_ip_handler = NULL;
+
+void mesh_log_ap_clients(void) {
+    wifi_mode_t mode;
+    if (esp_wifi_get_mode(&mode) != ESP_OK || (mode != WIFI_MODE_AP && mode != WIFI_MODE_APSTA)) {
+        return;
+    }
+    wifi_sta_list_t sta_list = {0};
+    if (esp_wifi_ap_get_sta_list(&sta_list) != ESP_OK) return;
+    if (sta_list.num > 0) {
+        ESP_LOGI(TAG, "Connected AP clients: %d", sta_list.num);
+        for (int i = 0; i < sta_list.num; i++)
+            ESP_LOGI(TAG, "  MAC: " MACSTR, MAC2STR(sta_list.sta[i].mac));
+    }
+}
 
 // Mesh message callback
 static void inet_mesh_on_message_received(cJSON *payload) {

@@ -31,7 +31,7 @@
 #define INET_ETH_READY BIT10       // Ethernet got IP
 #define INET_ETH_LOST BIT11        // Ethernet link down
 
-#define THREAD_BR_READY BIT12      // Thread border router initialized
+#define THREAD_BORDER_ROUTER_READY BIT12  // Thread border router initialized
 #define THREAD_DEVICE_READY BIT13  // Thread device joined network
 
 // BIT14-23: Available (10 bits)
