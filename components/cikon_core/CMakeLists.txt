@@ -8,4 +8,5 @@ idf_component_register(
         esp_event
         nvs_flash
         vfs
+        spiffs
 )

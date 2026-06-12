@@ -14,7 +14,9 @@
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
 #include "openthread/dataset.h"
+#if CONFIG_OPENTHREAD_MTD
 #include "openthread/link.h"
+#endif
 
 #include "bits_helper.h"
 #include "config_manager.h"

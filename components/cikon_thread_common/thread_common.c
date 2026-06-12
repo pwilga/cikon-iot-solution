@@ -2,7 +2,14 @@
 
 #include <string.h>
 
+#include "esp_log.h"
+#include "esp_openthread.h"
+#include "esp_openthread_lock.h"
 #include "openthread/dataset.h"
+#include "openthread/link.h"
+#include "openthread/thread.h"
+
+#define TAG "cikon:thread"
 
 bool thread_dataset_parse_hex(const char *hex, otOperationalDatasetTlvs *out) {
     size_t hex_len = strlen(hex);
@@ -20,6 +27,27 @@ bool thread_dataset_parse_hex(const char *hex, otOperationalDatasetTlvs *out) {
     }
     out->mLength = (uint8_t)(hex_len / 2);
     return true;
+}
+
+void thread_log_network_info(void) {
+    otInstance *ot = esp_openthread_get_instance();
+    if (!ot) {
+        return;
+    }
+
+    esp_openthread_lock_acquire(portMAX_DELAY);
+
+    const char *role = otThreadDeviceRoleToString(otThreadGetDeviceRole(ot));
+    const char *name = otThreadGetNetworkName(ot);
+    uint8_t channel = otLinkGetChannel(ot);
+    uint16_t pan_id = otLinkGetPanId(ot);
+    uint16_t rloc16 = otThreadGetRloc16(ot);
+    uint32_t part_id = otThreadGetPartitionId(ot);
+
+    ESP_LOGI(TAG, "%s | %s | ch=%u | pan=0x%04X | rloc=0x%04X | part=%lu", role, name, channel,
+             pan_id, rloc16, (unsigned long)part_id);
+
+    esp_openthread_lock_release();
 }
 
 #if CONFIG_OPENTHREAD_CLI

@@ -21,4 +21,13 @@ menu "Thread Border Router Adapter"
             Full dataset backup. Used when NVS is empty (e.g. after controller swap).
             Get value by running: ot dataset active -x
 
+    config THREAD_BORDER_ROUTER_WEB
+        bool "Enable Thread Border Router Web GUI"
+        default n
+        help
+            Start the ot-br-posix REST API + HTML/JS frontend on port 80.
+            Requires VFS_SPIFFS_ENABLED and web_storage SPIFFS partition.
+            Enable OPENTHREAD_COMMISSIONER and OPENTHREAD_JOINER for full
+            commissioning support via the web interface.
+
 endmenu

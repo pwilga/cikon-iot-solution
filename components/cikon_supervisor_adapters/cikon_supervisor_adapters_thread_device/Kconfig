@@ -1,4 +1,4 @@
-menu "Thread Device Adapter"
+menu "Cikon IoT Supervisor Thread Device Adapter"
     depends on ENABLE_SUPERVISOR_THREAD_DEVICE
 
     config THREAD_DEVICE_PROVISIONED_DATASET

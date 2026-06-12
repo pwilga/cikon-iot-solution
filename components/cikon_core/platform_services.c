@@ -11,8 +11,14 @@
 
 #include "platform_services.h"
 
-#if CONFIG_CIKON_VFS_EVENTFD_MAX_FDS > 0
+#if CONFIG_VFS_EVENTFD_MAX_FDS > 0
 #include "esp_vfs_eventfd.h"
+#endif
+#if CONFIG_VFS_LITTLEFS_ENABLED
+#include "esp_vfs_littlefs.h"
+#endif
+#if CONFIG_VFS_SPIFFS_ENABLED
+#include "esp_spiffs.h"
 #endif
 
 #define TAG "cikon:platform"
@@ -26,9 +32,35 @@ void core_system_init(void) {
     ESP_ERROR_CHECK(nvs_flash_safe_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-#if CONFIG_CIKON_VFS_EVENTFD_MAX_FDS > 0
-    esp_vfs_eventfd_config_t efd_cfg = { .max_fds = CONFIG_CIKON_VFS_EVENTFD_MAX_FDS };
+#if CONFIG_VFS_EVENTFD_MAX_FDS > 0
+    esp_vfs_eventfd_config_t efd_cfg = { .max_fds = CONFIG_VFS_EVENTFD_MAX_FDS };
     ESP_ERROR_CHECK(esp_vfs_eventfd_register(&efd_cfg));
+#endif
+
+#if CONFIG_VFS_LITTLEFS_ENABLED
+    {
+        esp_vfs_littlefs_conf_t lfs = {
+            .base_path              = CONFIG_VFS_LITTLEFS_MOUNT_POINT,
+            .partition_label        = CONFIG_VFS_LITTLEFS_PARTITION,
+            .max_files              = 10,
+            .format_if_mount_failed = false,
+        };
+        ESP_ERROR_CHECK(esp_vfs_littlefs_register(&lfs));
+        ESP_LOGI(TAG, "LittleFS mounted at %s", CONFIG_VFS_LITTLEFS_MOUNT_POINT);
+    }
+#endif
+
+#if CONFIG_VFS_SPIFFS_ENABLED
+    {
+        esp_vfs_spiffs_conf_t spiffs = {
+            .base_path              = CONFIG_VFS_SPIFFS_MOUNT_POINT,
+            .partition_label        = CONFIG_VFS_SPIFFS_PARTITION,
+            .max_files              = 10,
+            .format_if_mount_failed = false,
+        };
+        ESP_ERROR_CHECK(esp_vfs_spiffs_register(&spiffs));
+        ESP_LOGI(TAG, "SPIFFS mounted at %s", CONFIG_VFS_SPIFFS_MOUNT_POINT);
+    }
 #endif
 
     // onboard_led

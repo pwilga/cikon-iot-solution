@@ -18,6 +18,7 @@
 #include "debug_adapter.h"
 #include "enum_helpers.h"
 #include "metadata.h"
+#include "supervisor.h"
 #include "tele.h"
 
 #define TAG "cikon:adapter:debug"
@@ -30,10 +31,11 @@ static char failed_ota_version[32] = "unknown";
 __attribute__((weak)) void wifi_log_event_group_bits(void) {}
 
 __attribute__((weak)) bool get_netif_ip(const char *if_key, char *buf, size_t len) { return false; }
-__attribute__((weak)) void inet_common_log_ap_clients(void) {}
+__attribute__((weak)) void mesh_log_ap_clients(void) {}
 
 __attribute__((weak)) void mqtt_log_event_group_bits(void) {}
 __attribute__((weak)) void mesh_log_topology(void) {}
+__attribute__((weak)) void thread_log_network_info(void) {}
 
 // Helper for random float generation
 static float random_float(float min, float max) {
@@ -199,7 +201,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 
     // Log system stats every 2 seconds
-    if (stage == SUPERVISOR_INTERVAL_2S) {
+    if (stage == SUPERVISOR_INTERVAL_10S) {
         if (supervisor_is_safe_mode_active()) {
             ESP_LOGE(TAG, "SAFE MODE ACTIVE - limited functionality");
         }
@@ -238,6 +240,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
     if (stage == SUPERVISOR_INTERVAL_10S) {
         mesh_log_topology();
         mesh_log_ap_clients();
+        thread_log_network_info();
     }
 }
 

@@ -1,5 +1,9 @@
 #include "thread_border_router_adapter.h"
 
+#if CONFIG_THREAD_BORDER_ROUTER_WEB
+#include "esp_br_web.h"
+#endif
+
 #include <stdio.h>
 #include <string.h>
 
@@ -36,6 +40,11 @@ static esp_err_t thread_border_router_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
     }
+
+#if CONFIG_THREAD_BORDER_ROUTER_WEB
+    esp_br_web_start(CONFIG_VFS_SPIFFS_MOUNT_POINT);
+    ESP_LOGI(TAG, "Thread BR Web GUI handler registered");
+#endif
 
     // esp_netif_init() already called by ethernet/wifi adapter before us
 #if CONFIG_OPENTHREAD_CLI

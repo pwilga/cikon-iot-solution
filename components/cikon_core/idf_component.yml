@@ -8,4 +8,6 @@ maintainers:
 
 dependencies:
   idf: ">=5.0"
+  joltwallet/littlefs:
+    version: "*"
 

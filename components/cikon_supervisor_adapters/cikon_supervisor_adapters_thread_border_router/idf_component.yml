@@ -12,3 +12,9 @@ dependencies:
   cikon_thread_common:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_thread_common
+  esp_ot_br_server:
+    git: "https://github.com/espressif/esp-thread-br.git"
+    path: components/esp_ot_br_server
+  protocol_examples_common:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/protocol_examples_common

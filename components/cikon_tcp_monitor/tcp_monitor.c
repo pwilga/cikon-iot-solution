@@ -47,10 +47,12 @@ static int tcp_monitor_vprintf(const char *fmt, va_list args) {
 
 static void tcp_monitor_task(void *args) {
 
-    struct sockaddr_in server_addr = {
-        .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY, .sin_port = htons(tcp_monitor_port)};
+    struct sockaddr_in6 server_addr = {};
+    server_addr.sin6_family = AF_INET6;
+    server_addr.sin6_port = htons(tcp_monitor_port);
+    server_addr.sin6_addr = in6addr_any;
 
-    monitor_sock = socket(AF_INET, SOCK_STREAM, 0);
+    monitor_sock = socket(AF_INET6, SOCK_STREAM, IPPROTO_IPV6);
     if (monitor_sock < 0) {
         ESP_LOGE(TAG, "Failed to create socket");
         vTaskDelete(NULL);
@@ -59,6 +61,8 @@ static void tcp_monitor_task(void *args) {
 
     int reuse = 1;
     setsockopt(monitor_sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    int v6only = 0;
+    setsockopt(monitor_sock, IPPROTO_IPV6, IPV6_V6ONLY, &v6only, sizeof(v6only));
 
     if (bind(monitor_sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0 ||
         listen(monitor_sock, 1) < 0) {
@@ -71,7 +75,7 @@ static void tcp_monitor_task(void *args) {
     ESP_LOGI(TAG, "TCP Monitor on port %d", tcp_monitor_port);
 
     while (!shutdown_requested) {
-        struct sockaddr_in client_addr;
+        struct sockaddr_storage client_addr;
         socklen_t len = sizeof(client_addr);
         client_sock = accept(monitor_sock, (struct sockaddr *)&client_addr, &len);
 
@@ -83,8 +87,12 @@ static void tcp_monitor_task(void *args) {
             continue;
         }
 
-        ESP_LOGI(TAG, "Client connected: %s:%d", inet_ntoa(client_addr.sin_addr),
-                 ntohs(client_addr.sin_port));
+        char addr_str[46];
+        void *sin_addr = client_addr.ss_family == AF_INET6
+                             ? (void *)&((struct sockaddr_in6 *)&client_addr)->sin6_addr
+                             : (void *)&((struct sockaddr_in *)&client_addr)->sin_addr;
+        inet_ntop(client_addr.ss_family, sin_addr, addr_str, sizeof(addr_str));
+        ESP_LOGI(TAG, "Client connected: %s", addr_str);
 
         while (!shutdown_requested) {
             size_t size;
@@ -119,7 +127,7 @@ static void tcp_monitor_task(void *args) {
             }
         }
 
-        ESP_LOGW(TAG, "Client disconnected: %s", inet_ntoa(client_addr.sin_addr));
+        ESP_LOGW(TAG, "Client disconnected: %s", addr_str);
         if (client_sock >= 0) {
             shutdown(client_sock, SHUT_RDWR);
             close(client_sock);
