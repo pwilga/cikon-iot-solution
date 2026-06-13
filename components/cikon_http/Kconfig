@@ -1,0 +1,17 @@
+menu "cikon_http"
+
+    config HTTP_PORT
+        int "HTTP server port"
+        default 8080
+        range 1 65535
+
+    config HTTP_STACK_SIZE
+        int "HTTP server task stack size (bytes)"
+        default 4096
+
+    config HTTP_MAX_HANDLERS
+        int "Maximum URI handlers"
+        default 16
+        range 4 64
+
+endmenu
