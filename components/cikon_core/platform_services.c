@@ -15,7 +15,7 @@
 #include "esp_vfs_eventfd.h"
 #endif
 #if CONFIG_VFS_LITTLEFS_ENABLED
-#include "esp_vfs_littlefs.h"
+#include "esp_littlefs.h"
 #endif
 #if CONFIG_VFS_SPIFFS_ENABLED
 #include "esp_spiffs.h"
@@ -42,7 +42,6 @@ void core_system_init(void) {
         esp_vfs_littlefs_conf_t lfs = {
             .base_path              = CONFIG_VFS_LITTLEFS_MOUNT_POINT,
             .partition_label        = CONFIG_VFS_LITTLEFS_PARTITION,
-            .max_files              = 10,
             .format_if_mount_failed = false,
         };
         ESP_ERROR_CHECK(esp_vfs_littlefs_register(&lfs));

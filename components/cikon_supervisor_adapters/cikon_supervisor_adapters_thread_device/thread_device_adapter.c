@@ -14,9 +14,8 @@
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
 #include "openthread/dataset.h"
-#if CONFIG_OPENTHREAD_MTD
 #include "openthread/link.h"
-#endif
+#include "openthread/thread.h"
 
 #include "bits_helper.h"
 #include "config_manager.h"
@@ -59,7 +58,10 @@ static void thread_device_start_task(void *arg) {
         }
     }
 
-#if CONFIG_OPENTHREAD_MTD
+#if CONFIG_OPENTHREAD_FTD
+    otLinkModeConfig mode = {.mRxOnWhenIdle = true, .mDeviceType = true, .mNetworkData = true};
+    otThreadSetDeviceMode(esp_openthread_get_instance(), mode);
+#elif CONFIG_OPENTHREAD_MTD
     otLinkSetPollPeriod(esp_openthread_get_instance(), CONFIG_THREAD_DEVICE_POLL_PERIOD_MS);
     ESP_LOGI(TAG, "SED poll period: %d ms", CONFIG_THREAD_DEVICE_POLL_PERIOD_MS);
 #endif

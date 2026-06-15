@@ -24,6 +24,7 @@
 #endif
 
 #include "esp_netif.h"
+#include "http_server.h"
 #include "inet_common.h"
 #include "tcp_monitor.h"
 #include "tcp_ota.h"
@@ -268,6 +269,17 @@ void inet_common_monitor_handler(const char *args_json_str) {
     } else if (state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping TCP monitor");
         tcp_monitor_shutdown();
+    }
+}
+
+void inet_common_http_handler(const char *args_json_str) {
+    logic_state_t state = json_str_as_logic_state(args_json_str);
+    if (state == STATE_ON) {
+        ESP_LOGI(TAG, "Starting HTTP server");
+        http_init();
+    } else if (state == STATE_OFF) {
+        ESP_LOGI(TAG, "Stopping HTTP server");
+        http_shutdown();
     }
 }
 

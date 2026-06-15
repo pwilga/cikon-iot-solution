@@ -33,4 +33,7 @@ dependencies:
   cikon_https:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_https
+  cikon_http:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_http
 

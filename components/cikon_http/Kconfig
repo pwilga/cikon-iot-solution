@@ -14,4 +14,9 @@ menu "cikon_http"
         default 16
         range 4 64
 
+    config HTTP_CTRL_PORT
+        int "HTTP server internal ctrl socket port"
+        default 32769
+        range 1024 65535
+
 endmenu
