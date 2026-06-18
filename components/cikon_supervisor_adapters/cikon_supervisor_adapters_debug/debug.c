@@ -124,20 +124,6 @@ static void debug_print_sys_info(void) {
              (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 }
 
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-// Custom HA builder for tasks_dict
-static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
-    char buf[64];
-
-    snprintf(buf, sizeof(buf), "{{ value_json.%s | count }}", sanitized_name);
-    cJSON_ReplaceItemInObject(payload, "val_tpl", cJSON_CreateString(buf));
-
-    snprintf(buf, sizeof(buf), "{{ value_json.%s | tojson }}", sanitized_name);
-    cJSON_AddStringToObject(payload, "json_attr_tpl", buf);
-    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
-}
-#endif
-
 static esp_err_t debug_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -258,79 +244,6 @@ static void tele_debug_temperature(const char *tele_id, cJSON *json_root) {
     cJSON_AddNumberToObject(json_root, tele_id, temp);
 }
 
-static void tele_debug_rollback(const char *tele_id, cJSON *json_root) {
-    if (!json_root)
-        return;
-
-    if (failed_ota_partition == NULL) {
-        cJSON_AddStringToObject(json_root, tele_id, "n/a");
-        return;
-    }
-
-    char rollback_str[64];
-    snprintf(rollback_str, sizeof(rollback_str), "%s: %s", failed_ota_partition->label,
-             esp_ota_state_to_string(failed_ota_state));
-    cJSON_AddStringToObject(json_root, tele_id, rollback_str);
-}
-
-static void tele_debug_tasks_dict(const char *tele_id, cJSON *json_root) {
-    if (!json_root)
-        return;
-
-    UBaseType_t task_count = 0;
-    TaskStatus_t *task_status_array = get_task_status_array(&task_count);
-    if (!task_status_array)
-        return;
-
-    cJSON *task_dict = cJSON_CreateObject();
-    if (!task_dict) {
-        free(task_status_array);
-        return;
-    }
-
-    for (UBaseType_t i = 0; i < task_count; i++) {
-        cJSON *json_task = cJSON_CreateObject();
-        if (!json_task)
-            continue;
-
-        cJSON_AddNumberToObject(json_task, "prio", task_status_array[i].uxCurrentPriority);
-        cJSON_AddNumberToObject(json_task, "stack", task_status_array[i].usStackHighWaterMark);
-        cJSON_AddNumberToObject(json_task, "runtime_ticks", task_status_array[i].ulRunTimeCounter);
-        cJSON_AddNumberToObject(json_task, "task_number", task_status_array[i].xTaskNumber);
-
-        const char *state_str = "unknown";
-        switch (task_status_array[i].eCurrentState) {
-        case eRunning:
-            state_str = "running";
-            break;
-        case eReady:
-            state_str = "ready";
-            break;
-        case eBlocked:
-            state_str = "blocked";
-            break;
-        case eSuspended:
-            state_str = "suspended";
-            break;
-        case eDeleted:
-            state_str = "deleted";
-            break;
-        default:
-            break;
-        }
-        cJSON_AddStringToObject(json_task, "state", state_str);
-
-#if (INCLUDE_xTaskGetAffinity == 1)
-        cJSON_AddNumberToObject(json_task, "core", task_status_array[i].xCoreID);
-#endif
-
-        cJSON_AddItemToObject(task_dict, task_status_array[i].pcTaskName, json_task);
-    }
-
-    free(task_status_array);
-    cJSON_AddItemToObject(json_root, tele_id, task_dict);
-}
-
 static void cmnd_debug_sysinfo(const char *args_json_str) {
     (void)args_json_str;
     debug_print_sys_info();
@@ -397,21 +310,13 @@ static const command_entry_t debug_commands[] = {
     {NULL, NULL, NULL}};
 
 static const tele_entry_t debug_telemetry[] = {{"temperature", tele_debug_temperature},
-                                               {"tasks_dict", tele_debug_tasks_dict},
-                                               {"rollback", tele_debug_rollback},
                                                {NULL, NULL}};
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 static const ha_metadata_t debug_ha_metadata = {
     .magic = HA_METADATA_MAGIC,
-    .entities = {
-        {.type = HA_SENSOR, .name = "Temperature", .device_class = "temperature"},
-        {.type = HA_SENSOR,
-         .name = "Tasks Dict",
-         .entity_category = "diagnostic",
-         .custom_builder = build_tasks_dict_ha},
-        {.type = HA_ENTITY_NONE} // Sentinel
-    }};
+    .entities = {{.type = HA_SENSOR, .name = "Temperature", .device_class = "temperature"},
+                 {.type = HA_ENTITY_NONE}}};
 #endif
 
 supervisor_platform_adapter_t debug_adapter = {

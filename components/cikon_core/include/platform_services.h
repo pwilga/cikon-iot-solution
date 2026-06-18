@@ -1,11 +1,23 @@
-#ifndef PLATFORM_SERVICES_H
-#define PLATFORM_SERVICES_H
+#pragma once
 
 #include "esp_err.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct {
+    const char *app_name;
+    const char *app_version;
+    const char *idf_version;
+    const char *chip;
+    uint32_t chip_rev;
+    uint32_t cores;
+    char id[13]; // MAC from eFuse, e.g. "A1B2C3D4E5F6"
+} device_info_t;
+
+const device_info_t *get_device_info(void);
 
 void core_system_init(void);
 
@@ -28,21 +40,6 @@ void esp_safe_restart();
  */
 esp_err_t nvs_flash_safe_init();
 
-/**
- * @brief Returns the built-in (factory) MAC address from eFUSE as a portable 12-character uppercase
- * string (no colons).
- *
- * This function reads the factory-programmed MAC address using esp_efuse_mac_get_default() once (on
- * first call) and caches it in a static buffer. The returned string is always in a portable,
- * platform-independent format: 12 uppercase hexadecimal digits, no separators.
- *
- * Example return value: "A1B2C3D4E5F6"
- *
- * @note The returned MAC is the unique, hardware-assigned address (not user-overridable).
- *
- * @return const char* Pointer to a static null-terminated string, or NULL on error.
- */
-const char *get_client_id();
 
 /**
  * @brief Returns the ISO8601-formatted boot time of the system.
@@ -66,5 +63,3 @@ void reset_nvs_partition(void);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // PLATFORM_SERVICES_H

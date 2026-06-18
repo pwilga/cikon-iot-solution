@@ -7,7 +7,7 @@ menu "cikon_http"
 
     config HTTP_STACK_SIZE
         int "HTTP server task stack size (bytes)"
-        default 4096
+        default 5120
 
     config HTTP_MAX_HANDLERS
         int "Maximum URI handlers"

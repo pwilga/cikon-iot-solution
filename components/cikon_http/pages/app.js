@@ -42,9 +42,9 @@ function sortTable(th) {
 }
 
 /* ── Tele metadata ── */
-const SKIP   = new Set(['uptime']);
+const SKIP   = new Set(['uptime', 'free_heap', 'min_heap', 'name', 'app', 'version', 'idf', 'chip', 'chip_rev', 'cores']);
 const LABELS = { startup: 'Last Boot', onboard_led: 'Onboard LED', temperature: 'Temperature', tasks_dict: 'Tasks', rollback: 'OTA Rollback', ip: 'IP Address', pwm_led: 'PWM LED', neopixel: 'Neopixel' };
-const ICONS  = { startup: '🕐', onboard_led: '💡', temperature: '🌡', tasks_dict: '📋', rollback: '🔄', ip: '🌐', pwm_led: '💡', neopixel: '🌈', ds18b20: '🌡' };
+const ICONS  = { startup: '🕐', onboard_led: '💡', temperature: '♨️', tasks_dict: '📋', rollback: '🔄', ip: '🌐', pwm_led: '💡', neopixel: '🌈', ds18b20: '♨️' };
 const UNITS  = { temperature: '°C' };
 const SPANS  = { tasks_dict: 6, startup: 2 };
 
@@ -147,20 +147,18 @@ function setOnline(ok) {
 }
 
 /* ── Load ── */
-async function load() {
+function updateDeviceInfo(tele) {
+  document.getElementById('device-name').textContent = tele.name || '—';
+  document.getElementById('ms-chip').textContent = tele.chip || '—';
+  document.getElementById('fw-info').textContent = 'v' + (tele.version || '—') + ' · IDF ' + (tele.idf || '—');
+}
+
+async function loadTele() {
   try {
-    const [info, tele] = await Promise.all([
-      fetch('/info').then(r => r.json()),
-      fetch('/tele').then(r => r.json()),
-    ]);
-
-    document.getElementById('device-name').textContent = info.app || '—';
-    document.getElementById('device-chip').textContent = (info.chip || '—') + ' r' + (info.chip_rev || 0);
-    document.getElementById('ms-heap').textContent = fmtHeap(info.free_heap);
-    document.getElementById('ms-uptime').textContent = fmtUptime(info.uptime_s);
-    document.getElementById('ms-chip').textContent = info.chip || '—';
-    document.getElementById('fw-info').textContent = 'v' + info.version + ' · IDF ' + info.idf;
-
+    const tele = await fetch('/tele').then(r => r.json());
+    updateDeviceInfo(tele);
+    document.getElementById('ms-heap').textContent = tele.free_heap != null ? fmtHeap(tele.free_heap) : '—';
+    document.getElementById('ms-uptime').textContent = tele.uptime != null ? fmtUptime(tele.uptime) : '—';
     setOnline(true);
     renderTele(tele);
   } catch (_) {
@@ -168,5 +166,5 @@ async function load() {
   }
 }
 
-setInterval(load, 5000);
-load();
+loadTele();
+setInterval(loadTele, 5000);

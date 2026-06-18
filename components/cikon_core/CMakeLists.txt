@@ -4,8 +4,10 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     PRIV_REQUIRES
+        app_update
         esp_driver_gpio
         esp_event
+        esp_hw_support
         nvs_flash
         vfs
         spiffs

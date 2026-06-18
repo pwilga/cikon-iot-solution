@@ -59,4 +59,12 @@ menu "Cikon IoT Supervisor Core Configuration"
             Time in seconds of stable operation before auto-clearing safe mode.
             After this time without crashes, boot counter resets to 0.
 
+    config SUPERVISOR_TELE_TASKS
+        bool "Include FreeRTOS task list in /tele (tasks_dict)"
+        default n
+        depends on FREERTOS_USE_TRACE_FACILITY
+        help
+            Adds tasks_dict to /tele with FreeRTOS task states, priorities, and stack usage.
+            Adds overhead on each /tele request (uxTaskGetSystemState suspends scheduler briefly).
+
 endmenu

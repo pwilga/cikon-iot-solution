@@ -55,6 +55,7 @@ static inline void inet_common_mqtt_shutdown(void) {
 void inet_common_sntp_handler(const char *args_json_str);
 void inet_common_ota_handler(const char *args_json_str);
 void inet_common_monitor_handler(const char *args_json_str);
+void inet_common_http_init(void);
 void inet_common_http_handler(const char *args_json_str);
 
 void inet_common_https_init(void);

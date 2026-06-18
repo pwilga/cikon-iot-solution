@@ -130,8 +130,7 @@ static const char *inet_get_or_generate_ap_ssid(void) {
     }
 
     static char ssid[33];
-    const char *mac_str = get_client_id();
-    const char *mac_last6 = mac_str + 6;
+    const char *mac_last6 = get_device_info()->id + 6;
 
     snprintf(ssid, sizeof(ssid), "%s_%s", config_get()->dev_name, mac_last6);
     return ssid;

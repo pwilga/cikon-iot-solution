@@ -1,6 +1,6 @@
 name: cikon_core
 version: "0.1.0"
-description: "Cikon IoT Solution - Core components like mDNS, NVS, boot time, etc."
+description: "Cikon IoT Solution - Core components for handling NVS, boot time, etc."
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:

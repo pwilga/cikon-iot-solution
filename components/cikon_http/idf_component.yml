@@ -1,6 +1,6 @@
 dependencies:
   idf: ">=6.0"
   espressif/cjson: "*"
-  cikon_supervisor:
+  cikon_core:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
-    path: components/cikon_supervisor
+    path: components/cikon_core

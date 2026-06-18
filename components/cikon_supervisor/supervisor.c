@@ -30,6 +30,9 @@ static uint8_t adapter_count = 0;
 // OTA rollback validation
 static bool firmware_validated = false;
 
+// Rollback info — read once at supervisor_init()
+static char s_rollback[64] = "n/a";
+
 // Safe mode state
 static bool safe_mode_active = false;
 
@@ -287,6 +290,71 @@ static void supervisor_task(void *args) {
     }
 }
 
+#if CONFIG_SUPERVISOR_TELE_TASKS
+static TaskStatus_t *get_task_status_array(UBaseType_t *out_count) {
+    UBaseType_t num_tasks = uxTaskGetNumberOfTasks();
+    TaskStatus_t *task_array = malloc(num_tasks * sizeof(TaskStatus_t));
+    if (!task_array)
+        return NULL;
+    *out_count = uxTaskGetSystemState(task_array, num_tasks, NULL);
+    return task_array;
+}
+
+static void tele_tasks_dict_appender(const char *tele_id, cJSON *json_root) {
+    UBaseType_t task_count = 0;
+    TaskStatus_t *task_array = get_task_status_array(&task_count);
+    if (!task_array)
+        return;
+
+    cJSON *task_dict = cJSON_CreateObject();
+    if (!task_dict) {
+        free(task_array);
+        return;
+    }
+
+    for (UBaseType_t i = 0; i < task_count; i++) {
+        cJSON *json_task = cJSON_CreateObject();
+        if (!json_task)
+            continue;
+
+        cJSON_AddNumberToObject(json_task, "prio", task_array[i].uxCurrentPriority);
+        cJSON_AddNumberToObject(json_task, "stack", task_array[i].usStackHighWaterMark);
+        cJSON_AddNumberToObject(json_task, "runtime_ticks", task_array[i].ulRunTimeCounter);
+        cJSON_AddNumberToObject(json_task, "task_number", task_array[i].xTaskNumber);
+
+        const char *state_str = "unknown";
+        switch (task_array[i].eCurrentState) {
+        case eRunning:
+            state_str = "running";
+            break;
+        case eReady:
+            state_str = "ready";
+            break;
+        case eBlocked:
+            state_str = "blocked";
+            break;
+        case eSuspended:
+            state_str = "suspended";
+            break;
+        case eDeleted:
+            state_str = "deleted";
+            break;
+        default:
+            break;
+        }
+        cJSON_AddStringToObject(json_task, "state", state_str);
+
+#if (INCLUDE_xTaskGetAffinity == 1)
+        cJSON_AddNumberToObject(json_task, "core", task_array[i].xCoreID);
+#endif
+        cJSON_AddItemToObject(task_dict, task_array[i].pcTaskName, json_task);
+    }
+
+    free(task_array);
+    cJSON_AddItemToObject(json_root, tele_id, task_dict);
+}
+#endif
+
 void supervisor_init(void) {
     ESP_LOGI(TAG, "Initializing supervisor core");
 
@@ -319,8 +387,20 @@ void supervisor_init(void) {
     cmnd_init(supervisor_queue);
     cmnd_register_group(core_commands);
 
+    const esp_partition_t *failed = esp_ota_get_last_invalid_partition();
+    if (failed != NULL) {
+        esp_ota_img_states_t state;
+        esp_ota_get_state_partition(failed, &state);
+        snprintf(s_rollback, sizeof(s_rollback), "%s: %s", failed->label,
+                 esp_ota_state_to_string(state));
+    }
+
     tele_init();
     tele_register_group(core_tele);
+
+#if CONFIG_SUPERVISOR_TELE_TASKS
+    tele_register("tasks_dict", tele_tasks_dict_appender);
+#endif
 
     ESP_LOGI(TAG, "Supervisor core initialized successfully");
 }
@@ -462,8 +542,51 @@ static void tele_startup_appender(const char *tele_id, cJSON *json_root) {
 }
 
 static void tele_onboard_led_appender(const char *tele_id, cJSON *json_root) {
-    bool led_state = get_onboard_led_state();
-    cJSON_AddBoolToObject(json_root, tele_id, led_state);
+    cJSON_AddBoolToObject(json_root, tele_id, get_onboard_led_state());
+}
+
+static void tele_free_heap_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, esp_get_free_heap_size());
+}
+
+static void tele_min_heap_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, esp_get_minimum_free_heap_size());
+}
+
+static void tele_name_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, config_get()->dev_name);
+}
+
+static void tele_app_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->app_name);
+}
+
+static void tele_version_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->app_version);
+}
+
+static void tele_idf_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->idf_version);
+}
+
+static void tele_chip_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->chip);
+}
+
+static void tele_chip_rev_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, get_device_info()->chip_rev);
+}
+
+static void tele_cores_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, get_device_info()->cores);
+}
+
+static void tele_id_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->id);
+}
+
+static void tele_rollback_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, s_rollback);
 }
 
 static const command_entry_t core_commands[] = {
@@ -478,4 +601,15 @@ static const command_entry_t core_commands[] = {
 static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
                                          {"startup", tele_startup_appender},
                                          {"onboard_led", tele_onboard_led_appender},
+                                         {"free_heap", tele_free_heap_appender},
+                                         {"min_heap", tele_min_heap_appender},
+                                         {"name", tele_name_appender},
+                                         {"app", tele_app_appender},
+                                         {"version", tele_version_appender},
+                                         {"idf", tele_idf_appender},
+                                         {"chip", tele_chip_appender},
+                                         {"chip_rev", tele_chip_rev_appender},
+                                         {"cores", tele_cores_appender},
+                                         {"id", tele_id_appender},
+                                         {"rollback", tele_rollback_appender},
                                          {NULL, NULL}};

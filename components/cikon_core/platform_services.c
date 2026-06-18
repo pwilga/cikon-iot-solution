@@ -1,6 +1,8 @@
 #include <time.h>
 
 #include "driver/gpio.h"
+#include "esp_app_desc.h"
+#include "esp_chip_info.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -33,15 +35,15 @@ void core_system_init(void) {
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
 #if CONFIG_VFS_EVENTFD_MAX_FDS > 0
-    esp_vfs_eventfd_config_t efd_cfg = { .max_fds = CONFIG_VFS_EVENTFD_MAX_FDS };
+    esp_vfs_eventfd_config_t efd_cfg = {.max_fds = CONFIG_VFS_EVENTFD_MAX_FDS};
     ESP_ERROR_CHECK(esp_vfs_eventfd_register(&efd_cfg));
 #endif
 
 #if CONFIG_VFS_LITTLEFS_ENABLED
     {
         esp_vfs_littlefs_conf_t lfs = {
-            .base_path              = CONFIG_VFS_LITTLEFS_MOUNT_POINT,
-            .partition_label        = CONFIG_VFS_LITTLEFS_PARTITION,
+            .base_path = CONFIG_VFS_LITTLEFS_MOUNT_POINT,
+            .partition_label = CONFIG_VFS_LITTLEFS_PARTITION,
             .format_if_mount_failed = false,
         };
         ESP_ERROR_CHECK(esp_vfs_littlefs_register(&lfs));
@@ -52,9 +54,9 @@ void core_system_init(void) {
 #if CONFIG_VFS_SPIFFS_ENABLED
     {
         esp_vfs_spiffs_conf_t spiffs = {
-            .base_path              = CONFIG_VFS_SPIFFS_MOUNT_POINT,
-            .partition_label        = CONFIG_VFS_SPIFFS_PARTITION,
-            .max_files              = 10,
+            .base_path = CONFIG_VFS_SPIFFS_MOUNT_POINT,
+            .partition_label = CONFIG_VFS_SPIFFS_PARTITION,
+            .max_files = 10,
             .format_if_mount_failed = false,
         };
         ESP_ERROR_CHECK(esp_vfs_spiffs_register(&spiffs));
@@ -78,23 +80,51 @@ void esp_safe_restart() {
     esp_restart();
 }
 
-const char *get_client_id(void) {
+static const char *chip_name(esp_chip_model_t m) {
+    switch (m) {
+    case CHIP_ESP32:
+        return "esp32";
+    case CHIP_ESP32S2:
+        return "esp32s2";
+    case CHIP_ESP32S3:
+        return "esp32s3";
+    case CHIP_ESP32C3:
+        return "esp32c3";
+    case CHIP_ESP32C6:
+        return "esp32c6";
+    case CHIP_ESP32H2:
+        return "esp32h2";
+    default:
+        return "esp32";
+    }
+}
 
-    static char buf[13] = {0};
+const device_info_t *get_device_info(void) {
+    static device_info_t device_info_s = {0};
     static bool initialized = false;
 
     if (initialized)
-        return buf;
+        return &device_info_s;
+
+    const esp_app_desc_t *desc = esp_app_get_description();
+    esp_chip_info_t chip = {};
+    esp_chip_info(&chip);
+
+    device_info_s.app_name = desc->project_name;
+    device_info_s.app_version = desc->version;
+    device_info_s.idf_version = desc->idf_ver;
+    device_info_s.chip = chip_name(chip.model);
+    device_info_s.chip_rev = chip.revision;
+    device_info_s.cores = chip.cores;
 
     uint8_t mac[6];
-    esp_err_t err = esp_efuse_mac_get_default(mac);
-    if (err != ESP_OK)
-        return NULL;
-
-    snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X", MAC2STR(mac));
+    if (esp_efuse_mac_get_default(mac) == ESP_OK) {
+        snprintf(device_info_s.id, sizeof(device_info_s.id), "%02X%02X%02X%02X%02X%02X",
+                 MAC2STR(mac));
+    }
 
     initialized = true;
-    return buf;
+    return &device_info_s;
 }
 
 const char *get_boot_time(void) {

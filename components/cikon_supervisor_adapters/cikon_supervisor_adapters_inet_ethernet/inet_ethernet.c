@@ -191,6 +191,7 @@ static void inet_ethernet_adapter_on_event(EventBits_t bits) {
             inet_common_mdns_init();
             inet_common_sntp_init();
             inet_common_mqtt_init();
+            inet_common_http_init();
         }
 
         services_running = true;

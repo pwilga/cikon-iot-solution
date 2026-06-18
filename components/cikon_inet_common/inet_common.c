@@ -41,14 +41,15 @@ static void sntp_sync_callback(struct timeval *tv) {
 
 void inet_common_mqtt_init(void) {
     const char *device_url = inet_common_get_device_url();
+    const device_info_t *dev_info = get_device_info();
 
     mqtt_config_t mqtt_cfg = {
-        .client_id = get_client_id(),
+        .client_id = dev_info->id,
         .device_name = config_get()->dev_name,
         .device_manufacturer = "Cikon Systems",
-        .device_model = CONFIG_IDF_TARGET,
-        .device_sw_version = "v1.0.0",
-        .device_hw_version = CONFIG_IDF_INIT_VERSION,
+        .device_model = dev_info->chip,
+        .device_sw_version = dev_info->app_version,
+        .device_hw_version = dev_info->idf_version,
         .device_uri = device_url,
         .mqtt_node = config_get()->mqtt_node,
         .mqtt_broker = config_get()->mqtt_broker,
@@ -66,6 +67,18 @@ void inet_common_mqtt_init(void) {
 }
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+
+#if CONFIG_SUPERVISOR_TELE_TASKS
+static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "{{ value_json.%s | count }}", sanitized_name);
+    cJSON_ReplaceItemInObject(payload, "val_tpl", cJSON_CreateString(buf));
+    snprintf(buf, sizeof(buf), "{{ value_json.%s | tojson }}", sanitized_name);
+    cJSON_AddStringToObject(payload, "json_attr_tpl", buf);
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+}
+#endif
+
 void inet_common_register_all_ha_entities(void) {
     ESP_LOGI(TAG, "Registering all HA entities from adapters");
 
@@ -88,6 +101,15 @@ void inet_common_register_all_ha_entities(void) {
             ha_register_entity(&meta->entities[e]);
         }
     }
+
+#if CONFIG_SUPERVISOR_TELE_TASKS
+    ha_register_entity(&(ha_entity_config_t){
+        .type = HA_SENSOR,
+        .name = "Tasks Dict",
+        .entity_category = "diagnostic",
+        .custom_builder = build_tasks_dict_ha,
+    });
+#endif
 }
 
 void inet_common_ha_discovery_handler(const char *args_json_str) {
@@ -118,7 +140,6 @@ bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
     snprintf(buf, buflen, IPSTR, IP2STR(&ip_info.ip));
     return true;
 }
-
 
 const char *inet_common_get_hostname(void) {
     const char *hostname = config_get()->mdns_host;
@@ -272,11 +293,17 @@ void inet_common_monitor_handler(const char *args_json_str) {
     }
 }
 
+void inet_common_http_init(void) {
+    http_init();
+    http_register_json_get("/tele", tele_append_all);
+    http_register_json_post("/cmnd", cmnd_process_json);
+}
+
 void inet_common_http_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
     if (state == STATE_ON) {
         ESP_LOGI(TAG, "Starting HTTP server");
-        http_init();
+        inet_common_http_init();
     } else if (state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping HTTP server");
         http_shutdown();
@@ -287,8 +314,7 @@ void inet_common_https_init(void) {
     static const https_endpoint_config_t endpoints[] = {
         {.uri = "/cmnd", .method = HTTP_POST, .json_cmnd = cmnd_process_json},
         {.uri = "/tele", .method = HTTP_GET, .json_tele = tele_append_all},
-        {.uri = NULL}
-    };
+        {.uri = NULL}};
     https_configure(endpoints, config_get()->http_auth);
     https_init();
 }
