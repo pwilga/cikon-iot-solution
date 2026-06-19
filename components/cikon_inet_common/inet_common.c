@@ -294,7 +294,11 @@ void inet_common_monitor_handler(const char *args_json_str) {
 }
 
 void inet_common_http_init(void) {
-    http_init();
+    http_init(&(http_config_t){
+        .port = CONFIG_HTTP_PORT,
+        .ctrl_port = CONFIG_HTTP_CTRL_PORT,
+        .max_open_sockets = CONFIG_HTTP_MAX_OPEN_SOCKETS,
+    });
     http_register_json_get("/tele", tele_append_all);
     http_register_json_post("/cmnd", cmnd_process_json);
 }
@@ -311,12 +315,14 @@ void inet_common_http_handler(const char *args_json_str) {
 }
 
 void inet_common_https_init(void) {
-    static const https_endpoint_config_t endpoints[] = {
-        {.uri = "/cmnd", .method = HTTP_POST, .json_cmnd = cmnd_process_json},
-        {.uri = "/tele", .method = HTTP_GET, .json_tele = tele_append_all},
-        {.uri = NULL}};
-    https_configure(endpoints, config_get()->http_auth);
-    https_init();
+    http_init(&(http_config_t){
+        .port = CONFIG_HTTPS_PORT,
+        .ctrl_port = CONFIG_HTTPS_CTRL_PORT,
+        .max_open_sockets = CONFIG_HTTPS_MAX_OPEN_SOCKETS,
+        .secure = true,
+    });
+    http_register_json_get("/tele", tele_append_all);
+    http_register_json_post("/cmnd", cmnd_process_json);
 }
 
 void inet_common_https_handler(const char *args_json_str) {

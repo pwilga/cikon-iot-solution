@@ -19,4 +19,38 @@ menu "cikon_http"
         default 32769
         range 1024 65535
 
+    config HTTP_MAX_OPEN_SOCKETS
+        int "Maximum open sockets"
+        default 4
+        range 1 16
+
+    config HTTP_SESSION_TIMEOUT
+        int "Keep-Alive idle timeout (seconds)"
+        default 10
+        range 2 120
+        help
+            Sent to the browser as "Keep-Alive: timeout=N". Overrides the browser's
+            default (~90 s), causing it to close idle connections sooner and free the
+            ~25 KB mbedTLS session buffer. Must be longer than the polling interval
+            so active connections are not torn down prematurely.
+
+    config HTTPS_STACK_SIZE
+        int "HTTPS server task stack size (bytes)"
+        default 10240
+
+    config HTTPS_PORT
+        int "HTTPS server port"
+        default 443
+        range 1 65535
+
+    config HTTPS_CTRL_PORT
+        int "HTTPS server internal ctrl socket port"
+        default 32769
+        range 1024 65535
+
+    config HTTPS_MAX_OPEN_SOCKETS
+        int "Maximum open sockets (HTTPS)"
+        default 4
+        range 1 16
+
 endmenu

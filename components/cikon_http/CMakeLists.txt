@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "http_server.c"
     INCLUDE_DIRS "include"
-    PRIV_REQUIRES esp_http_server
+    PRIV_REQUIRES esp_http_server esp_https_server cikon_certs
 )
 
 file(GLOB PAGES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/pages/*")

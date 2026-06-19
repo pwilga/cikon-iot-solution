@@ -1,30 +1,27 @@
 #pragma once
 
 #include "cJSON.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef void (*http_json_get_fn_t)(cJSON *out);
+typedef struct {
+    uint16_t port;
+    uint16_t ctrl_port;
+    uint8_t  max_open_sockets;
+    bool     secure;
+} http_config_t;
+
+typedef void (*http_json_get_fn_t)(cJSON *json);
 typedef void (*http_json_post_fn_t)(const char *json_str);
 
-/**
- * @brief Register a JSON GET endpoint.
- * @param uri  URI path (e.g. "/tele").
- * @param fn   Callback that fills the response JSON object.
- */
-void http_register_json_get(const char *uri, http_json_get_fn_t fn);
-
-/**
- * @brief Register a JSON POST endpoint.
- * @param uri  URI path (e.g. "/cmnd").
- * @param fn   Callback that receives the raw request body as a JSON string.
- */
-void http_register_json_post(const char *uri, http_json_post_fn_t fn);
-
-void http_init(void);
+void http_init(const http_config_t *cfg);
 void http_shutdown(void);
+void http_register_json_get(const char *uri, http_json_get_fn_t fn);
+void http_register_json_post(const char *uri, http_json_post_fn_t fn);
 
 #ifdef __cplusplus
 }

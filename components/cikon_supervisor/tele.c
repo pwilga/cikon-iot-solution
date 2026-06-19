@@ -7,7 +7,7 @@
 
 #define TAG "cikon:supervisor:tele"
 
-static tele_t tele_registry[CONFIG_MAX_TELE];
+static tele_t tele_registry[CONFIG_SUPERVISOR_MAX_TELE];
 static size_t tele_count = 0;
 static bool tele_initialized = false;
 
@@ -34,8 +34,8 @@ void tele_register(const char *tele_id, tele_appender_t fn) {
         return;
     }
 
-    if (tele_count >= CONFIG_MAX_TELE) {
-        ESP_LOGE(TAG, "Telemetry registry is full (%d sources)", CONFIG_MAX_TELE);
+    if (tele_count >= CONFIG_SUPERVISOR_MAX_TELE) {
+        ESP_LOGE(TAG, "Telemetry registry is full (%d sources)", CONFIG_SUPERVISOR_MAX_TELE);
         return;
     }
 

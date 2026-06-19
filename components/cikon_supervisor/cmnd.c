@@ -9,7 +9,7 @@
 
 #define TAG "cikon:supervisor:cmnd"
 
-static command_t command_registry[CONFIG_MAX_COMMANDS];
+static command_t command_registry[CONFIG_SUPERVISOR_MAX_COMMANDS];
 static size_t command_count = 0;
 static bool cmnd_initialized = false;
 
@@ -37,8 +37,8 @@ void cmnd_register(const char *command_id, const char *description, command_hand
     //     cmnd_init(NULL);
     // }
 
-    if (command_count >= CONFIG_MAX_COMMANDS) {
-        ESP_LOGE(TAG, "Command registry is full (%d commands)", CONFIG_MAX_COMMANDS);
+    if (command_count >= CONFIG_SUPERVISOR_MAX_COMMANDS) {
+        ESP_LOGE(TAG, "Command registry is full (%d commands)", CONFIG_SUPERVISOR_MAX_COMMANDS);
         return;
     }
 

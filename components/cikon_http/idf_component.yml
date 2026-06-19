@@ -4,3 +4,6 @@ dependencies:
   cikon_core:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_core
+  cikon_certs:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_certs

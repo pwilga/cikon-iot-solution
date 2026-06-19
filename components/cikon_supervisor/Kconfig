@@ -7,16 +7,16 @@ menu "Cikon IoT Supervisor Core Configuration"
             Length of the supervisor command queue.
             Typical: 8.
 
-    config MAX_COMMANDS
+    config SUPERVISOR_MAX_COMMANDS
         int "Maximum number of commands"
         default 20
         range 1 100
         help
             Maximum number of commands that can be queued for execution.
 
-    config MAX_TELE
+    config SUPERVISOR_MAX_TELE
         int "Maximum number of telemetry appenders"
-        default 20
+        default 30
         range 1 100
         help
             Maximum number of telemetry appenders that can be registered.
