@@ -5,12 +5,22 @@ menu "cikon_http"
         default 8080
         range 1 65535
 
+    config HTTP_ENABLE_WEBDAV
+        bool "Enable WebDAV server at /dav/"
+        default y
+        help
+            Registers WebDAV handlers (OPTIONS, PROPFIND, GET, PUT, DELETE,
+            MKCOL, MOVE, LOCK, UNLOCK) at the /dav/ prefix. Works over WiFi
+            and Thread/IPv6. Compatible with cadaver, curl, rclone, macOS Finder.
+
     config HTTP_STACK_SIZE
         int "HTTP server task stack size (bytes)"
+        default 7168 if HTTP_ENABLE_WEBDAV
         default 5120
 
     config HTTP_MAX_HANDLERS
         int "Maximum URI handlers"
+        default 24 if HTTP_ENABLE_WEBDAV
         default 16
         range 4 64
 

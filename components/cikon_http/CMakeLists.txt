@@ -1,5 +1,10 @@
+set(SRCS "http_server.c")
+if(CONFIG_HTTP_ENABLE_WEBDAV)
+    list(APPEND SRCS "webdav.c")
+endif()
+
 idf_component_register(
-    SRCS "http_server.c"
+    SRCS ${SRCS}
     INCLUDE_DIRS "include"
     PRIV_REQUIRES esp_http_server esp_https_server cikon_certs
 )

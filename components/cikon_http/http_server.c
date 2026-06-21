@@ -6,6 +6,9 @@
 #include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
+#if CONFIG_HTTP_ENABLE_WEBDAV
+#include "webdav.h"
+#endif
 
 #define TAG "cikon:http"
 #define WWW_ROOT CONFIG_VFS_LITTLEFS_MOUNT_POINT "/www"
@@ -14,13 +17,13 @@ static httpd_handle_t s_server = NULL;
 static bool s_secure = false;
 static char s_path[sizeof(WWW_ROOT) + CONFIG_HTTPD_MAX_URI_LEN];
 
-static void http_log(int status, const char *path, size_t bytes) {
+static void http_log(const char *method, int status, const char *path, size_t bytes) {
     if (status >= 500)
-        ESP_LOGE(TAG, "[%d] %s", status, path);
+        ESP_LOGE(TAG, "%s %s %d", method, path, status);
     else if (status >= 400)
-        ESP_LOGW(TAG, "[%d] %s", status, path);
+        ESP_LOGW(TAG, "%s %s %d", method, path, status);
     else
-        ESP_LOGI(TAG, "[%d] %s (%zu B)", status, path, bytes);
+        ESP_LOGI(TAG, "%s %s %d %zu B", method, path, status, bytes);
 }
 
 static void set_keepalive_timeout(httpd_req_t *req) {
@@ -44,7 +47,7 @@ static esp_err_t static_file_handler(httpd_req_t *req, httpd_err_code_t err) {
 
     FILE *f = fopen(s_path, "r");
     if (!f) {
-        http_log(404, s_path, 0);
+        http_log("GET", 404, s_path, 0);
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, NULL);
         return ESP_FAIL;
     }
@@ -67,7 +70,7 @@ static esp_err_t static_file_handler(httpd_req_t *req, httpd_err_code_t err) {
     }
     fclose(f);
     httpd_resp_send_chunk(req, NULL, 0);
-    http_log(200, s_path, total);
+    http_log("GET", 200, s_path, total);
     return ESP_OK;
 }
 
@@ -79,6 +82,7 @@ static esp_err_t json_get_handler(httpd_req_t *req) {
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!body) {
+        http_log("GET", 500, req->uri, 0);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, NULL);
         return ESP_FAIL;
     }
@@ -94,6 +98,7 @@ static esp_err_t json_post_handler(httpd_req_t *req) {
     int len = req->content_len;
     char *buf = malloc(len + 1);
     if (!buf) {
+        http_log("POST", 500, req->uri, 0);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, NULL);
         return ESP_FAIL;
     }
@@ -101,6 +106,7 @@ static esp_err_t json_post_handler(httpd_req_t *req) {
     while (received < len) {
         int r = httpd_req_recv(req, buf + received, len - received);
         if (r <= 0) {
+            http_log("POST", 500, req->uri, 0);
             free(buf);
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, NULL);
             return ESP_FAIL;
@@ -111,54 +117,16 @@ static esp_err_t json_post_handler(httpd_req_t *req) {
     if (fn)
         fn(buf);
     free(buf);
+    http_log("POST", 200, req->uri, len);
     set_keepalive_timeout(req);
     return httpd_resp_sendstr(req, "OK");
 }
 
-static esp_err_t upload_handler(httpd_req_t *req) {
-    char query[128] = {};
-    char filename[64] = "index.html";
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
-        httpd_query_key_value(query, "f", filename, sizeof(filename));
-    }
-
-    snprintf(s_path, sizeof(s_path), WWW_ROOT "/%s", filename);
-
-    FILE *f = fopen(s_path, "w");
-    if (!f) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Cannot open file");
-        return ESP_FAIL;
-    }
-
-    char buf[512];
-    int remaining = req->content_len;
-    while (remaining > 0) {
-        int got =
-            httpd_req_recv(req, buf, remaining < (int)sizeof(buf) ? remaining : (int)sizeof(buf));
-        if (got <= 0) {
-            fclose(f);
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Receive error");
-            return ESP_FAIL;
-        }
-        fwrite(buf, 1, got, f);
-        remaining -= got;
-    }
-    fclose(f);
-
-    http_log(200, s_path, req->content_len);
-    set_keepalive_timeout(req);
-    httpd_resp_sendstr(req, "OK\n");
-    return ESP_OK;
-}
-
 static void register_common_handlers(void) {
-    httpd_uri_t upload_uri = {
-        .uri = "/upload",
-        .method = HTTP_POST,
-        .handler = upload_handler,
-    };
-    httpd_register_uri_handler(s_server, &upload_uri);
     httpd_register_err_handler(s_server, HTTPD_404_NOT_FOUND, static_file_handler);
+#if CONFIG_HTTP_ENABLE_WEBDAV
+    http_webdav_init(s_server);
+#endif
 }
 
 void http_init(const http_config_t *cfg) {
@@ -185,6 +153,7 @@ void http_init(const http_config_t *cfg) {
         ssl_cfg.httpd.max_open_sockets = cfg->max_open_sockets ? cfg->max_open_sockets : 1;
         ssl_cfg.httpd.lru_purge_enable = true;
         ssl_cfg.httpd.ctrl_port = cfg->ctrl_port;
+        ssl_cfg.httpd.uri_match_fn = httpd_uri_match_wildcard;
         if (httpd_ssl_start(&s_server, &ssl_cfg) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to start HTTPS");
             s_server = NULL;
@@ -199,6 +168,7 @@ void http_init(const http_config_t *cfg) {
         http_cfg.send_wait_timeout = CONFIG_HTTP_SESSION_TIMEOUT;
         http_cfg.lru_purge_enable = true;
         http_cfg.ctrl_port = cfg->ctrl_port;
+        http_cfg.uri_match_fn = httpd_uri_match_wildcard;
         if (httpd_start(&s_server, &http_cfg) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to start HTTP");
             s_server = NULL;
@@ -206,12 +176,11 @@ void http_init(const http_config_t *cfg) {
         }
     }
 
-    register_common_handlers();
-
     esp_log_level_set("httpd_parse", ESP_LOG_ERROR);
     esp_log_level_set("httpd_txrx", ESP_LOG_ERROR);
     esp_log_level_set("httpd_uri", ESP_LOG_ERROR);
     ESP_LOGI(TAG, "Started on port %d (%s)", cfg->port, cfg->secure ? "https" : "http");
+    register_common_handlers();
 }
 
 void http_shutdown(void) {
