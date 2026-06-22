@@ -7,7 +7,7 @@ menu "cikon_http"
 
     config HTTP_ENABLE_WEBDAV
         bool "Enable WebDAV server at /dav/"
-        default y
+        default n
         help
             Registers WebDAV handlers (OPTIONS, PROPFIND, GET, PUT, DELETE,
             MKCOL, MOVE, LOCK, UNLOCK) at the /dav/ prefix. Works over WiFi

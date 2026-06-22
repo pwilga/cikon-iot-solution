@@ -11,7 +11,6 @@
 #include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
-#include "https_server.h"
 #include "json_parser.h"
 #include "mqtt.h"
 #include "platform_services.h"
@@ -332,7 +331,7 @@ void inet_common_https_handler(const char *args_json_str) {
         inet_common_https_init();
     } else if (state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping HTTPS server");
-        https_shutdown();
+        http_shutdown();
     } else {
         ESP_LOGW(TAG, "Invalid HTTPS state");
     }

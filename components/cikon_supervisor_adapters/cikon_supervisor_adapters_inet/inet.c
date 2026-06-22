@@ -43,7 +43,7 @@ static void inet_stop_services(void) {
 
     mqtt_publish_offline_state();
     inet_common_mqtt_shutdown();
-    inet_common_https_shutdown();
+    inet_common_http_shutdown();
     // Keep mDNS running - it works for both STA and AP interfaces
     // mdns_free();
     inet_common_sntp_shutdown();
@@ -310,6 +310,7 @@ static void tele_inet_ip_address(const char *tele_id, cJSON *json_root) {
 static const command_entry_t inet_commands[] = {
     {"ap", "Switch to AP mode", set_ap_handler},
     {"sta", "Switch to STA mode", set_sta_handler},
+    {"http", "Control HTTP server (on/off)", inet_common_http_handler},
     {"https", "Control HTTPS server (on/off)", inet_common_https_handler},
     {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
     {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
