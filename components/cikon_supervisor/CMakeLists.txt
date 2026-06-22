@@ -7,6 +7,7 @@ idf_component_register(
         "include"
     REQUIRES
         esp_event
+        esp_timer
         freertos
         app_update
     PRIV_REQUIRES

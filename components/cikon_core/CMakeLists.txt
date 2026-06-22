@@ -8,6 +8,7 @@ idf_component_register(
         esp_driver_gpio
         esp_event
         esp_hw_support
+        esp_timer
         nvs_flash
         vfs
         spiffs
