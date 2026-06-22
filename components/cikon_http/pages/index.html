@@ -1,94 +1,90 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
-
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cikon Systems IoT</title>
-  <link rel="stylesheet" href="/style.css">
+  <title>Cikon IoT Dashboard</title>
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
+  <main class="wrap">
 
-  <header>
-    <div class="logo-wrap">
-      <svg class="logo-mark" width="36" height="36" viewBox="0 0 44 44" fill="none">
-        <defs>
-          <linearGradient id="lg1" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#a5c8f0" />
-            <stop offset="100%" stop-color="#b5a8f0" />
-          </linearGradient>
-          <linearGradient id="lg2" x1="44" y1="0" x2="0" y2="44" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#f0b5d8" />
-            <stop offset="100%" stop-color="#a5c8f0" />
-          </linearGradient>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="1.2" result="b" />
-            <feMerge>
-              <feMergeNode in="b" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        <circle cx="22" cy="22" r="20" stroke="url(#lg1)" stroke-width="1" fill="none" opacity="0.35" />
-        <path d="M22 6 A16 16 0 1 0 36.5 30" stroke="url(#lg1)" stroke-width="2.5" stroke-linecap="round" fill="none"
-          filter="url(#glow)" />
-        <circle cx="22" cy="6" r="2.5" fill="#a5c8f0" filter="url(#glow)" />
-        <circle cx="6" cy="22" r="2.5" fill="#b5a8f0" filter="url(#glow)" />
-        <circle cx="22" cy="38" r="2.5" fill="#f0b5d8" filter="url(#glow)" />
-        <circle cx="36.5" cy="30" r="2.5" fill="#a5c8f0" filter="url(#glow)" />
-        <circle cx="22" cy="22" r="3.5" fill="url(#lg2)" filter="url(#glow)" />
-        <line x1="22" y1="9" x2="22" y2="19" stroke="url(#lg1)" stroke-width="1" opacity="0.4" />
-        <line x1="9" y1="22" x2="19" y2="22" stroke="url(#lg1)" stroke-width="1" opacity="0.4" />
-        <line x1="22" y1="25" x2="22" y2="35" stroke="url(#lg2)" stroke-width="1" opacity="0.4" />
-        <line x1="34.5" y1="29" x2="25.5" y2="23.5" stroke="url(#lg1)" stroke-width="1" opacity="0.4" />
-      </svg>
-      <div>
-        <div class="logo-name">Cikon Systems</div>
-        <div class="logo-tagline">IoT Platform</div>
+    <!-- Header -->
+    <header class="header">
+      <div class="ident">
+        <h1 id="dev-name">—</h1>
+        <div class="ident-sub" id="dev-sub"></div>
       </div>
+      <div class="header-actions">
+        <span class="badge" id="status">
+          <span class="dot"></span><span id="status-text">Offline</span>
+        </span>
+        <button class="btn-restart" id="btn-restart" title="Restart device">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"></path><path d="M13.5 2v3h-3"></path></svg>
+          <span id="restart-label">Restart</span>
+        </button>
+        <button class="btn-icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme"></button>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-main">
+        <div class="hlabel">Uptime</div>
+        <div class="hero-value" id="uptime">—</div>
+        <div class="hero-foot" id="since">since —</div>
+      </div>
+      <div class="hero-side">
+        <div class="hlabel">Free heap</div>
+        <div class="hero-heap" id="free-heap">—</div>
+        <div class="heap-bar"><span id="heap-fill"></span></div>
+        <div class="hero-foot" id="min-heap">min seen —</div>
+      </div>
+    </section>
+
+    <!-- Two columns -->
+    <div class="cols">
+      <section class="col">
+        <div class="label section-label">Controls</div>
+        <div class="card row" id="led-card">
+          <div>
+            <div class="row-title">Onboard LED</div>
+            <div class="row-sub" id="led-sub">Off</div>
+          </div>
+          <button class="toggle" id="led-toggle" role="switch" aria-checked="false"><span class="knob"></span></button>
+        </div>
+      </section>
+
+      <section class="col">
+        <div class="label section-label">System</div>
+        <div class="card list" id="sys-list"></div>
+      </section>
     </div>
 
-    <div class="header-mid">
-      <div class="header-device" id="device-name">—</div>
-    </div>
-
-    <div class="header-right">
-      <div class="status-pill" id="status-pill">
-        <div class="dot"></div>
-        <span id="status-text">—</span>
-      </div>
-      <button class="theme-btn" id="theme-btn" title="Toggle theme">
-        <span id="theme-icon">☀️</span>
+    <!-- FreeRTOS tasks (optional) -->
+    <section class="tasks-section" id="tasks-section" hidden>
+      <button class="card task-head" id="tasks-toggle">
+        <span class="task-head-left">
+          <span class="label">FreeRTOS tasks</span>
+          <span class="count" id="task-count">0</span>
+        </span>
+        <span class="task-head-right"><span id="tasks-action">Show</span><span class="chevron" id="tasks-chevron">▾</span></span>
       </button>
-    </div>
-  </header>
+      <div class="card task-table" id="task-table" hidden>
+        <div class="task-row task-row-head">
+          <button class="th th-name" data-sort="name">Task</button>
+          <button class="th th-state" data-sort="state">State</button>
+          <button class="th th-prio" data-sort="prio">Prio</button>
+          <button class="th th-stack" data-sort="stack">Stack</button>
+          <button class="th th-cpu" data-sort="cpu">CPU</button>
+        </div>
+        <div id="task-body"></div>
+      </div>
+    </section>
 
-  <div class="metric-strip">
-    <div class="mstrip-item">
-      <div class="mstrip-val a" id="ms-heap">—</div>
-      <div class="mstrip-lbl">Free Heap</div>
-    </div>
-    <div class="mstrip-item">
-      <div class="mstrip-val g" id="ms-uptime">—</div>
-      <div class="mstrip-lbl">Uptime</div>
-    </div>
-    <div class="mstrip-item">
-      <div class="mstrip-val" id="ms-chip">—</div>
-      <div class="mstrip-lbl">Chip</div>
-    </div>
-  </div>
-
-  <main>
-    <div class="section-lbl">Telemetry</div>
-    <div class="cards" id="tele-section"></div>
+    <footer class="footer" id="footer"></footer>
   </main>
 
-  <footer>
-    Cikon Systems &nbsp;·&nbsp; <span id="fw-info">—</span>
-  </footer>
-
-  <script src="/app.js"></script>
+  <script src="app.js"></script>
 </body>
-
 </html>

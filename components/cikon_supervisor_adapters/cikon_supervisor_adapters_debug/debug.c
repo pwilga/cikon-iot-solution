@@ -42,7 +42,7 @@ static float random_float(float min, float max) {
     return min + ((float)esp_random() / UINT32_MAX) * (max - min);
 }
 
-// Unified task data collection function
+#if CONFIG_FREERTOS_USE_TRACE_FACILITY
 static TaskStatus_t *get_task_status_array(UBaseType_t *out_count) {
     UBaseType_t num_tasks = uxTaskGetNumberOfTasks();
     TaskStatus_t *task_array = malloc(num_tasks * sizeof(TaskStatus_t));
@@ -52,6 +52,7 @@ static TaskStatus_t *get_task_status_array(UBaseType_t *out_count) {
     *out_count = uxTaskGetSystemState(task_array, num_tasks, NULL);
     return task_array;
 }
+#endif
 
 static void debug_print_config_summary(void) {
     const config_t *cfg = config_get();
@@ -70,6 +71,7 @@ static void debug_print_config_summary(void) {
 #undef PRINT_U64
 }
 
+#if CONFIG_FREERTOS_USE_TRACE_FACILITY
 static void debug_print_tasks_summary(void) {
     UBaseType_t task_count = 0;
     TaskStatus_t *task_status_array = get_task_status_array(&task_count);
@@ -100,6 +102,7 @@ static void debug_print_tasks_summary(void) {
     }
     free(task_status_array);
 }
+#endif
 
 static void debug_print_sys_info(void) {
     esp_chip_info_t chip_info;
@@ -219,7 +222,9 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
                      failed_ota_version);
         }
 
+#if CONFIG_FREERTOS_USE_TRACE_FACILITY
         debug_print_tasks_summary();
+#endif
         ESP_LOGI(TAG, "=====================");
     }
 
