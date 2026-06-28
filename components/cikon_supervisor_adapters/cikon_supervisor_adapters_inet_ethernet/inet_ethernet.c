@@ -223,6 +223,13 @@ static void tele_inet_ethernet_backend(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, backend);
 }
 
+static void tele_inet_ethernet_link(const char *tele_id, cJSON *json_root) {
+    char ip[16];
+    get_netif_ip("ETH_DEF", ip, sizeof(ip));
+    if (strlen(ip) > 0 && strcmp(ip, "0.0.0.0") != 0)
+        cJSON_AddStringToObject(json_root, tele_id, "ethernet");
+}
+
 static const command_entry_t inet_ethernet_commands[] = {
     {"https", "Control HTTPS server (on/off)", inet_common_https_handler},
     {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
@@ -236,6 +243,7 @@ static const command_entry_t inet_ethernet_commands[] = {
 
 static const tele_entry_t inet_ethernet_telemetry[] = {{"ip", tele_inet_ethernet_ip_address},
                                                        {"eth_backend", tele_inet_ethernet_backend},
+                                                       {"link", tele_inet_ethernet_link},
                                                        {NULL, NULL}};
 
 supervisor_platform_adapter_t inet_ethernet_adapter = {

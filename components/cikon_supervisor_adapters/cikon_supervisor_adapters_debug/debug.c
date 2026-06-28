@@ -182,6 +182,14 @@ static void debug_adapter_on_event(EventBits_t bits) {
     if (bits & INET_INTERNET_LOST) {
         ESP_LOGI(TAG, "  -> INET_INTERNET_LOST");
     }
+
+    // Thread adapter events
+    if (bits & THREAD_BORDER_ROUTER_READY) {
+        ESP_LOGI(TAG, "  -> THREAD_BORDER_ROUTER_READY");
+    }
+    if (bits & THREAD_DEVICE_READY) {
+        ESP_LOGI(TAG, "  -> THREAD_DEVICE_READY");
+    }
 }
 
 static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {

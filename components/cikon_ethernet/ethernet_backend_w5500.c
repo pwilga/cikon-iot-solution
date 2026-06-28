@@ -92,11 +92,11 @@ static esp_err_t w5500_backend_init(esp_eth_handle_t *out_handle) {
 
     // Configure interrupt or polling mode
 #if CONFIG_W5500_INT_GPIO >= 0
-    w5500_config.int_gpio_num = CONFIG_W5500_INT_GPIO;
+    w5500_config.base.int_gpio_num = CONFIG_W5500_INT_GPIO;
     ESP_LOGI(TAG, "Using interrupt mode (GPIO %d)", CONFIG_W5500_INT_GPIO);
 #else
-    w5500_config.int_gpio_num = -1;
-    w5500_config.poll_period_ms = CONFIG_W5500_POLLING_MS;
+    w5500_config.base.int_gpio_num = -1;
+    w5500_config.base.poll_period_ms = CONFIG_W5500_POLLING_MS;
     ESP_LOGI(TAG, "Using polling mode (%d ms)", CONFIG_W5500_POLLING_MS);
 #endif
 

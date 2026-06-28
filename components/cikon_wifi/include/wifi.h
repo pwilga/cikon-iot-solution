@@ -40,6 +40,8 @@ void wifi_unregister_event_handlers();
 bool is_wifi_network_connected();
 void wifi_log_event_group_bits();
 void wifi_get_interface_ip(char *buf, size_t buflen);
+int8_t wifi_get_rssi(void);
+bool wifi_get_ssid(char *buf, size_t buflen);
 
 #ifdef __cplusplus
 }

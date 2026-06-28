@@ -16,7 +16,7 @@ menu "Cikon IoT Supervisor Core Configuration"
 
     config SUPERVISOR_MAX_TELE
         int "Maximum number of telemetry appenders"
-        default 30
+        default 40
         range 1 100
         help
             Maximum number of telemetry appenders that can be registered.

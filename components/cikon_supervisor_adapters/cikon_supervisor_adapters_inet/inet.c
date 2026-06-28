@@ -307,6 +307,45 @@ static void tele_inet_ip_address(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, ip);
 }
 
+static void tele_inet_mdns(const char *tele_id, cJSON *json_root) {
+    const char *host = config_get()->mdns_host;
+    char buf[64];
+    if (host && strlen(host) > 0) {
+        snprintf(buf, sizeof(buf), "%s", host);
+    } else {
+        snprintf(buf, sizeof(buf), "%s.local", config_get()->dev_name);
+    }
+    cJSON_AddStringToObject(json_root, tele_id, buf);
+}
+
+static void tele_inet_link(const char *tele_id, cJSON *json_root) {
+    char ip[16] = {0};
+    wifi_get_interface_ip(ip, sizeof(ip));
+    if (strlen(ip) > 0 && strcmp(ip, "0.0.0.0") != 0)
+        cJSON_AddStringToObject(json_root, tele_id, "wifi");
+}
+
+static void tele_inet_rssi(const char *tele_id, cJSON *json_root) {
+    int8_t rssi = wifi_get_rssi();
+    if (rssi != 0)
+        cJSON_AddNumberToObject(json_root, tele_id, rssi);
+}
+
+static void tele_inet_ssid(const char *tele_id, cJSON *json_root) {
+    char ssid[33];
+    if (wifi_get_ssid(ssid, sizeof(ssid)))
+        cJSON_AddStringToObject(json_root, tele_id, ssid);
+}
+
+static const tele_entry_t inet_tele[] = {
+    {"ip",   tele_inet_ip_address},
+    {"mdns", tele_inet_mdns},
+    {"link", tele_inet_link},
+    {"rssi", tele_inet_rssi},
+    {"ssid", tele_inet_ssid},
+    {NULL, NULL}
+};
+
 static const command_entry_t inet_commands[] = {
     {"ap", "Switch to AP mode", set_ap_handler},
     {"sta", "Switch to STA mode", set_sta_handler},
@@ -328,5 +367,5 @@ supervisor_platform_adapter_t inet_adapter = {
     .on_event = inet_adapter_on_event,
     .on_interval = inet_adapter_on_interval,
     .cmnd_group = inet_commands,
-    .tele_group = (const tele_entry_t[]){{"ip", tele_inet_ip_address}, {NULL, NULL}},
+    .tele_group = inet_tele,
 };

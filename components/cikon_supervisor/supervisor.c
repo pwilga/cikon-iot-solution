@@ -589,6 +589,51 @@ static void tele_rollback_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, s_rollback);
 }
 
+static void tele_features_appender(const char *tele_id, cJSON *json_root) {
+    cJSON *arr = cJSON_CreateArray();
+    for (const char **f = get_chip_features(); *f; f++)
+        cJSON_AddItemToArray(arr, cJSON_CreateString(*f));
+    cJSON_AddItemToObject(json_root, tele_id, arr);
+}
+
+static void tele_flash_size_appender(const char *tele_id, cJSON *json_root) {
+    uint32_t size = get_flash_size();
+    if (size > 0)
+        cJSON_AddNumberToObject(json_root, tele_id, size);
+}
+
+static void tele_psram_size_appender(const char *tele_id, cJSON *json_root) {
+    size_t size = get_psram_size();
+    if (size > 0)
+        cJSON_AddNumberToObject(json_root, tele_id, size);
+}
+
+static void tele_cpu_freq_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, get_cpu_freq_mhz());
+}
+
+static void tele_reset_reason_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, esp_reset_reason_to_string(esp_reset_reason()));
+}
+
+static void tele_fs_used_appender(const char *tele_id, cJSON *json_root) {
+    size_t used = 0, total = 0;
+    if (get_fs_info(&used, &total))
+        cJSON_AddNumberToObject(json_root, tele_id, used);
+}
+
+static void tele_fs_total_appender(const char *tele_id, cJSON *json_root) {
+    size_t used = 0, total = 0;
+    if (get_fs_info(&used, &total))
+        cJSON_AddNumberToObject(json_root, tele_id, total);
+}
+
+static void tele_chip_temp_appender(const char *tele_id, cJSON *json_root) {
+    float t = 0.0f;
+    if (get_chip_temp(&t))
+        cJSON_AddNumberToObject(json_root, tele_id, t);
+}
+
 static const command_entry_t core_commands[] = {
     {"restart", "Restart the device", restart_handler},
     {"help", "Show available commands", help_handler},
@@ -612,4 +657,12 @@ static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
                                          {"cores", tele_cores_appender},
                                          {"id", tele_id_appender},
                                          {"rollback", tele_rollback_appender},
+                                         {"features", tele_features_appender},
+                                         {"flash_size", tele_flash_size_appender},
+                                         {"psram_size", tele_psram_size_appender},
+                                         {"cpu_freq", tele_cpu_freq_appender},
+                                         {"reset_reason", tele_reset_reason_appender},
+                                         {"fs_used", tele_fs_used_appender},
+                                         {"fs_total", tele_fs_total_appender},
+                                         {"chip_temp", tele_chip_temp_appender},
                                          {NULL, NULL}};

@@ -18,7 +18,9 @@
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
+#include "openthread/border_routing.h"
 #include "openthread/dataset_ftd.h"
+#include "openthread/thread.h"
 
 #include "bits_helper.h"
 #include "config_manager.h"
@@ -28,7 +30,10 @@
 
 #define TAG "cikon:adapter:thread_border_router"
 
-static esp_event_handler_instance_t s_ip6_handler = NULL;
+static esp_event_handler_instance_t s_ip6_handler =
+    NULL; // one-shot: fires once backbone IPv6 link-local is up, then unregisters itself
+static esp_event_handler_instance_t s_role_handler =
+    NULL; // one-shot: fires once Thread attaches as Leader/Router, then unregisters itself
 static esp_netif_t *s_backbone_netif = NULL;
 
 static bool initialized = false;
@@ -49,8 +54,8 @@ static esp_err_t thread_border_router_adapter_init(void) {
     // esp_netif_init() already called by ethernet/wifi adapter before us
 #if CONFIG_OPENTHREAD_CLI
     {
-        static char repl_prompt[20];
-        snprintf(repl_prompt, sizeof(repl_prompt), "%s>", config_get()->dev_name);
+        static char repl_prompt[22]; // "(br) " (5) + dev_name (max 15) + ">" (1) + '\0' (1)
+        snprintf(repl_prompt, sizeof(repl_prompt), "(br) %s>", config_get()->dev_name);
         thread_console_start(repl_prompt);
     }
 #endif
@@ -84,7 +89,36 @@ static esp_err_t thread_border_router_adapter_shutdown(void) {
     return ESP_OK;
 }
 
+// After an OBR restart, backbone hosts miss the OMR prefix because the first RA can be delayed by
+// minutes. Cycling border routing here triggers an immediate RA so hosts get the prefix right after
+// attach.
+static void on_thread_role_changed(void *arg, esp_event_base_t base, int32_t id, void *data) {
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otDeviceRole role = otThreadGetDeviceRole(esp_openthread_get_instance());
+    if (role == OT_DEVICE_ROLE_LEADER || role == OT_DEVICE_ROLE_ROUTER) {
+        // Unregister first — one-shot, we only need to force RA after the initial attach
+        // post-restart
+        esp_openthread_lock_release();
+        if (s_role_handler) {
+            esp_event_handler_instance_unregister(OPENTHREAD_EVENT, OPENTHREAD_EVENT_ROLE_CHANGED,
+                                                  s_role_handler);
+            s_role_handler = NULL;
+        }
+
+        // Re-cycle border routing to trigger an immediate RA on backbone.
+        esp_openthread_lock_acquire(portMAX_DELAY);
+        (void)otBorderRoutingSetEnabled(esp_openthread_get_instance(), false);
+        (void)otBorderRoutingSetEnabled(esp_openthread_get_instance(), true);
+        esp_openthread_lock_release();
+        ESP_LOGI(TAG, "Thread %s — border routing RA refreshed on backbone",
+                 otThreadDeviceRoleToString(role));
+    } else {
+        esp_openthread_lock_release();
+    }
+}
+
 static void border_router_start_task(void *arg) {
+
     esp_openthread_lock_acquire(portMAX_DELAY);
 
     esp_openthread_set_backbone_netif(s_backbone_netif);
@@ -131,13 +165,16 @@ static void border_router_start_task(void *arg) {
 #endif
 
             otDatasetConvertToTlvs(&config_dataset, &dataset);
-            ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d", CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
-                     CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
+            ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d",
+                     CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME, CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
         }
     }
 
     esp_openthread_auto_start(&dataset);
     esp_openthread_lock_release();
+
+    esp_event_handler_instance_register(OPENTHREAD_EVENT, OPENTHREAD_EVENT_ROLE_CHANGED,
+                                        on_thread_role_changed, NULL, &s_role_handler);
 
     initialized = true;
     supervisor_notify_event(THREAD_BORDER_ROUTER_READY);

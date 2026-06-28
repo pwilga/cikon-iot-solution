@@ -5,6 +5,7 @@
 #include "esp_chip_info.h"
 #include "esp_err.h"
 #include "esp_event.h"
+#include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_system.h"
@@ -13,6 +14,12 @@
 
 #include "platform_services.h"
 
+#if SOC_TEMP_SENSOR_SUPPORTED
+#include "driver/temperature_sensor.h"
+#endif
+#if CONFIG_SPIRAM
+#include "esp_heap_caps.h"
+#endif
 #if CONFIG_VFS_EVENTFD_MAX_FDS > 0
 #include "esp_vfs_eventfd.h"
 #endif
@@ -185,4 +192,72 @@ void reset_nvs_partition(void) {
     } else {
         ESP_LOGE(TAG, "NVS ERASE: Failed to erase NVS: %s", esp_err_to_name(err));
     }
+}
+
+const char **get_chip_features(void) {
+    static const char *feats[5] = {0};
+    static bool initialized = false;
+    if (initialized)
+        return feats;
+    esp_chip_info_t ci;
+    esp_chip_info(&ci);
+    int i = 0;
+    if (ci.features & CHIP_FEATURE_WIFI_BGN)   feats[i++] = "wifi";
+    if (ci.features & CHIP_FEATURE_BT)         feats[i++] = "bt";
+    if (ci.features & CHIP_FEATURE_BLE)        feats[i++] = "ble";
+    if (ci.features & CHIP_FEATURE_IEEE802154)  feats[i++] = "ieee802154";
+    feats[i] = NULL;
+    initialized = true;
+    return feats;
+}
+
+uint32_t get_flash_size(void) {
+    uint32_t size = 0;
+    esp_flash_get_size(NULL, &size);
+    return size;
+}
+
+size_t get_psram_size(void) {
+#if CONFIG_SPIRAM
+    return heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+#else
+    return 0;
+#endif
+}
+
+int get_cpu_freq_mhz(void) {
+    return CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+}
+
+
+bool get_fs_info(size_t *used, size_t *total) {
+#if CONFIG_VFS_LITTLEFS_ENABLED
+    return esp_littlefs_info(CONFIG_VFS_LITTLEFS_PARTITION, total, used) == ESP_OK;
+#else
+    (void)used;
+    (void)total;
+    return false;
+#endif
+}
+
+#if SOC_TEMP_SENSOR_SUPPORTED
+static temperature_sensor_handle_t s_temp_sensor = NULL;
+
+static void ensure_temp_sensor(void) {
+    if (s_temp_sensor)
+        return;
+    temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(10, 50);
+    if (temperature_sensor_install(&cfg, &s_temp_sensor) == ESP_OK)
+        temperature_sensor_enable(s_temp_sensor);
+}
+#endif
+
+bool get_chip_temp(float *out) {
+#if SOC_TEMP_SENSOR_SUPPORTED
+    ensure_temp_sensor();
+    return s_temp_sensor && temperature_sensor_get_celsius(s_temp_sensor, out) == ESP_OK;
+#else
+    (void)out;
+    return false;
+#endif
 }

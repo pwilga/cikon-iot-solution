@@ -42,9 +42,16 @@
       </div>
     </section>
 
-    <!-- Two columns -->
-    <div class="cols">
-      <section class="col">
+    <div class="grid">
+    <div class="cell" id="hw-cell" hidden>
+      <div class="chip-label" id="caps-label">Hardware</div>
+      <div class="caps" id="caps"></div>
+    </div>
+    <div class="cell" id="status-cell" hidden>
+      <div class="chip-label" id="status-label">Live status</div>
+      <div class="caps" id="status-chips"></div>
+    </div>
+      <section class="cell">
         <div class="label section-label">Controls</div>
         <div class="card row" id="led-card">
           <div>
@@ -55,7 +62,7 @@
         </div>
       </section>
 
-      <section class="col">
+      <section class="cell cell-system">
         <div class="label section-label">System</div>
         <div class="card list" id="sys-list"></div>
       </section>

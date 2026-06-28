@@ -60,6 +60,13 @@ bool get_onboard_led_state(void);
  */
 void reset_nvs_partition(void);
 
+const char **get_chip_features(void);
+uint32_t get_flash_size(void);
+size_t get_psram_size(void);
+int get_cpu_freq_mhz(void);
+bool get_fs_info(size_t *used, size_t *total);
+bool get_chip_temp(float *out);
+
 #ifdef __cplusplus
 }
 #endif

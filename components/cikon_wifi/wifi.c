@@ -490,6 +490,21 @@ void wifi_get_interface_ip(char *buf, size_t buflen) {
     }
 }
 
+int8_t wifi_get_rssi(void) {
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
+        return ap.rssi;
+    return 0;
+}
+
+bool wifi_get_ssid(char *buf, size_t buflen) {
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) != ESP_OK)
+        return false;
+    snprintf(buf, buflen, "%s", (const char *)ap.ssid);
+    return true;
+}
+
 void wifi_log_event_group_bits(void) {
 
     if (!wifi_event_group)

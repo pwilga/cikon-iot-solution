@@ -31,6 +31,7 @@
 #define TAG "cikon:inet_common"
 
 static char s_device_url[64];
+static bool s_mdns_ready = false;
 
 static void sntp_sync_callback(struct timeval *tv) {
     char time_str[32];
@@ -249,13 +250,17 @@ void inet_common_mdns_init(void) {
                         : ESP_OK;
 
     if (ret == ESP_OK) {
+        s_mdns_ready = true;
         ESP_LOGI(TAG, "mDNS started with hostname: %s.local", hostname);
     } else {
         ESP_LOGE(TAG, "mDNS init failed: %s", esp_err_to_name(ret));
     }
 }
 
-void inet_common_mdns_shutdown(void) { mdns_free(); }
+void inet_common_mdns_shutdown(void) {
+    mdns_free();
+    s_mdns_ready = false;
+}
 
 void inet_common_sntp_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
@@ -300,6 +305,9 @@ void inet_common_http_init(void) {
     });
     http_register_json_get("/tele", tele_append_all);
     http_register_json_post("/cmnd", cmnd_process_json);
+    if (s_mdns_ready) {
+        mdns_service_add(NULL, "_http", "_tcp", CONFIG_HTTP_PORT, NULL, 0);
+    }
 }
 
 void inet_common_http_handler(const char *args_json_str) {
@@ -322,6 +330,9 @@ void inet_common_https_init(void) {
     });
     http_register_json_get("/tele", tele_append_all);
     http_register_json_post("/cmnd", cmnd_process_json);
+    if (s_mdns_ready) {
+        mdns_service_add(NULL, "_https", "_tcp", CONFIG_HTTPS_PORT, NULL, 0);
+    }
 }
 
 void inet_common_https_handler(const char *args_json_str) {

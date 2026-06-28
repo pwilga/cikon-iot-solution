@@ -14,7 +14,9 @@
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
 #include "openthread/dataset.h"
-#include "openthread/link.h"
+#include "openthread/error.h"
+#include "openthread/link.h" // IWYU pragma: keep
+#include "openthread/srp_client.h"
 #include "openthread/thread.h"
 
 #include "bits_helper.h"
@@ -28,8 +30,66 @@
 
 static bool initialized = false;
 static bool s_mqtt_started = false;
-
 static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
+
+#if CONFIG_OPENTHREAD_SRP_CLIENT
+static otSrpClientService s_srp_http_service;
+
+static void srp_client_callback(otError error, const otSrpClientHostInfo *hostInfo,
+                                const otSrpClientService *services,
+                                const otSrpClientService *removedServices, void *context) {
+    (void)hostInfo;
+    (void)services;
+    (void)removedServices;
+    (void)context;
+    if (error == OT_ERROR_NONE) {
+        ESP_LOGI(TAG, "SRP: registered OK");
+    } else if (error == OT_ERROR_DUPLICATED) {
+        // SRP key mismatch — NVS was likely erased. Remove the stale host entry on the OBR.
+        // To clear all SRP registrations on OBR: ot srp server disable && ot srp server enable
+        ESP_LOGE(TAG, "SRP: name conflict for %s — remove stale host on OBR",
+                 inet_common_get_hostname());
+    } else {
+        ESP_LOGW(TAG, "SRP error: %s", otThreadErrorToString(error));
+    }
+}
+
+static void srp_host_init(void) {
+    const char *hostname = inet_common_get_hostname();
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otInstance *instance = esp_openthread_get_instance();
+    otSrpClientSetCallback(instance, srp_client_callback, NULL);
+    otError err = otSrpClientSetHostName(instance, hostname);
+    if (err != OT_ERROR_NONE) {
+        ESP_LOGE(TAG, "SRP set hostname: %s", otThreadErrorToString(err));
+        esp_openthread_lock_release();
+        return;
+    }
+    err = otSrpClientEnableAutoHostAddress(instance);
+    if (err != OT_ERROR_NONE) {
+        ESP_LOGW(TAG, "SRP auto host addr: %s", otThreadErrorToString(err));
+    }
+    otSrpClientEnableAutoStartMode(instance, NULL, NULL);
+    ESP_LOGI(TAG, "SRP host: %s, lease: %lus", hostname,
+             (unsigned long)otSrpClientGetLeaseInterval(instance));
+    esp_openthread_lock_release();
+}
+
+static void srp_add_service(otSrpClientService *svc, const char *type, uint16_t port) {
+    memset(svc, 0, sizeof(*svc));
+    svc->mName = type;
+    svc->mInstanceName = inet_common_get_hostname();
+    svc->mPort = port;
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otError err = otSrpClientAddService(esp_openthread_get_instance(), svc);
+    esp_openthread_lock_release();
+    if (err != OT_ERROR_NONE && err != OT_ERROR_ALREADY) {
+        ESP_LOGE(TAG, "SRP add %s: %s", type, otThreadErrorToString(err));
+    } else {
+        ESP_LOGI(TAG, "SRP: %s port %d", type, port);
+    }
+}
+#endif
 
 static void thread_device_start_task(void *arg) {
     esp_openthread_lock_acquire(portMAX_DELAY);
@@ -60,7 +120,10 @@ static void thread_device_start_task(void *arg) {
 
 #if CONFIG_OPENTHREAD_FTD
     otLinkModeConfig mode = {.mRxOnWhenIdle = true, .mDeviceType = true, .mNetworkData = true};
-    otThreadSetDeviceMode(esp_openthread_get_instance(), mode);
+    otError err = otThreadSetLinkMode(esp_openthread_get_instance(), mode);
+    if (err != OT_ERROR_NONE) {
+        ESP_LOGE(TAG, "otThreadSetLinkMode: %s", otThreadErrorToString(err));
+    }
 #elif CONFIG_OPENTHREAD_MTD
     otLinkSetPollPeriod(esp_openthread_get_instance(), CONFIG_THREAD_DEVICE_POLL_PERIOD_MS);
     ESP_LOGI(TAG, "SED poll period: %d ms", CONFIG_THREAD_DEVICE_POLL_PERIOD_MS);
@@ -79,13 +142,20 @@ static void thread_device_start_task(void *arg) {
     vTaskDelete(NULL);
 }
 
-static void on_dns_server_ready(void *arg, esp_event_base_t base, int32_t id, void *data) {
+static void thread_device_on_dns_server_ready(void *arg, esp_event_base_t base, int32_t id, void *data) {
     if (s_mqtt_started) {
         return;
     }
     s_mqtt_started = true;
+#if CONFIG_OPENTHREAD_SRP_CLIENT
+    srp_host_init();
+#endif
     inet_common_sntp_init();
     inet_common_mqtt_init();
+    inet_common_http_init();
+#if CONFIG_OPENTHREAD_SRP_CLIENT
+    srp_add_service(&s_srp_http_service, "_http._tcp", CONFIG_HTTP_PORT);
+#endif
 }
 
 static esp_err_t thread_device_adapter_init(void) {
@@ -120,7 +190,7 @@ static esp_err_t thread_device_adapter_init(void) {
 #endif
 
     esp_event_handler_register(OPENTHREAD_EVENT, OPENTHREAD_EVENT_SET_DNS_SERVER,
-                               on_dns_server_ready, NULL);
+                               thread_device_on_dns_server_ready, NULL);
 
     xTaskCreate(thread_device_start_task, "td_start", 4096, NULL, 5, NULL);
     return ESP_OK;
