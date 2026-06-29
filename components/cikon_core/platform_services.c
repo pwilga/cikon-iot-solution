@@ -202,10 +202,14 @@ const char **get_chip_features(void) {
     esp_chip_info_t ci;
     esp_chip_info(&ci);
     int i = 0;
-    if (ci.features & CHIP_FEATURE_WIFI_BGN)   feats[i++] = "wifi";
-    if (ci.features & CHIP_FEATURE_BT)         feats[i++] = "bt";
-    if (ci.features & CHIP_FEATURE_BLE)        feats[i++] = "ble";
-    if (ci.features & CHIP_FEATURE_IEEE802154)  feats[i++] = "ieee802154";
+    if (ci.features & CHIP_FEATURE_WIFI_BGN)
+        feats[i++] = "wifi";
+    if (ci.features & CHIP_FEATURE_BT)
+        feats[i++] = "bt";
+    if (ci.features & CHIP_FEATURE_BLE)
+        feats[i++] = "ble";
+    if (ci.features & CHIP_FEATURE_IEEE802154)
+        feats[i++] = "ieee802154";
     feats[i] = NULL;
     initialized = true;
     return feats;
@@ -225,10 +229,7 @@ size_t get_psram_size(void) {
 #endif
 }
 
-int get_cpu_freq_mhz(void) {
-    return CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
-}
-
+int get_cpu_freq_mhz(void) { return CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ; }
 
 bool get_fs_info(size_t *used, size_t *total) {
 #if CONFIG_VFS_LITTLEFS_ENABLED

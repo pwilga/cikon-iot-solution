@@ -30,8 +30,6 @@ static uint8_t adapter_count = 0;
 // OTA rollback validation
 static bool firmware_validated = false;
 
-// Rollback info — read once at supervisor_init()
-static char s_rollback[64] = "n/a";
 
 // Safe mode state
 static bool safe_mode_active = false;
@@ -387,14 +385,6 @@ void supervisor_init(void) {
     cmnd_init(supervisor_queue);
     cmnd_register_group(core_commands);
 
-    const esp_partition_t *failed = esp_ota_get_last_invalid_partition();
-    if (failed != NULL) {
-        esp_ota_img_states_t state;
-        esp_ota_get_state_partition(failed, &state);
-        snprintf(s_rollback, sizeof(s_rollback), "%s: %s", failed->label,
-                 esp_ota_state_to_string(state));
-    }
-
     tele_init();
     tele_register_group(core_tele);
 
@@ -557,10 +547,6 @@ static void tele_name_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, config_get()->dev_name);
 }
 
-static void tele_app_appender(const char *tele_id, cJSON *json_root) {
-    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->app_name);
-}
-
 static void tele_version_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, get_device_info()->app_version);
 }
@@ -585,8 +571,25 @@ static void tele_id_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, get_device_info()->id);
 }
 
-static void tele_rollback_appender(const char *tele_id, cJSON *json_root) {
-    cJSON_AddStringToObject(json_root, tele_id, s_rollback);
+static void tele_ota_state_appender(const char *tele_id, cJSON *json_root) {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    esp_ota_img_states_t state;
+    if (esp_ota_get_state_partition(running, &state) == ESP_OK) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s: %s", running->label, esp_ota_state_to_string(state));
+        cJSON_AddStringToObject(json_root, tele_id, buf);
+    }
+}
+
+static void tele_ota_last_failed_partition_appender(const char *tele_id, cJSON *json_root) {
+    const esp_partition_t *failed = esp_ota_get_last_invalid_partition();
+    if (failed == NULL)
+        return;
+    esp_ota_img_states_t state;
+    esp_ota_get_state_partition(failed, &state);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s: %s", failed->label, esp_ota_state_to_string(state));
+    cJSON_AddStringToObject(json_root, tele_id, buf);
 }
 
 static void tele_features_appender(const char *tele_id, cJSON *json_root) {
@@ -649,14 +652,14 @@ static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
                                          {"free_heap", tele_free_heap_appender},
                                          {"min_heap", tele_min_heap_appender},
                                          {"name", tele_name_appender},
-                                         {"app", tele_app_appender},
                                          {"version", tele_version_appender},
                                          {"idf", tele_idf_appender},
                                          {"chip", tele_chip_appender},
                                          {"chip_rev", tele_chip_rev_appender},
                                          {"cores", tele_cores_appender},
                                          {"id", tele_id_appender},
-                                         {"rollback", tele_rollback_appender},
+                                         {"ota_state", tele_ota_state_appender},
+                                         {"ota_last_failed_partition", tele_ota_last_failed_partition_appender},
                                          {"features", tele_features_appender},
                                          {"flash_size", tele_flash_size_appender},
                                          {"psram_size", tele_psram_size_appender},

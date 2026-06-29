@@ -40,7 +40,6 @@ void esp_safe_restart();
  */
 esp_err_t nvs_flash_safe_init();
 
-
 /**
  * @brief Returns the ISO8601-formatted boot time of the system.
  *

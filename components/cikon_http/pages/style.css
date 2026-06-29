@@ -169,3 +169,22 @@ body {
 /* offline → whole dashboard dimmed; controls also inert */
 .wrap.offline { opacity: .5; filter: saturate(.35); transition: opacity .25s, filter .25s; }
 .ctl-off { pointer-events: none; }
+
+/* reconnecting overlay (floats above the dimmed dashboard) */
+.reconnect {
+  position: fixed; left: 0; right: 0; bottom: 24px;
+  display: flex; justify-content: center; pointer-events: none; z-index: 50;
+}
+.reconnect[hidden] { display: none; }
+.reconnect-pill {
+  display: flex; align-items: center; gap: 11px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  padding: 11px 18px; border-radius: 26px; font-size: 13px; font-weight: 600;
+  box-shadow: 0 6px 22px var(--shadow);
+}
+.reconnect-spin {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: cikon-spin .7s linear infinite; flex: none;
+}
+@keyframes cikon-spin { to { transform: rotate(360deg); } }

@@ -14,7 +14,7 @@
     sortDir: "desc",
     resetPhase: "idle"
   };
-  var confirmTimer = null, resetTimer = null;
+  var confirmTimer = null, resetTimer = null, pollTimer = null;
   var prevTicks = null, prevTotal = null;  // for live (delta) CPU
   state.cpu = null;                         // { taskName: pct } or null
 
@@ -34,7 +34,7 @@
     if (!iso) return "—";
     return String(iso).replace("T", " ").replace("Z", "").slice(0, 16) + " UTC";
   }
-  var CAP_LABELS = { wifi: "Wi-Fi", ble: "BLE", bt: "Bluetooth", ieee802154: "802.15.4", thread: "Thread", zigbee: "Zigbee" };
+  var CAP_LABELS = { wifi: "Wi-Fi radio", ble: "Bluetooth LE", bt: "Bluetooth Classic", ieee802154: "802.15.4 radio", thread: "Thread", zigbee: "Zigbee" };
   var STATE_ORDER = { running: 0, ready: 1, blocked: 2, suspended: 3 };
   function stateStyle(st) {
     var dark = document.documentElement.getAttribute("data-theme") === "dark";
@@ -74,10 +74,19 @@
 
   // ---- telemetry ----
   function loadTele() {
-    fetch("/tele", { cache: "no-store" })
+    var ctrl = new AbortController();
+    var to = setTimeout(function () { ctrl.abort(); }, 3500);
+    return fetch("/tele", { cache: "no-store", signal: ctrl.signal })
       .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
       .then(function (t) { computeCpu(t); state.tele = t; state.online = true; state.live = true; render(); })
-      .catch(function () { if (state.live) { state.online = false; render(); } });
+      .catch(function () { if (state.live) { state.online = false; render(); } })
+      .finally(function () { clearTimeout(to); });
+  }
+
+  function pollLoop() {
+    loadTele().finally(function () {
+      pollTimer = setTimeout(pollLoop, state.online ? POLL_MS : 2000);
+    });
   }
 
   // ---- actions ----
@@ -159,6 +168,7 @@
     document.querySelector(".wrap").classList.toggle("offline", off);
     $("led-card").classList.toggle("ctl-off", off);
     rb.classList.toggle("ctl-off", off && state.resetPhase === "idle");
+    $("reconnect").hidden = !off;
 
     $("btn-theme").innerHTML = dark ? SUN : MOON;
 
@@ -185,6 +195,7 @@
       return null;
     }
     var fmtMB = function (b) { return (b / 1048576).toFixed(0) + " MB"; };
+    var fmtFS = function (b) { return b < 1048576 ? Math.round(b / 1024) + " kB" : (b / 1048576).toFixed(1) + " MB"; };
     var CAP_COLOR = { wifi: "#5f9ea8", bt: "#6f8fd6", net: "#a98ad0" };
     var capsHTML = (Array.isArray(t.features) ? t.features : []).map(function (f) {
       var ty = capType(f);
@@ -192,10 +203,10 @@
       return '<span class="cap" title="' + esc(CAP_LABELS[f] || f) + '" style="color:' + CAP_COLOR[ty] + '">' + CAP_ICON[ty] + '</span>';
     }).join("");
     if (t.flash_size) {
-      capsHTML += '<span class="cap cap-mem" title="Flash"><span class="cap-i" style="color:#d9a866">' + FLASH_ICON + '</span><b>' + fmtMB(t.flash_size) + '</b></span>';
+      capsHTML += '<span class="cap cap-mem" title="Flash size"><span class="cap-i" style="color:#d9a866">' + FLASH_ICON + '</span><b>' + fmtMB(t.flash_size) + '</b></span>';
     }
     if (t.psram_size) {
-      capsHTML += '<span class="cap cap-mem" title="PSRAM"><span class="cap-i" style="color:#cf8f86">' + PSRAM_ICON + '</span><b>' + fmtMB(t.psram_size) + '</b><span class="cap-tag">PSRAM</span></span>';
+      capsHTML += '<span class="cap cap-mem" title="Pseudo-static RAM"><span class="cap-i" style="color:#cf8f86">' + PSRAM_ICON + '</span><b>' + fmtMB(t.psram_size) + '</b><span class="cap-tag">PSRAM</span></span>';
     }
     if (t.cpu_freq) {
       capsHTML += '<span class="cap cap-mem" title="CPU frequency"><span class="cap-i" style="color:#6f9ec4"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5a5.5 5.5 0 1 1 10 0"></path><path d="M8 8.5 10.4 6"></path></svg></span><b>' + t.cpu_freq + ' MHz</b></span>';
@@ -217,7 +228,7 @@
       var linkIcon = linkIsEth
         ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="4.5" width="11.6" height="7" rx="1.4"></rect><path d="M5 11.5v-2M8 11.5v-2M11 11.5v-2"></path></svg>'
         : '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.8 5.8A9 9 0 0 1 14.2 5.8"></path><path d="M4.3 8.4A5.3 5.3 0 0 1 11.7 8.4"></path><circle cx="8" cy="11.5" r="1" fill="currentColor" stroke="none"></circle></svg>';
-      statusHTML += '<span class="cap cap-mem" title="Connection"><span class="cap-i" style="color:' + linkColor + '">' + linkIcon + '</span><b>' + esc(linkLabel) + '</b></span>';
+      statusHTML += '<span class="cap cap-mem" title="Uplink"><span class="cap-i" style="color:' + linkColor + '">' + linkIcon + '</span><b>' + esc(linkLabel) + '</b></span>';
     }
 
     // wifi rssi
@@ -228,7 +239,7 @@
       var bars = heights.map(function (h, i) {
         return '<span style="width:3px;height:' + h + ';background:' + (i < lvl ? rc : dim) + ';border-radius:1px;display:block"></span>';
       }).join("");
-      var rssiTitle = "Signal" + (t.ssid ? " · " + t.ssid : "") + " · " + t.rssi + " dBm";
+      var rssiTitle = "Wi-Fi signal strength";
       statusHTML += '<span class="cap cap-mem" title="' + esc(rssiTitle) + '"><span style="display:inline-flex;align-items:flex-end;gap:2px;height:15px;flex:none">' + bars + '</span><b>' + t.rssi + ' dBm</b></span>';
     }
 
@@ -242,7 +253,7 @@
     // filesystem usage
     if (t.fs_total && t.fs_used != null) {
       var fsPct = Math.round(t.fs_used / t.fs_total * 100);
-      var fsTitle = "Filesystem · " + fmtMB(t.fs_used) + " / " + fmtMB(t.fs_total);
+      var fsTitle = "Filesystem · " + fmtFS(t.fs_used) + " / " + fmtFS(t.fs_total);
       statusHTML += '<span class="cap cap-mem" title="' + esc(fsTitle) + '"><span class="cap-i" style="color:#5f9ea8"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="4" rx="5" ry="2"></ellipse><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"></path></svg></span><span class="fsbar"><span style="width:' + fsPct + '%"></span></span><b>FS ' + fsPct + '%</b></span>';
     }
 
@@ -250,15 +261,49 @@
     var resetLabel = null, resetColor = null;
     if (t.reset_reason) {
       var RESET_MAP = {
-        poweron: ["Power-on", false], power_on: ["Power-on", false],
-        sw: ["Software", false], software: ["Software", false], esp_restart: ["Software", false],
-        deepsleep: ["Deep sleep", false], ext: ["External", false], unknown: ["Unknown", false],
-        panic: ["Panic", true], int_wdt: ["Watchdog", true], task_wdt: ["Watchdog", true],
-        wdt: ["Watchdog", true], brownout: ["Brownout", true]
+        ESP_RST_UNKNOWN: ["Unknown", false],
+        ESP_RST_POWERON: ["Power-on", false],
+        ESP_RST_EXT: ["External pin", false],
+        ESP_RST_SW: ["Software", false],
+        ESP_RST_PANIC: ["Panic", true],
+        ESP_RST_INT_WDT: ["Int watchdog", true],
+        ESP_RST_TASK_WDT: ["Task watchdog", true],
+        ESP_RST_WDT: ["Watchdog", true],
+        ESP_RST_DEEPSLEEP: ["Deep sleep", false],
+        ESP_RST_BROWNOUT: ["Brownout", true],
+        ESP_RST_SDIO: ["SDIO", false],
+        ESP_RST_USB: ["USB", false],
+        ESP_RST_JTAG: ["JTAG", false],
+        ESP_RST_EFUSE: ["eFuse error", true],
+        ESP_RST_PWR_GLITCH: ["Power glitch", true],
+        ESP_RST_CPU_LOCKUP: ["CPU lockup", true]
       };
-      var ri = RESET_MAP[String(t.reset_reason).toLowerCase()] || [t.reset_reason, false];
+      var ri = RESET_MAP[String(t.reset_reason).toUpperCase()] || [t.reset_reason, false];
       resetLabel = ri[0];
       resetColor = ri[1] ? "#cf8f86" : (dark ? "#b4afbe" : "#a89c91");
+    }
+
+    // OTA image state → ["Label", severity]  (ok | bad | muted)
+    function parseOtaState(s) { return String(s || "").split(":").pop().trim().toUpperCase(); }
+    var OTA_MAP = {
+      ESP_OTA_IMG_NEW: ["New", "muted"],
+      ESP_OTA_IMG_PENDING_VERIFY: ["Pending verify", "muted"],
+      ESP_OTA_IMG_VALID: ["Valid", "ok"],
+      ESP_OTA_IMG_INVALID: ["Invalid", "bad"],
+      ESP_OTA_IMG_ABORTED: ["Aborted", "bad"],
+      ESP_OTA_IMG_UNDEFINED: ["Undefined", "muted"],
+      UNKNOWN: ["Unknown", "muted"]
+    };
+    var oi = OTA_MAP[parseOtaState(t.ota_state)] || [t.ota_state || "—", "muted"];
+    var otaLabel = oi[0];
+    var otaColor = oi[1] === "ok" ? "var(--accent,#5aa06f)" : oi[1] === "bad" ? "#cf8f86" : (dark ? "#b4afbe" : "#a89c91");
+    var hasOtaFail = !!t.ota_last_failed_partition;
+    var otaFailVal = "";
+    if (hasOtaFail) {
+      var ofm = OTA_MAP[parseOtaState(t.ota_last_failed_partition)];
+      var ofPart = String(t.ota_last_failed_partition).split(":")[0].trim();
+      var ofState = ofm ? ofm[0] : t.ota_last_failed_partition;
+      otaFailVal = ofPart ? ofPart + " · " + ofState : ofState;
     }
 
     var statusEl = $("status-chips");
@@ -274,13 +319,14 @@
 
     // system
     var rows = [
-      ["Chip", (t.chip || "—") + (t.chip_rev != null ? " rev" + t.chip_rev : "") + (t.cores ? " · " + t.cores + " cores" : ""), false, false],
+      ["Chip", (t.chip || "—") + (t.chip_rev != null ? " rev" + t.chip_rev : "") + (t.cores ? " · " + t.cores + (t.cores == 1 ? " core" : " cores") : ""), false, false],
       ["Device ID", t.id || "—", true, false],
       ["IP address", t.ip || "—", true, false],
       ["Firmware", (t.version || "—") + " · IDF " + (t.idf || "—"), true, false]
     ];
-    if (resetLabel) rows.push(["Last reset", resetLabel, false, false, resetColor]);
-    rows.push(["OTA rollback", t.rollback || "—", false, !t.rollback || t.rollback === "n/a"]);
+    if (resetLabel) rows.push(["Last reset reason", resetLabel, false, false, resetColor]);
+    rows.push(["OTA state", otaLabel, false, false, otaColor]);
+    if (hasOtaFail) rows.push(["OTA last failed", otaFailVal, false, false, "#cf8f86"]);
     $("sys-list").innerHTML = rows.map(function (r) {
       var col = r[4] ? ' style="color:' + r[4] + '"' : "";
       return '<div class="item"><span class="k">' + esc(r[0]) + '</span>' +
@@ -359,8 +405,7 @@
     }
 
     render();
-    loadTele();
-    setInterval(loadTele, POLL_MS);
+    pollLoop();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

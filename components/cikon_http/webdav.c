@@ -162,7 +162,7 @@ static esp_err_t dav_propfind_handler(httpd_req_t *req) {
             struct dirent *de;
 
             while ((de = readdir(dir)) != NULL) {
-                if (de->d_name[0] == '.')
+                if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
                     continue;
                 snprintf(child_path, FS_CHILD_PATH_MAX, "%s/%s", path, de->d_name);
                 if (base_slash)

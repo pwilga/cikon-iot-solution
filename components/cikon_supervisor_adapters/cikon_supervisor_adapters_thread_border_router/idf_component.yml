@@ -12,9 +12,15 @@ dependencies:
   cikon_thread_common:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_thread_common
+  # Conditional dependency prevents pulling esp_ot_br_server and protocol_examples_common (and their heavy external deps) when EXTRA_COMPONENT_DIRS is used
+  # Avoids IDF version conflicts and unwanted component scanning in non-border-router projects
   esp_ot_br_server:
     git: "https://github.com/espressif/esp-thread-br.git"
     path: components/esp_ot_br_server
+    matches:
+      - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER} == True"
   protocol_examples_common:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/protocol_examples_common
+    matches:
+      - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER} == True"
