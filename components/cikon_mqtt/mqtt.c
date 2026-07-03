@@ -364,6 +364,11 @@ void mqtt_init() {
         return;
     }
 
+    if (mqtt_is_secure(mqtt_config.mqtt_broker) && !certs_available()) {
+        ESP_LOGE(TAG, "MQTTS configured but TLS certificates not available, aborting MQTT init");
+        return;
+    }
+
     if (mqtt_client != NULL) {
         // ESP_LOGW(TAG, "MQTT client already initialized, skipping re-initialization.");
         return;

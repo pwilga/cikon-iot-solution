@@ -1,0 +1,19 @@
+menu "Certificate Loader"
+
+    config CERTS_DIR
+        string "Directory for TLS certificates on LittleFS"
+        default "/data/certs"
+
+    config CERT_CA_FILENAME
+        string "CA certificate filename"
+        default "ca.pem"
+
+    config CERT_CLIENT_FILENAME
+        string "Client certificate filename"
+        default "client.pem"
+
+    config CERT_CLIENT_KEY_FILENAME
+        string "Client private key filename"
+        default "client.key"
+
+endmenu

@@ -1,13 +1,12 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
 #include "esp_eth.h" // IWYU pragma: keep
-#include "esp_event.h"
+#include "esp_event.h" // IWYU pragma: keep
 #include "esp_log.h"
 #include "esp_netif.h"
 
 #include "bits_helper.h"
 #include "cmnd.h"
-#include "config_manager.h"
 #include "ethernet.h"
 #include "inet_common.h"
 #include "inet_ethernet_adapter.h"
@@ -27,8 +26,6 @@ static bool services_running = false;
 static esp_event_handler_instance_t inet_eth_handler = NULL;
 static esp_event_handler_instance_t inet_ip_handler = NULL;
 
-static bool shutdown_ota = true;
-
 static void inet_ethernet_stop_services(void) {
     if (!services_running) {
         ESP_LOGD(TAG, "Services not running");
@@ -46,27 +43,13 @@ static void inet_ethernet_stop_services(void) {
     inet_common_mdns_shutdown();
     inet_common_sntp_shutdown();
 
-    if (shutdown_ota) {
+    if (!restart_pending()) {
         tcp_ota_shutdown();
     }
 
     services_running = false;
 }
 
-static void inet_ethernet_restart_cb(void) {
-    shutdown_ota = false; // Don't shutdown OTA before restart
-
-    // SAFE MODE: Only clear boot counter
-    if (supervisor_is_safe_mode_active()) {
-        ESP_LOGD(TAG, "SAFE MODE: Clearing boot counter before restart");
-        config_set_boot_counter(0);
-        vTaskDelay(pdMS_TO_TICKS(500)); // Ensure NVS write completes
-        return;
-    }
-
-    mqtt_publish_offline_state();
-    inet_common_mqtt_shutdown();
-}
 
 static void inet_ethernet_netif_event_handler(void *arg, esp_event_base_t event_base,
                                               int32_t event_id, void *event_data) {
@@ -134,7 +117,7 @@ static esp_err_t inet_ethernet_adapter_init(void) {
         return ret;
     }
 
-    set_restart_callback(inet_ethernet_restart_cb);
+    set_restart_callback(inet_common_on_restart);
 
     initialized = true;
     ESP_LOGI(TAG, "Ethernet adapter initialized, waiting for IP...");
@@ -163,7 +146,6 @@ static esp_err_t inet_ethernet_adapter_shutdown(void) {
     set_restart_callback(NULL);
     ethernet_shutdown();
 
-    shutdown_ota = true;
     initialized = false;
 
     ESP_LOGI(TAG, "Ethernet adapter shutdown complete");

@@ -22,6 +22,7 @@
 #include "bits_helper.h"
 #include "config_manager.h"
 #include "inet_common.h"
+#include "platform_services.h"
 #include "supervisor.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
@@ -192,6 +193,9 @@ static esp_err_t thread_device_adapter_init(void) {
     esp_event_handler_register(OPENTHREAD_EVENT, OPENTHREAD_EVENT_SET_DNS_SERVER,
                                thread_device_on_dns_server_ready, NULL);
 
+    /* NOTE: only one restart callback slot exists — if combining with inet/inet_ethernet,
+     * replace with a single callback that calls both. */
+    set_restart_callback(inet_common_on_restart);
     xTaskCreate(thread_device_start_task, "td_start", 4096, NULL, 5, NULL);
     return ESP_OK;
 }
@@ -202,6 +206,7 @@ static esp_err_t thread_device_adapter_shutdown(void) {
     if (!initialized) {
         return ESP_ERR_INVALID_STATE;
     }
+    set_restart_callback(NULL);
     initialized = false;
     return ESP_OK;
 }

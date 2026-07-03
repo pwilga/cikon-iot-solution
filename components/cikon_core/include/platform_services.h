@@ -23,6 +23,13 @@ void core_system_init(void);
 
 void set_restart_callback(void (*cb)(void));
 void esp_safe_restart();
+/**
+ * @brief Returns true from the moment esp_safe_restart() is called until the device resets.
+ *
+ * Use this to skip teardown steps that are irrelevant during restart (e.g. OTA shutdown),
+ * avoiding the need for per-adapter boolean flags that are easy to forget.
+ */
+bool restart_pending(void);
 
 /**
  * @brief Initializes the NVS (Non-Volatile Storage) flash partition.

@@ -27,6 +27,7 @@ static inline void inet_common_ha_discovery_handler(const char *args_json_str) {
 
 void inet_common_on_interval(supervisor_interval_stage_t stage);
 void inet_common_on_event(EventBits_t bits);
+void inet_common_on_restart(void);
 
 const char *inet_common_get_hostname(void);
 const char *inet_common_get_device_url(void);

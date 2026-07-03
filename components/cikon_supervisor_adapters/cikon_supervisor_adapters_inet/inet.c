@@ -29,8 +29,6 @@ static void wifi_handler(const char *args_json_str);
 static esp_event_handler_instance_t inet_wifi_handler = NULL;
 static esp_event_handler_instance_t inet_ip_handler = NULL;
 
-static bool shutdown_ota = true;
-
 static SemaphoreHandle_t network_transition_mutex = NULL;
 static volatile bool sta_services_running = false;
 static volatile bool ap_services_running = false;
@@ -48,7 +46,7 @@ static void inet_stop_services(void) {
     // mdns_free();
     inet_common_sntp_shutdown();
 
-    if (shutdown_ota) {
+    if (!restart_pending()) {
         tcp_ota_shutdown();
     }
 
@@ -83,23 +81,8 @@ void inet_switch_to_sta_mode(void) {
 }
 
 static void inet_restart_cb(void) {
-    // Unregister event handlers first (safe for both modes)
     wifi_unregister_event_handlers();
-
-    shutdown_ota = false; // Don't shutdown OTA before restart
-
-    // SAFE MODE: Only clear boot counter
-    // It shuld be here, no tmie for tests now but shoudbe moved to platform services
-    if (supervisor_is_safe_mode_active()) {
-        ESP_LOGD(TAG, "SAFE MODE: Clearing boot counter before restart");
-        config_set_boot_counter(0);
-        vTaskDelay(pdMS_TO_TICKS(500)); // Ensure NVS write completes
-        return;
-    }
-
-    // NORMAL MODE: Full shutdown sequence
-    mqtt_publish_offline_state();
-    inet_common_mqtt_shutdown();
+    inet_common_on_restart();
 }
 
 static void inet_netif_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
@@ -213,8 +196,6 @@ esp_err_t inet_adapter_shutdown(void) {
         vSemaphoreDelete(network_transition_mutex);
         network_transition_mutex = NULL;
     }
-
-    shutdown_ota = true;
 
     wifi_shutdown();
 

@@ -33,6 +33,7 @@
 #define TAG "cikon:platform"
 
 static void (*restart_callback)(void) = NULL;
+static bool s_restarting = false;
 
 static bool onboard_led_state = true;
 
@@ -79,6 +80,7 @@ void core_system_init(void) {
 void set_restart_callback(void (*cb)(void)) { restart_callback = cb; }
 
 void esp_safe_restart() {
+    s_restarting = true;
 
     if (restart_callback) {
         restart_callback();
@@ -86,6 +88,8 @@ void esp_safe_restart() {
 
     esp_restart();
 }
+
+bool restart_pending(void) { return s_restarting; }
 
 static const char *chip_name(esp_chip_model_t m) {
     switch (m) {

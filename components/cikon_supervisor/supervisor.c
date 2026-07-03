@@ -476,6 +476,8 @@ static void supervisor_adapter_control_handler(const char *args_json_str) {
 
 static void restart_handler(const char *args_json_str) {
     (void)args_json_str;
+    /* Allow TCP stack to flush the HTTP response before pulling the rug out. */
+    vTaskDelay(pdMS_TO_TICKS(200));
     esp_safe_restart();
 }
 

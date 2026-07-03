@@ -11,4 +11,4 @@ idf_component_register(
 
 file(GLOB PAGES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/pages/*")
 file(COPY ${PAGES_FILES} DESTINATION ${CMAKE_BINARY_DIR}/cikon_http_fs/www)
-littlefs_create_partition_image(littlefs ${CMAKE_BINARY_DIR}/cikon_http_fs FLASH_IN_PROJECT)
+littlefs_create_partition_image(littlefs ${CMAKE_BINARY_DIR}/cikon_http_fs)

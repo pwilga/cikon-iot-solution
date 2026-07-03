@@ -6,6 +6,8 @@
 #include <unistd.h>
 
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep
+#include "freertos/task.h"
 #include "mdns.h"
 
 #include "bits_helper.h"
@@ -346,6 +348,18 @@ void inet_common_https_handler(const char *args_json_str) {
     } else {
         ESP_LOGW(TAG, "Invalid HTTPS state");
     }
+}
+
+void inet_common_on_restart(void) {
+    if (supervisor_is_safe_mode_active()) {
+        /* Clear boot counter so the device exits safe mode after restart.
+         * TODO: this does not conceptually belong in inet_common — find a better home. */
+        config_set_boot_counter(0);
+        vTaskDelay(pdMS_TO_TICKS(500)); // Ensure NVS write completes before reset
+        return;
+    }
+    mqtt_publish_offline_state();
+    inet_common_mqtt_shutdown();
 }
 
 void inet_common_sntp_init(void) {

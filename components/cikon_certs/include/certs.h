@@ -1,9 +1,8 @@
-#ifndef CERT_SYMBOL_H
-#define CERT_SYMBOL_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h> // IWYU pragma: keep
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,5 +22,3 @@ bool certs_available(void);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // CERT_SYMBOL_H
