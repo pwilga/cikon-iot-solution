@@ -1,29 +1,41 @@
 /*
  * SPDX-License-Identifier: MIT
  *
- * Cikon IoT Ethernet - ESP32-P4 OpenETH Backend
+ * Cikon IoT Ethernet - ESP32-P4 Internal EMAC + External PHY Backend
  * Copyright (c) 2026 Piotr Wilga
+ *
+ * Uses the ESP32-P4 built-in Ethernet MAC (RMII) driven by esp_eth_mac_new_esp32().
+ * NOTE: This is the real-silicon EMAC. Do NOT confuse with esp_eth_mac_new_openeth(),
+ * which is the OpenCores MAC available only under QEMU.
+ *
+ * Reference board: M5Stack Unit PoE-P4 (IP101GRI PHY). Its RMII pinout matches the
+ * ESP32-P4 IO_MUX defaults from ETH_ESP32_EMAC_DEFAULT_CONFIG()
+ * (MDC=31, MDIO=52, REF_CLK EXT_IN=50, TX_EN=49, TXD0=34, TXD1=35, CRS_DV=28,
+ * RXD0=29, RXD1=30), so only PHY address and reset GPIO need to be overridden.
  */
 
 #include "sdkconfig.h"
 
-#ifdef CONFIG_ETHERNET_OPENETH
+#ifdef CONFIG_ETHERNET_ESP_EMAC
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
 #include "driver/gpio.h"
 #include "esp_check.h"
 #include "esp_eth.h"
-#include "esp_eth_mac_openeth.h"
+#include "esp_eth_mac_esp.h"
 #include "esp_eth_phy.h"
 #include "esp_log.h"
 #include "ethernet_backend.h"
 
-#define TAG "cikon:ethernet:openeth"
+#ifdef CONFIG_ETHERNET_PHY_IP101
+// IP101 PHY driver lives in the espressif/ip101 registry component since IDF 6.0.
+#include "esp_eth_phy_ip101.h"
+#endif
 
-// ===== PHY Selection =====
+#define TAG "cikon:ethernet:esp_emac"
 
-static const char* openeth_get_phy_name(void) {
+static const char* esp_emac_get_phy_name(void) {
 #ifdef CONFIG_ETHERNET_PHY_IP101
     return "IP101";
 #elif defined(CONFIG_ETHERNET_PHY_GENERIC)
@@ -33,7 +45,7 @@ static const char* openeth_get_phy_name(void) {
 #endif
 }
 
-static esp_eth_phy_t* openeth_create_phy(const eth_phy_config_t *config) {
+static esp_eth_phy_t* esp_emac_create_phy(const eth_phy_config_t *config) {
 #ifdef CONFIG_ETHERNET_PHY_IP101
     ESP_LOGI(TAG, "Creating IP101 PHY instance");
     return esp_eth_phy_new_ip101(config);
@@ -46,39 +58,38 @@ static esp_eth_phy_t* openeth_create_phy(const eth_phy_config_t *config) {
 #endif
 }
 
-// ===== OpenETH Backend Implementation =====
-
-static esp_err_t openeth_backend_init(esp_eth_handle_t *out_handle) {
-    ESP_LOGI(TAG, "Initializing ESP32-P4 OpenETH + %s PHY", openeth_get_phy_name());
+static esp_err_t esp_emac_backend_init(esp_eth_handle_t *out_handle) {
+    ESP_LOGI(TAG, "Initializing ESP32-P4 internal EMAC + %s PHY", esp_emac_get_phy_name());
     ESP_LOGI(TAG, "Configuration: PHY_ADDR=%d, RST_GPIO=%d",
              CONFIG_ETHERNET_PHY_ADDR,
              CONFIG_ETHERNET_PHY_RST_GPIO);
-    
-    // Step 1: Create OpenETH MAC configuration (ESP32-P4 internal MAC)
+
+    // Step 1: MAC configuration (ESP32-P4 internal EMAC, RMII).
+    // Defaults match M5Stack PoE-P4 IO_MUX pinout, so no GPIO overrides are needed.
     eth_mac_config_t mac_config = ETH_MAC_DEFAULT_CONFIG();
-    eth_esp32_openeth_config_t openeth_config = ETH_ESP32_OPENETH_DEFAULT_CONFIG();
-    
-    // Step 2: Create OpenETH MAC instance
-    esp_eth_mac_t *mac = esp_eth_mac_new_openeth(&openeth_config, &mac_config);
-    ESP_RETURN_ON_FALSE(mac, ESP_FAIL, TAG, "Failed to create OpenETH MAC");
-    
+    eth_esp32_emac_config_t esp32_config = ETH_ESP32_EMAC_DEFAULT_CONFIG();
+
+    // Step 2: Create internal EMAC instance
+    esp_eth_mac_t *mac = esp_eth_mac_new_esp32(&esp32_config, &mac_config);
+    ESP_RETURN_ON_FALSE(mac, ESP_FAIL, TAG, "Failed to create ESP32 EMAC");
+
     // Step 3: Create PHY configuration
     eth_phy_config_t phy_config = ETH_PHY_DEFAULT_CONFIG();
     phy_config.phy_addr = CONFIG_ETHERNET_PHY_ADDR;
     phy_config.reset_gpio_num = CONFIG_ETHERNET_PHY_RST_GPIO;
-    
+
     // Step 4: Create PHY instance (IP101 or Generic)
-    esp_eth_phy_t *phy = openeth_create_phy(&phy_config);
+    esp_eth_phy_t *phy = esp_emac_create_phy(&phy_config);
     if (phy == NULL) {
-        ESP_LOGE(TAG, "Failed to create %s PHY", openeth_get_phy_name());
+        ESP_LOGE(TAG, "Failed to create %s PHY", esp_emac_get_phy_name());
         mac->del(mac);
         return ESP_FAIL;
     }
-    
+
     // Step 5: Install Ethernet driver
     esp_eth_config_t config = ETH_DEFAULT_CONFIG(mac, phy);
     esp_eth_handle_t eth_handle = NULL;
-    
+
     esp_err_t ret = esp_eth_driver_install(&config, &eth_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Ethernet driver install failed: %s", esp_err_to_name(ret));
@@ -86,27 +97,27 @@ static esp_err_t openeth_backend_init(esp_eth_handle_t *out_handle) {
         mac->del(mac);
         return ret;
     }
-    
+
     *out_handle = eth_handle;
-    ESP_LOGI(TAG, "OpenETH + %s PHY initialized successfully", openeth_get_phy_name());
+    ESP_LOGI(TAG, "ESP32 EMAC + %s PHY initialized successfully", esp_emac_get_phy_name());
     return ESP_OK;
 }
 
-static esp_err_t openeth_backend_shutdown(esp_eth_handle_t handle) {
-    ESP_LOGI(TAG, "Shutting down OpenETH + %s PHY", openeth_get_phy_name());
-    
+static esp_err_t esp_emac_backend_shutdown(esp_eth_handle_t handle) {
+    ESP_LOGI(TAG, "Shutting down ESP32 EMAC + %s PHY", esp_emac_get_phy_name());
+
     // Step 1: Get MAC and PHY instances before uninstalling driver
     esp_eth_mac_t *mac = NULL;
     esp_eth_phy_t *phy = NULL;
     esp_eth_get_mac_instance(handle, &mac);
     esp_eth_get_phy_instance(handle, &phy);
-    
+
     // Step 2: Uninstall driver
     ESP_RETURN_ON_ERROR(
         esp_eth_driver_uninstall(handle),
         TAG, "Ethernet driver uninstall failed"
     );
-    
+
     // Step 3: Delete MAC and PHY instances
     if (mac != NULL) {
         mac->del(mac);
@@ -114,17 +125,15 @@ static esp_err_t openeth_backend_shutdown(esp_eth_handle_t handle) {
     if (phy != NULL) {
         phy->del(phy);
     }
-    
-    ESP_LOGI(TAG, "OpenETH shutdown complete");
+
+    ESP_LOGI(TAG, "ESP32 EMAC shutdown complete");
     return ESP_OK;
 }
 
-// ===== Backend Registration =====
-
-const ethernet_backend_t ethernet_backend_openeth = {
-    .init = openeth_backend_init,
-    .shutdown = openeth_backend_shutdown,
-    .name = "OpenETH"
+const ethernet_backend_t ethernet_backend_esp_emac = {
+    .init = esp_emac_backend_init,
+    .shutdown = esp_emac_backend_shutdown,
+    .name = "ESP-EMAC"
 };
 
-#endif // CONFIG_ETHERNET_OPENETH
+#endif // CONFIG_ETHERNET_ESP_EMAC

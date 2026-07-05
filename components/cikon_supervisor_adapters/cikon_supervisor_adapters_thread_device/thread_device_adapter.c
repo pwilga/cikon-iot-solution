@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_openthread.h"
+#include "esp_openthread_dns64.h"
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
@@ -185,6 +186,12 @@ static esp_err_t thread_device_adapter_init(void) {
         ESP_LOGE(TAG, "esp_openthread_start failed: %s", esp_err_to_name(err));
         return err;
     }
+
+    // Force-link IDF's OpenThread DNS64/NAT64 lwIP glue (esp_openthread_dns64.c). Without an explicit
+    // reference the linker GCs the whole TU, dropping lwip_hook_dns_external_resolve — then lwIP
+    // sockets (MQTT/SNTP/esp-tls) can't reach NAT64 while `ot ping` still works. Requires
+    // CONFIG_LWIP_HOOK_DNS_EXT_RESOLVE_CUSTOM=y so lwIP actually calls the hook.
+    esp_openthread_dns64_client_init();
 
 #if CONFIG_OPENTHREAD_CLI
     thread_cli_commands_init();

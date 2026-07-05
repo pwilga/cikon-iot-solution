@@ -8,5 +8,11 @@ maintainers:
 
 dependencies:
   idf: ">=6.0"
+  # Only adds extra `ot` console commands. NAT64 for MQTT/SNTP is force-linked explicitly in
+  # thread_device_adapter (esp_openthread_dns64_client_init), so it no longer depends on this component.
+  # matches: gate on THREAD_DEVICE or BORDER_ROUTER — p4 (no Thread) skips the dependency so resolving passes.
   espressif/esp_ot_cli_extension:
     version: ">=2.0.0"
+    matches:
+      - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_DEVICE} == True"
+      - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER} == True"

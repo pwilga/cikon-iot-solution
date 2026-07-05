@@ -1,6 +1,6 @@
 name: cikon_ethernet
 version: "1.0.0"
-description: "Cikon IoT Ethernet abstraction layer (W5500 SPI + ESP32-P4 OpenETH)"
+description: "Cikon IoT Ethernet abstraction layer (W5500 SPI + ESP32-P4 internal EMAC)"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
@@ -11,5 +11,21 @@ dependencies:
 
   # W5500 SPI Ethernet controller (from ESP Component Registry)
   espressif/w5500: ">=2.0.0"
+
+  # IP101 PHY driver — moved out of ESP-IDF into the Component Registry in IDF 6.0.
+  # Only needed for the internal-EMAC backend with an IP101 PHY (e.g. M5Stack PoE-P4).
+  espressif/ip101:
+    version: "*"
+    matches:
+      # IP101 is an internal-EMAC PHY; the espressif/ip101 component supports only
+      # the SoCs with an internal EMAC (esp32, esp32p4). A plain target test is
+      # always evaluable, so it also works on targets where this component isn't
+      # built (e.g. esp32h2). We deliberately avoid $CONFIG{...} here: those
+      # symbols are undefined on the other targets and referencing them makes the
+      # component manager fail with "Missing required kconfig option after retry".
+      # On such a build that doesn't actually use IP101 the driver is pulled but
+      # stays unused (guarded by #ifdef CONFIG_ETHERNET_PHY_IP101) and dropped by
+      # the linker.
+      - if: "target in [esp32, esp32p4]"
 
 

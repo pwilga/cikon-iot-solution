@@ -12,11 +12,14 @@ config ETHERNET_W5500
         WIZnet W5500 SPI Ethernet controller with integrated MAC+PHY+TCP/IP stack.
         Requires SPI interface (MOSI/MISO/SCK/CS/INT pins).
 
-config ETHERNET_OPENETH
-    bool "ESP32-P4 OpenETH + External PHY"
+config ETHERNET_ESP_EMAC
+    bool "ESP32-P4 Internal EMAC + External PHY"
     help
-        ESP32-P4 built-in Ethernet MAC (OpenETH core) with external PHY chip.
-        Uses RMII interface (pins are fixed by hardware).
+        ESP32-P4 built-in Ethernet MAC (esp_eth_mac_new_esp32) with external PHY chip.
+        Uses the RMII interface. Data-plane pins follow the ESP32-P4 IO_MUX defaults
+        (matching e.g. the M5Stack Unit PoE-P4).
+
+        NOTE: This is the real-silicon EMAC, not the QEMU-only OpenCores MAC.
 
 endchoice
 
@@ -76,7 +79,7 @@ if ETHERNET_W5500
     endmenu
 endif
 
-if ETHERNET_OPENETH
+if ETHERNET_ESP_EMAC
     choice ETHERNET_PHY
         prompt "External PHY Chip"
         default ETHERNET_PHY_IP101

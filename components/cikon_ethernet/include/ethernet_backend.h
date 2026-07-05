@@ -10,7 +10,7 @@ extern "C" {
 /**
  * @brief Ethernet backend interface
  *
- * Each backend (W5500, OpenETH, etc.) implements this interface.
+ * Each backend (W5500, ESP32-P4 internal EMAC, etc.) implements this interface.
  * Main wrapper (ethernet.c) selects backend at compile-time based on Kconfig.
  */
 typedef struct {
@@ -41,8 +41,8 @@ typedef struct {
 extern const ethernet_backend_t ethernet_backend_w5500;
 #endif
 
-#ifdef CONFIG_ETHERNET_OPENETH
-extern const ethernet_backend_t ethernet_backend_openeth;
+#ifdef CONFIG_ETHERNET_ESP_EMAC
+extern const ethernet_backend_t ethernet_backend_esp_emac;
 #endif
 
 #ifdef __cplusplus

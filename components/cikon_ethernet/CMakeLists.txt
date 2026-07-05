@@ -10,8 +10,8 @@ if(CONFIG_ETHERNET_W5500)
     list(APPEND COMPONENT_SRCS "ethernet_backend_w5500.c")
 endif()
 
-if(CONFIG_ETHERNET_OPENETH)
-    list(APPEND COMPONENT_SRCS "ethernet_backend_openeth.c")
+if(CONFIG_ETHERNET_ESP_EMAC)
+    list(APPEND COMPONENT_SRCS "ethernet_backend_esp_emac.c")
 endif()
 
 idf_component_register(

@@ -25,8 +25,8 @@ static esp_eth_netif_glue_handle_t s_eth_glue = NULL;
 static const ethernet_backend_t *ethernet_get_backend(void) {
 #ifdef CONFIG_ETHERNET_W5500
     return &ethernet_backend_w5500;
-#elif CONFIG_ETHERNET_OPENETH
-    return &ethernet_backend_openeth;
+#elif CONFIG_ETHERNET_ESP_EMAC
+    return &ethernet_backend_esp_emac;
 #else
 #error                                                                                             \
     "No Ethernet backend configured! Select hardware in Kconfig (Component config -> Cikon Ethernet Hardware)."

@@ -66,14 +66,11 @@ void thread_console_start(const char *prompt) {
     esp_console_dev_usb_cdc_config_t hw = ESP_CONSOLE_DEV_CDC_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_usb_cdc(&hw, &repl_config, &repl));
 #elif defined(CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG)
-    esp_console_dev_usb_serial_jtag_config_t hw =
-        ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
+    esp_console_dev_usb_serial_jtag_config_t hw = ESP_CONSOLE_DEV_USB_SERIAL_JTAG_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_usb_serial_jtag(&hw, &repl_config, &repl));
 #endif
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
 }
 
-void thread_cli_commands_init(void) {
-    esp_cli_custom_command_init();
-}
+void thread_cli_commands_init(void) { esp_cli_custom_command_init(); }
 #endif
