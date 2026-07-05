@@ -3,8 +3,13 @@
 #include "cJSON.h"
 #include "esp_log.h"
 #include "led_indicator.h"
+
+#if CONFIG_LED_INDICATOR_RGB
+#include "led_indicator_rgb.h"
+#else
 #include "led_indicator_strips.h"
 #include "led_strip_types.h"
+#endif
 
 #include "bits_helper.h"
 #include "cmnd.h"
@@ -108,11 +113,38 @@ static esp_err_t led_indicator_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing led_indicator adapter");
 
-    // Configure SK6812 LED strip (GRB format, single LED on GPIO 35)
+    led_indicator_config_t config = {
+        .blink_lists = led_blink_lists,
+        .blink_list_num = BLINK_MAX,
+    };
+
+#if CONFIG_LED_INDICATOR_RGB
+    // Configure analog 3-pin RGB LED driven over LEDC/PWM.
+    // Timer/channels kept off LEDC_TIMER_0 + channels 0.. to avoid clashing
+    // with the separate cikon_supervisor_adapters_led adapter.
+    led_indicator_rgb_config_t rgb_config = {
+    // A Kconfig bool set to 'n' emits no #define, so test with #ifdef.
+#ifdef CONFIG_LED_INDICATOR_RGB_ACTIVE_HIGH
+        .is_active_level_high = true,
+#else
+        .is_active_level_high = false,
+#endif
+        .red_gpio_num = CONFIG_LED_INDICATOR_RGB_GPIO_RED,
+        .green_gpio_num = CONFIG_LED_INDICATOR_RGB_GPIO_GREEN,
+        .blue_gpio_num = CONFIG_LED_INDICATOR_RGB_GPIO_BLUE,
+        .red_channel = LEDC_CHANNEL_3,
+        .green_channel = LEDC_CHANNEL_4,
+        .blue_channel = LEDC_CHANNEL_5,
+        .timer_num = LEDC_TIMER_1,
+    };
+
+    esp_err_t ret = led_indicator_new_rgb_device(&config, &rgb_config, &led_handle);
+#else
+    // Configure addressable neopixel (SK6812, GRB format, single LED).
     led_indicator_strips_config_t strips_config = {
         .led_strip_cfg =
             {
-                .strip_gpio_num = CONFIG_LED_INDICATOR_GPIO,
+                .strip_gpio_num = CONFIG_LED_INDICATOR_NEOPIXEL_GPIO,
                 .max_leds = 1,
                 .led_model = LED_MODEL_SK6812,
                 .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
@@ -127,19 +159,22 @@ static esp_err_t led_indicator_adapter_init(void) {
             },
     };
 
-    led_indicator_config_t config = {
-        .blink_lists = led_blink_lists,
-        .blink_list_num = BLINK_MAX,
-    };
-
     esp_err_t ret = led_indicator_new_strips_device(&config, &strips_config, &led_handle);
+#endif
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create LED indicator: %s", esp_err_to_name(ret));
         return ret;
     }
 
     initialized = true;
-    ESP_LOGI(TAG, "LED indicator initialized on GPIO %d (SK6812)", CONFIG_LED_INDICATOR_GPIO);
+#if CONFIG_LED_INDICATOR_RGB
+    ESP_LOGI(TAG, "LED indicator initialized (rgb) on GPIO R:%d G:%d B:%d",
+             CONFIG_LED_INDICATOR_RGB_GPIO_RED, CONFIG_LED_INDICATOR_RGB_GPIO_GREEN,
+             CONFIG_LED_INDICATOR_RGB_GPIO_BLUE);
+#else
+    ESP_LOGI(TAG, "LED indicator initialized (neopixel) on GPIO %d",
+             CONFIG_LED_INDICATOR_NEOPIXEL_GPIO);
+#endif
 
     // Start with connecting status
     led_indicator_start(led_handle, BLINK_BOOT);

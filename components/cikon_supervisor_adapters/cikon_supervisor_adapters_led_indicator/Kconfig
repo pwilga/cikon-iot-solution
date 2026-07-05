@@ -1,17 +1,71 @@
 menu "Cikon IoT Supervisor LED Indicator Adapter"
-    config LED_INDICATOR_GPIO
-        int "LED Indicator GPIO number"
+
+    choice
+        prompt "LED indicator type"
+        default LED_INDICATOR_NEOPIXEL
+        help
+            Hardware type of the status LED driven by this adapter.
+
+        config LED_INDICATOR_NEOPIXEL
+            bool "Addressable (SK6812/WS2812, single-wire RMT)"
+        config LED_INDICATOR_RGB
+            bool "Analog RGB (3-pin, LEDC/PWM)"
+    endchoice
+
+    config LED_INDICATOR_NEOPIXEL_GPIO
+        int "Neopixel data GPIO number"
+        depends on LED_INDICATOR_NEOPIXEL
         default 35
         range 0 48
         help
-            GPIO pin connected to status LED (SK6812/WS2812).
+            GPIO pin connected to the addressable status LED (SK6812/WS2812).
             For AtomS3 Lite: GPIO 35 (built-in RGB LED).
+
+    config LED_INDICATOR_RGB_GPIO_RED
+        int "RGB red channel GPIO number"
+        depends on LED_INDICATOR_RGB
+        default 17
+        range 0 48
+        help
+            GPIO pin driving the red channel of the analog RGB LED.
+            For M5Stack Unit PoE-P4: GPIO 17.
+
+    config LED_INDICATOR_RGB_GPIO_GREEN
+        int "RGB green channel GPIO number"
+        depends on LED_INDICATOR_RGB
+        default 15
+        range 0 48
+        help
+            GPIO pin driving the green channel of the analog RGB LED.
+            For M5Stack Unit PoE-P4: GPIO 15.
+
+    config LED_INDICATOR_RGB_GPIO_BLUE
+        int "RGB blue channel GPIO number"
+        depends on LED_INDICATOR_RGB
+        default 16
+        range 0 48
+        help
+            GPIO pin driving the blue channel of the analog RGB LED.
+            For M5Stack Unit PoE-P4: GPIO 16.
+
+    config LED_INDICATOR_RGB_ACTIVE_HIGH
+        bool "RGB LED is active-high"
+        depends on LED_INDICATOR_RGB
+        default n
+        help
+            Set y for common-cathode LEDs (GPIO high = channel ON), n for
+            common-anode LEDs (GPIO low = channel ON).
+            M5Stack Unit PoE-P4 uses a common-anode LED (active-low) -> n.
 
     config LED_INDICATOR_BRIGHTNESS
         int "LED Indicator brightness (0-255)"
+        default 255 if LED_INDICATOR_RGB
         default 90
         range 0 255
         help
             Global brightness for all LED effects.
             0 = off, 255 = full brightness.
+            Analog RGB defaults to max: it is much dimmer than an SK6812
+            (green/blue Vf leaves little headroom off 3.3V, so the green die
+            is weak), and there is no per-channel gain to compensate.
 endmenu

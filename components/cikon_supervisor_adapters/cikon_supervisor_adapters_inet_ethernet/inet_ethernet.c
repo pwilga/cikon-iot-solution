@@ -1,6 +1,6 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 
-#include "esp_eth.h" // IWYU pragma: keep
+#include "esp_eth.h"   // IWYU pragma: keep
 #include "esp_event.h" // IWYU pragma: keep
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -49,7 +49,6 @@ static void inet_ethernet_stop_services(void) {
 
     services_running = false;
 }
-
 
 static void inet_ethernet_netif_event_handler(void *arg, esp_event_base_t event_base,
                                               int32_t event_id, void *event_data) {
