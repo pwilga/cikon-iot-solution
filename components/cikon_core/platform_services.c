@@ -105,8 +105,10 @@ static const char *chip_name(esp_chip_model_t m) {
         return "esp32c6";
     case CHIP_ESP32H2:
         return "esp32h2";
+    case CHIP_ESP32P4:
+        return "esp32p4";
     default:
-        return "esp32";
+        return "unknown";
     }
 }
 
