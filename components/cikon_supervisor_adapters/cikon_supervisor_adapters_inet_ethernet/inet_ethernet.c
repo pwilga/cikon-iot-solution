@@ -7,6 +7,7 @@
 
 #include "bits_helper.h"
 #include "cmnd.h"
+#include "config_manager.h"
 #include "ethernet.h"
 #include "inet_common.h"
 #include "inet_ethernet_adapter.h"
@@ -172,7 +173,7 @@ static void inet_ethernet_adapter_on_event(EventBits_t bits) {
             inet_common_mdns_init();
             inet_common_sntp_init();
             inet_common_mqtt_init();
-            inet_common_http_init();
+            inet_common_http_init(config_get()->http_secure);
         }
 
         services_running = true;
@@ -212,7 +213,6 @@ static void tele_inet_ethernet_link(const char *tele_id, cJSON *json_root) {
 }
 
 static const command_entry_t inet_ethernet_commands[] = {
-    {"https", "Control HTTPS server (on/off)", inet_common_https_handler},
     {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
     {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
     {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},

@@ -242,7 +242,7 @@ static void inet_adapter_on_event(EventBits_t bits) {
         tcp_monitor_init();
 
         if (!supervisor_is_safe_mode_active()) {
-            inet_common_https_init();
+            inet_common_http_init(true);
             inet_common_mdns_init();
         }
 
@@ -331,7 +331,6 @@ static const command_entry_t inet_commands[] = {
     {"ap", "Switch to AP mode", set_ap_handler},
     {"sta", "Switch to STA mode", set_sta_handler},
     {"http", "Control HTTP server (on/off)", inet_common_http_handler},
-    {"https", "Control HTTPS server (on/off)", inet_common_https_handler},
     {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
     {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
     {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},

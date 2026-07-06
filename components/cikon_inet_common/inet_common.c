@@ -299,16 +299,18 @@ void inet_common_monitor_handler(const char *args_json_str) {
     }
 }
 
-void inet_common_http_init(void) {
+void inet_common_http_init(bool secure) {
+    uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
     http_init(&(http_config_t){
-        .port = CONFIG_HTTP_PORT,
-        .ctrl_port = CONFIG_HTTP_CTRL_PORT,
-        .max_open_sockets = CONFIG_HTTP_MAX_OPEN_SOCKETS,
+        .port = port,
+        .ctrl_port = secure ? CONFIG_HTTPS_CTRL_PORT : CONFIG_HTTP_CTRL_PORT,
+        .max_open_sockets = secure ? CONFIG_HTTPS_MAX_OPEN_SOCKETS : CONFIG_HTTP_MAX_OPEN_SOCKETS,
+        .secure = secure,
     });
     http_register_json_get("/tele", tele_append_all);
     http_register_json_post("/cmnd", cmnd_process_json);
     if (s_mdns_ready) {
-        mdns_service_add(NULL, "_http", "_tcp", CONFIG_HTTP_PORT, NULL, 0);
+        mdns_service_add(NULL, secure ? "_https" : "_http", "_tcp", port, NULL, 0);
     }
 }
 
@@ -316,37 +318,10 @@ void inet_common_http_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
     if (state == STATE_ON) {
         ESP_LOGI(TAG, "Starting HTTP server");
-        inet_common_http_init();
+        inet_common_http_init(config_get()->http_secure);
     } else if (state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping HTTP server");
         http_shutdown();
-    }
-}
-
-void inet_common_https_init(void) {
-    http_init(&(http_config_t){
-        .port = CONFIG_HTTPS_PORT,
-        .ctrl_port = CONFIG_HTTPS_CTRL_PORT,
-        .max_open_sockets = CONFIG_HTTPS_MAX_OPEN_SOCKETS,
-        .secure = true,
-    });
-    http_register_json_get("/tele", tele_append_all);
-    http_register_json_post("/cmnd", cmnd_process_json);
-    if (s_mdns_ready) {
-        mdns_service_add(NULL, "_https", "_tcp", CONFIG_HTTPS_PORT, NULL, 0);
-    }
-}
-
-void inet_common_https_handler(const char *args_json_str) {
-    logic_state_t state = json_str_as_logic_state(args_json_str);
-    if (state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting HTTPS server");
-        inet_common_https_init();
-    } else if (state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping HTTPS server");
-        http_shutdown();
-    } else {
-        ESP_LOGW(TAG, "Invalid HTTPS state");
     }
 }
 

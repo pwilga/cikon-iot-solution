@@ -154,9 +154,11 @@ static void thread_device_on_dns_server_ready(void *arg, esp_event_base_t base, 
 #endif
     inet_common_sntp_init();
     inet_common_mqtt_init();
-    inet_common_http_init();
+    bool secure = config_get()->http_secure;
+    inet_common_http_init(secure);
 #if CONFIG_OPENTHREAD_SRP_CLIENT
-    srp_add_service(&s_srp_http_service, "_http._tcp", CONFIG_HTTP_PORT);
+    uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
+    srp_add_service(&s_srp_http_service, secure ? "_https._tcp" : "_http._tcp", port);
 #endif
 }
 

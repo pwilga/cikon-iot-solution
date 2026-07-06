@@ -20,6 +20,9 @@
     STR(wifi_ap_pass, 32, "")                                                                      \
     STR(wifi_pass, 32, "")                                                                         \
     STR(wifi_ssid, 32, "jasnaiot")                                                                 \
+    U8(http_secure, 0)                                                                             \
+    U16(http_port, 80)                                                                             \
+    U16(https_port, 443)                                                                           \
     U16(udp_mon_port, 5005)                                                                        \
     STR(sntp1, 64, "pool.ntp.org")                                                                 \
     STR(sntp2, 64, "time.google.com")                                                              \
