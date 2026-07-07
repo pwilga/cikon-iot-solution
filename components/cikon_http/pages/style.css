@@ -100,7 +100,7 @@ body {
 .caps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .grid { columns: 320px 2; column-gap: 22px; margin-top: 14px; }
 .cell { break-inside: avoid; -webkit-column-break-inside: avoid; width: 100%; display: inline-block; vertical-align: top; margin-bottom: 22px; }
-.cell-system { break-before: column; margin-bottom: 0; }
+.cell-system { break-before: column; }
 .cap {
   width: 30px; height: 30px; border-radius: 9px;
   background: var(--surface); border: 1px solid var(--border); color: var(--accent);
@@ -127,6 +127,21 @@ body {
 .list .item .k { color: var(--muted); flex: none; }
 .list .item .v { font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list .item .v.ok { color: var(--accent); }
+
+/* Firmware tile */
+.fw-card { padding: 0; display: flex; }
+.fw-block { flex: 1 1 0; min-width: 0; padding: 15px 18px; }
+.fw-block-bl { border-left: 1px solid var(--divider); border-top: none; }
+.fw-sublabel { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.fw-row { display: flex; align-items: center; gap: 6px; }
+.fw-line { font-size: 13px; font-weight: 500; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.fw-info {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; border-radius: 50%; border: 1px solid var(--faint); color: var(--faint);
+  font-size: 9px; font-weight: 700; line-height: 1; cursor: help; flex: none;
+}
+.fw-built { font-size: 11.5px; color: var(--faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fw-built[hidden] { display: none; }
 
 /* Toggle */
 .toggle { width: 52px; height: 30px; border-radius: 15px; background: var(--track-off); border: none; position: relative; cursor: pointer; padding: 0; transition: background .25s; }

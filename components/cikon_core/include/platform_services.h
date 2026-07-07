@@ -10,11 +10,16 @@ extern "C" {
 typedef struct {
     const char *app_name;
     const char *app_version;
+    const char *app_build_time; // ISO8601 UTC; corrected from the build host's local
+                                // clock via CIKON_BUILD_TZ_OFFSET_S (see platform_services.c)
     const char *idf_version;
     const char *chip;
     uint32_t chip_rev;
     uint32_t cores;
     char id[13]; // MAC from eFuse, e.g. "A1B2C3D4E5F6"
+    uint32_t bootloader_version;
+    const char *bootloader_idf_version;
+    const char *bootloader_build_time; // ISO8601 UTC; corrected the same way as app_build_time
 } device_info_t;
 
 const device_info_t *get_device_info(void);

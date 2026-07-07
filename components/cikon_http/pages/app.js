@@ -32,7 +32,17 @@
   }
   function fmtBoot(iso) {
     if (!iso) return "—";
-    return String(iso).replace("T", " ").replace("Z", "").slice(0, 16) + " UTC";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    function pad(n) { return String(n).padStart(2, "0"); }
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+  function fmtBootSec(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    function pad(n) { return String(n).padStart(2, "0"); }
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
   }
   var CAP_LABELS = { wifi: "Wi-Fi radio", ble: "Bluetooth LE", bt: "Bluetooth Classic", ieee802154: "802.15.4 radio", thread: "Thread", zigbee: "Zigbee" };
   var STATE_ORDER = { running: 0, ready: 1, blocked: 2, suspended: 3 };
@@ -174,7 +184,7 @@
 
     // hero
     $("uptime").textContent = t.uptime != null ? fmtUptime(t.uptime) : "—";
-    $("since").textContent = "since " + fmtBoot(t.startup);
+    $("since").textContent = "since " + fmtBoot(t.boot_time);
     $("free-heap").textContent = t.free_heap != null ? fmtHeap(t.free_heap) : "—";
     $("min-heap").textContent = "min seen " + (t.min_heap != null ? fmtHeap(t.min_heap) : "—");
     var pct = (t.free_heap && t.min_heap) ? Math.max(6, Math.min(100, (t.min_heap / t.free_heap) * 100)) : 60;
@@ -321,8 +331,7 @@
     var rows = [
       ["Chip", (t.chip || "—") + (t.chip_rev != null ? " rev" + t.chip_rev : "") + (t.cores ? " · " + t.cores + (t.cores == 1 ? " core" : " cores") : ""), false, false],
       ["Device ID", t.id || "—", true, false],
-      ["IP address", t.ip || "—", true, false],
-      ["Firmware", (t.version || "—") + " · IDF " + (t.idf || "—"), true, false]
+      ["IP address", t.ip || "—", true, false]
     ];
     if (resetLabel) rows.push(["Last reset reason", resetLabel, false, false, resetColor]);
     rows.push(["OTA state", otaLabel, false, false, otaColor]);
@@ -332,6 +341,23 @@
       return '<div class="item"><span class="k">' + esc(r[0]) + '</span>' +
         '<span class="v' + (r[2] ? " mono" : "") + (r[3] ? " ok" : "") + '"' + col + '>' + esc(r[1]) + "</span></div>";
     }).join("");
+
+    // firmware tile: IDF is the primary (bold) line; version moves into a "?" tooltip next to it
+    $("fw-app-idf").textContent = "IDF " + (t.idf || "—");
+    $("fw-app-info").title = t.version || "—";
+    var appBuiltEl = $("fw-app-built");
+    if (t.app_build_time) { appBuiltEl.hidden = false; appBuiltEl.textContent = "built " + fmtBootSec(t.app_build_time); }
+    else { appBuiltEl.hidden = true; }
+
+    var hasBl = t.bootloader_version != null || !!t.bootloader_idf || !!t.bootloader_build_time;
+    $("fw-bl-block").hidden = !hasBl;
+    if (hasBl) {
+      $("fw-bl-idf").textContent = "IDF " + (t.bootloader_idf || "—");
+      $("fw-bl-info").title = "v" + (t.bootloader_version != null ? t.bootloader_version : "—");
+      var blBuiltEl = $("fw-bl-built");
+      if (t.bootloader_build_time) { blBuiltEl.hidden = false; blBuiltEl.textContent = "built " + fmtBootSec(t.bootloader_build_time); }
+      else { blBuiltEl.hidden = true; }
+    }
 
     // tasks
     var td = t.tasks_dict;

@@ -66,6 +66,28 @@
         <div class="label section-label">System</div>
         <div class="card list" id="sys-list"></div>
       </section>
+
+      <section class="cell" id="fw-cell">
+        <div class="label section-label">Firmware</div>
+        <div class="card fw-card">
+          <div class="fw-block">
+            <div class="fw-sublabel">Application</div>
+            <div class="fw-row">
+              <span class="fw-line" id="fw-app-idf">IDF —</span>
+              <span class="fw-info" id="fw-app-info" title="">?</span>
+            </div>
+            <div class="fw-built" id="fw-app-built" hidden></div>
+          </div>
+          <div class="fw-block fw-block-bl" id="fw-bl-block" hidden>
+            <div class="fw-sublabel">Bootloader</div>
+            <div class="fw-row">
+              <span class="fw-line" id="fw-bl-idf">IDF —</span>
+              <span class="fw-info" id="fw-bl-info" title="">?</span>
+            </div>
+            <div class="fw-built" id="fw-bl-built" hidden></div>
+          </div>
+        </div>
+      </section>
     </div>
 
     <!-- FreeRTOS tasks (optional) -->

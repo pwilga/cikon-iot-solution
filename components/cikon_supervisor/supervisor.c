@@ -573,6 +573,22 @@ static void tele_id_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, get_device_info()->id);
 }
 
+static void tele_app_build_time_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->app_build_time);
+}
+
+static void tele_bootloader_version_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, get_device_info()->bootloader_version);
+}
+
+static void tele_bootloader_idf_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->bootloader_idf_version);
+}
+
+static void tele_bootloader_build_time_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, get_device_info()->bootloader_build_time);
+}
+
 static void tele_ota_state_appender(const char *tele_id, cJSON *json_root) {
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_ota_img_states_t state;
@@ -649,7 +665,7 @@ static const command_entry_t core_commands[] = {
     {NULL, NULL, NULL}};
 
 static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
-                                         {"startup", tele_startup_appender},
+                                         {"boot_time", tele_startup_appender},
                                          {"onboard_led", tele_onboard_led_appender},
                                          {"free_heap", tele_free_heap_appender},
                                          {"min_heap", tele_min_heap_appender},
@@ -660,6 +676,10 @@ static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
                                          {"chip_rev", tele_chip_rev_appender},
                                          {"cores", tele_cores_appender},
                                          {"id", tele_id_appender},
+                                         {"app_build_time", tele_app_build_time_appender},
+                                         {"bootloader_version", tele_bootloader_version_appender},
+                                         {"bootloader_idf", tele_bootloader_idf_appender},
+                                         {"bootloader_build_time", tele_bootloader_build_time_appender},
                                          {"ota_state", tele_ota_state_appender},
                                          {"ota_last_failed_partition", tele_ota_last_failed_partition_appender},
                                          {"features", tele_features_appender},

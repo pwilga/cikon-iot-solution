@@ -2,16 +2,19 @@
 
 #include "driver/gpio.h"
 #include "esp_app_desc.h"
+#include "esp_bootloader_desc.h"
 #include "esp_chip_info.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
 
+#include "enum_helpers.h"
 #include "platform_services.h"
 
 #if SOC_TEMP_SENSOR_SUPPORTED
@@ -91,30 +94,16 @@ void esp_safe_restart() {
 
 bool restart_pending(void) { return s_restarting; }
 
-static const char *chip_name(esp_chip_model_t m) {
-    switch (m) {
-    case CHIP_ESP32:
-        return "esp32";
-    case CHIP_ESP32S2:
-        return "esp32s2";
-    case CHIP_ESP32S3:
-        return "esp32s3";
-    case CHIP_ESP32C3:
-        return "esp32c3";
-    case CHIP_ESP32C6:
-        return "esp32c6";
-    case CHIP_ESP32H2:
-        return "esp32h2";
-    case CHIP_ESP32P4:
-        return "esp32p4";
-    default:
-        return "unknown";
-    }
+static inline void format_iso8601(const struct tm *tm, char *out, size_t out_size) {
+    strftime(out, out_size, "%Y-%m-%dT%H:%M:%SZ", tm);
 }
 
 const device_info_t *get_device_info(void) {
     static device_info_t device_info_s = {0};
     static bool initialized = false;
+    static char app_build_time_s[32] = {0};
+    static char bootloader_build_time_s[32] = {0};
+    static esp_bootloader_desc_t boot_desc_s = {0};
 
     if (initialized)
         return &device_info_s;
@@ -126,9 +115,32 @@ const device_info_t *get_device_info(void) {
     device_info_s.app_name = desc->project_name;
     device_info_s.app_version = desc->version;
     device_info_s.idf_version = desc->idf_ver;
-    device_info_s.chip = chip_name(chip.model);
+    device_info_s.chip = esp_chip_model_to_string(chip.model);
     device_info_s.chip_rev = chip.revision;
     device_info_s.cores = chip.cores;
+
+    char app_datetime[32];
+    snprintf(app_datetime, sizeof(app_datetime), "%s %s", desc->date, desc->time);
+    struct tm app_tm = {0};
+    if (strptime(app_datetime, "%b %d %Y %H:%M:%S", &app_tm)) {
+        // app_tm holds the build host's *local* wall clock (no tz in __DATE__/__TIME__);
+        // correct it to real UTC using the host offset captured at CMake configure time.
+        time_t app_epoch = timegm(&app_tm) - CIKON_BUILD_TZ_OFFSET_S;
+        format_iso8601(gmtime(&app_epoch), app_build_time_s, sizeof(app_build_time_s));
+    }
+    device_info_s.app_build_time = app_build_time_s;
+
+    if (esp_ota_get_bootloader_description(NULL, &boot_desc_s) == ESP_OK) {
+        device_info_s.bootloader_version = boot_desc_s.version;
+        device_info_s.bootloader_idf_version = boot_desc_s.idf_ver;
+
+        struct tm boot_tm = {0};
+        if (strptime(boot_desc_s.date_time, "%b %d %Y %H:%M:%S", &boot_tm)) {
+            time_t boot_epoch = timegm(&boot_tm) - CIKON_BUILD_TZ_OFFSET_S;
+            format_iso8601(gmtime(&boot_epoch), bootloader_build_time_s, sizeof(bootloader_build_time_s));
+        }
+        device_info_s.bootloader_build_time = bootloader_build_time_s;
+    }
 
     uint8_t mac[6];
     if (esp_efuse_mac_get_default(mac) == ESP_OK) {
@@ -158,7 +170,7 @@ const char *get_boot_time(void) {
     int64_t uptime_us = esp_timer_get_time();
     time_t boot_time = now_sec - (uptime_us / 1000000);
 
-    strftime(iso8601, sizeof(iso8601), "%Y-%m-%dT%H:%M:%SZ", gmtime(&boot_time));
+    format_iso8601(gmtime(&boot_time), iso8601, sizeof(iso8601));
 
     // treat time as unsynced until year >= 2020 (likely after SNTP)
     if (calendar_year > 2020) {

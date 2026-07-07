@@ -1,5 +1,6 @@
 #pragma once
 
+#include "esp_chip_info.h"
 #include "esp_flash_partitions.h"
 #include "esp_system.h"
 
@@ -79,4 +80,42 @@ static inline const char *esp_reset_reason_to_string(esp_reset_reason_t reason) 
 static inline bool is_abnormal_reset(esp_reset_reason_t reason) {
     return reason == ESP_RST_PANIC || reason == ESP_RST_INT_WDT ||
            reason == ESP_RST_TASK_WDT || reason == ESP_RST_WDT;
+}
+
+/**
+ * @brief Convert ESP chip model enum to string representation
+ * @param model Chip model enum value
+ * @return String representation of the model (e.g., "esp32s3")
+ */
+static inline const char *esp_chip_model_to_string(esp_chip_model_t model) {
+    switch (model) {
+    case CHIP_ESP32:
+        return "esp32";
+    case CHIP_ESP32S2:
+        return "esp32s2";
+    case CHIP_ESP32S3:
+        return "esp32s3";
+    case CHIP_ESP32C3:
+        return "esp32c3";
+    case CHIP_ESP32C2:
+        return "esp32c2";
+    case CHIP_ESP32C6:
+        return "esp32c6";
+    case CHIP_ESP32H2:
+        return "esp32h2";
+    case CHIP_ESP32P4:
+        return "esp32p4";
+    case CHIP_ESP32C61:
+        return "esp32c61";
+    case CHIP_ESP32C5:
+        return "esp32c5";
+    case CHIP_ESP32H21:
+        return "esp32h21";
+    case CHIP_ESP32H4:
+        return "esp32h4";
+    case CHIP_POSIX_LINUX:
+        return "posix_linux";
+    default:
+        return "unknown";
+    }
 }

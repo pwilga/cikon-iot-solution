@@ -89,7 +89,7 @@ Prevents OTA rollback on first boot after update.
 ## Core Telemetry
 
 - `tele/uptime` - Seconds since boot
-- `tele/startup` - Boot timestamp
+- `tele/boot_time` - UTC timestamp when the current run started (now - uptime)
 - `tele/onboard_led` - LED state
 
 ## Configuration
