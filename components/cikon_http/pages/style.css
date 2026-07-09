@@ -185,6 +185,18 @@ body {
 @media (max-width: 480px) {
   .task-cpu .bar { display: none; }
   .task-cpu, .th-cpu { width: 34px; }
+  /* Hero: keep Uptime + Free heap on one line, shrink type, drop the heap bar */
+  .hero { flex-wrap: nowrap; gap: 12px; }
+  .hero-main, .hero-side { min-width: 0; }
+  .hero-side { flex: 0 1 auto; }
+  .hero-value { font-size: 30px; }
+  .hero-heap { font-size: 19px; }
+  .heap-bar { display: none; }
+  /* Status badge collapses to just its dot; live = gentle pulse. Restart keeps its label */
+  #status { padding: 8px; gap: 0; }
+  #status-text { display: none; }
+  #status .dot { width: 9px; height: 9px; }
+  #status.online .dot { animation: cikon-breathe 1.8s ease-in-out infinite; }
 }
 
 /* offline → whole dashboard dimmed; controls also inert */
@@ -209,3 +221,4 @@ body {
   animation: cikon-spin .7s linear infinite; flex: none;
 }
 @keyframes cikon-spin { to { transform: rotate(360deg); } }
+@keyframes cikon-breathe { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.55); opacity: .35; } }
