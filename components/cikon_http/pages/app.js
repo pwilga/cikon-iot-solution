@@ -154,7 +154,22 @@
   var RESET_LABEL = { idle: "Restart", confirm: "Confirm?", sending: "Restarting…", done: "Sent" };
 
   // ---- render ----
+  // iOS Safari yanks page scroll to the top when an innerHTML-heavy re-render (the 5s
+  // /tele poll, or tapping a sort header) swaps DOM near the viewport. Snapshot the
+  // scroll offset, run the real render, then restore it if WebKit moved it — synchronously
+  // and again next frame, since the jump can land after layout settles.
   function render() {
+    var doc = document.scrollingElement || document.documentElement;
+    var y = window.pageYOffset || doc.scrollTop || 0;
+    renderInner();
+    var restore = function () {
+      var cur = window.pageYOffset || doc.scrollTop || 0;
+      if (Math.abs(cur - y) > 2) window.scrollTo(0, y);
+    };
+    restore();
+    requestAnimationFrame(restore);
+  }
+  function renderInner() {
     var t = state.tele || {};
     var dark = document.documentElement.getAttribute("data-theme") === "dark";
 

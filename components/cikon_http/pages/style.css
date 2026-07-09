@@ -181,6 +181,12 @@ body {
 
 .footer { margin-top: 26px; text-align: center; font-size: 11px; color: var(--faint); }
 
+/* Narrow screens (phones): drop the CPU bar and shrink its column so task names stay visible */
+@media (max-width: 480px) {
+  .task-cpu .bar { display: none; }
+  .task-cpu, .th-cpu { width: 34px; }
+}
+
 /* offline → whole dashboard dimmed; controls also inert */
 .wrap.offline { opacity: .5; filter: saturate(.35); transition: opacity .25s, filter .25s; }
 .ctl-off { pointer-events: none; }
