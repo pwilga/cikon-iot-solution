@@ -11,14 +11,13 @@
 #include "mqtt.h"
 
 #define TAG "cikon:ha"
-#define MAX_ENTITIES 32
+#define MAX_ENTITIES 64
 
 static bool has_sent_full_dev = false;
 
 // Dynamic entity registry
 static ha_entity_config_t entities[MAX_ENTITIES];
 static size_t entity_count = 0;
-static bool default_registered = false;
 
 static const char *get_type_str(ha_entity_type_t type) {
     switch (type) {
@@ -128,26 +127,6 @@ void ha_register_entity(const ha_entity_config_t *config) {
     entities[entity_count++] = *config;
 }
 
-static void register_default_entities(void) {
-
-    if (default_registered) {
-        return;
-    }
-    default_registered = true;
-
-    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "Uptime",
-                                             .device_class = "duration",
-                                             .entity_category = "diagnostic"});
-    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "Startup",
-                                             .device_class = "timestamp",
-                                             .entity_category = "diagnostic"});
-    ha_register_entity(&(ha_entity_config_t){.type = HA_SWITCH, .name = "Onboard Led"});
-    ha_register_entity(&(ha_entity_config_t){
-        .type = HA_BUTTON, .name = "Restart", .entity_category = "diagnostic"});
-}
-
 static void publish_entity(const ha_entity_config_t *def, bool empty_payload) {
 
     char *sanitized_name = sanitize(def->name);
@@ -229,8 +208,6 @@ static void publish_entity(const ha_entity_config_t *def, bool empty_payload) {
 }
 
 void publish_ha_mqtt_discovery(bool force_empty_payload) {
-    register_default_entities();
-
     for (size_t i = 0; i < entity_count; i++) {
         publish_entity(&entities[i], force_empty_payload);
     }

@@ -170,6 +170,12 @@ static void neopixel_adapter_on_event(EventBits_t bits) {
 }
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+// TODO: broken HA light entity. Missing .parent_key = "neopixel" (tele nests state under
+// {"neopixel": {"effect", "brightness"}}), and even with that fix .name should sanitize to
+// "brightness" (matching the nested field), not "neopixel". Also cmnd_neopixel() only accepts
+// a numeric "brightness" and silently ignores build_light()'s "on"/"off" string fallback, so
+// plain power toggle (no brightness slider drag) wouldn't work either. Currently inert: no
+// device profile enables CONFIG_ENABLE_SUPERVISOR_NEOPIXEL.
 static const ha_metadata_t neopixel_ha_metadata = {
     .magic = HA_METADATA_MAGIC,
     .entities = {{.type = HA_LIGHT, .name = "NeoPixel"}, {.type = HA_ENTITY_NONE}}};

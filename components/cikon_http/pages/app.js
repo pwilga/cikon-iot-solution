@@ -322,14 +322,6 @@
     var oi = OTA_MAP[parseOtaState(t.ota_state)] || [t.ota_state || "—", "muted"];
     var otaLabel = oi[0];
     var otaColor = oi[1] === "ok" ? "var(--accent,#5aa06f)" : oi[1] === "bad" ? "#cf8f86" : (dark ? "#b4afbe" : "#a89c91");
-    var hasOtaFail = !!t.ota_last_failed_partition;
-    var otaFailVal = "";
-    if (hasOtaFail) {
-      var ofm = OTA_MAP[parseOtaState(t.ota_last_failed_partition)];
-      var ofPart = String(t.ota_last_failed_partition).split(":")[0].trim();
-      var ofState = ofm ? ofm[0] : t.ota_last_failed_partition;
-      otaFailVal = ofPart ? ofPart + " · " + ofState : ofState;
-    }
 
     var statusEl = $("status-chips");
     statusEl.hidden = statusHTML === "";
@@ -350,7 +342,6 @@
     ];
     if (resetLabel) rows.push(["Last reset reason", resetLabel, false, false, resetColor]);
     rows.push(["OTA state", otaLabel, false, false, otaColor]);
-    if (hasOtaFail) rows.push(["OTA last failed", otaFailVal, false, false, "#cf8f86"]);
     $("sys-list").innerHTML = rows.map(function (r) {
       var col = r[4] ? ' style="color:' + r[4] + '"' : "";
       return '<div class="item"><span class="k">' + esc(r[0]) + '</span>' +

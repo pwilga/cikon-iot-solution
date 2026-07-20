@@ -32,8 +32,7 @@ void ha_register_entity(const ha_entity_config_t *config);
 /**
  * @brief Publishes all registered Home Assistant entities via MQTT Discovery.
  *
- * Default entities are auto-registered on first call. User can register
- * additional entities before calling this function.
+ * Entities must be registered via ha_register_entity() before calling this function.
  *
  * @param force_empty_payload If true, publishes empty payloads to remove entities
  */

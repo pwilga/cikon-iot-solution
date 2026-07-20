@@ -200,11 +200,6 @@ static void tele_inet_ethernet_ip_address(const char *tele_id, cJSON *json_root)
     cJSON_AddStringToObject(json_root, tele_id, ip_str);
 }
 
-static void tele_inet_ethernet_backend(const char *tele_id, cJSON *json_root) {
-    const char *backend = ethernet_get_backend_name();
-    cJSON_AddStringToObject(json_root, tele_id, backend);
-}
-
 static void tele_inet_ethernet_link(const char *tele_id, cJSON *json_root) {
     char ip[16];
     get_netif_ip("ETH_DEF", ip, sizeof(ip));
@@ -223,9 +218,19 @@ static const command_entry_t inet_ethernet_commands[] = {
     {NULL, NULL, NULL}};
 
 static const tele_entry_t inet_ethernet_telemetry[] = {{"ip", tele_inet_ethernet_ip_address},
-                                                       {"eth_backend", tele_inet_ethernet_backend},
                                                        {"link", tele_inet_ethernet_link},
                                                        {NULL, NULL}};
+
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+static const ha_metadata_t inet_ethernet_ha_metadata = {
+    .magic = HA_METADATA_MAGIC,
+    .entities = {{.type = HA_SENSOR,
+                 .name = "Link",
+                 .icon = "mdi:lan-connect",
+                 .entity_category = "diagnostic"},
+                {.type = HA_ENTITY_NONE}},
+};
+#endif
 
 supervisor_platform_adapter_t inet_ethernet_adapter = {
     .enable_in_safe_mode = true, // Critical: always init inet adapter
@@ -236,4 +241,7 @@ supervisor_platform_adapter_t inet_ethernet_adapter = {
     .on_interval = inet_ethernet_adapter_on_interval,
     .cmnd_group = inet_ethernet_commands,
     .tele_group = inet_ethernet_telemetry,
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    .metadata = &inet_ethernet_ha_metadata,
+#endif
 };

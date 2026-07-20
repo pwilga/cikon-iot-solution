@@ -8,7 +8,6 @@ extern "C" {
 #endif
 
 typedef struct {
-    const char *app_name;
     const char *app_version;
     const char *app_build_time; // ISO8601 UTC; corrected from the build host's local
                                 // clock via CIKON_BUILD_TZ_OFFSET_S (see platform_services.c)

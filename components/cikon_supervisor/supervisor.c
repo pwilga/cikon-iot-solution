@@ -599,17 +599,6 @@ static void tele_ota_state_appender(const char *tele_id, cJSON *json_root) {
     }
 }
 
-static void tele_ota_last_failed_partition_appender(const char *tele_id, cJSON *json_root) {
-    const esp_partition_t *failed = esp_ota_get_last_invalid_partition();
-    if (failed == NULL)
-        return;
-    esp_ota_img_states_t state;
-    esp_ota_get_state_partition(failed, &state);
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%s: %s", failed->label, esp_ota_state_to_string(state));
-    cJSON_AddStringToObject(json_root, tele_id, buf);
-}
-
 static void tele_features_appender(const char *tele_id, cJSON *json_root) {
     cJSON *arr = cJSON_CreateArray();
     for (const char **f = get_chip_features(); *f; f++)
@@ -681,7 +670,6 @@ static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
                                          {"bootloader_idf", tele_bootloader_idf_appender},
                                          {"bootloader_build_time", tele_bootloader_build_time_appender},
                                          {"ota_state", tele_ota_state_appender},
-                                         {"ota_last_failed_partition", tele_ota_last_failed_partition_appender},
                                          {"features", tele_features_appender},
                                          {"flash_size", tele_flash_size_appender},
                                          {"psram_size", tele_psram_size_appender},

@@ -81,8 +81,129 @@ static void build_tasks_dict_ha(cJSON *payload, const char *sanitized_name) {
 }
 #endif
 
+static void build_chip_attrs(cJSON *payload, const char *sanitized_name) {
+    (void)sanitized_name;
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+    cJSON_AddStringToObject(payload, "json_attr_tpl",
+                            "{{ {'features': value_json.features, 'cores': value_json.cores, "
+                            "'chip_rev': value_json.chip_rev, 'cpu_freq': value_json.cpu_freq, "
+                            "'flash_size': value_json.flash_size, "
+                            "'psram_size': value_json.psram_size | default(0)} "
+                            "| tojson }}");
+}
+
+static void build_fs_used_attrs(cJSON *payload, const char *sanitized_name) {
+    (void)sanitized_name;
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+    cJSON_AddStringToObject(payload, "json_attr_tpl",
+                            "{{ {'fs_total': value_json.fs_total} | tojson }}");
+}
+
+static void build_free_heap_attrs(cJSON *payload, const char *sanitized_name) {
+    (void)sanitized_name;
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+    cJSON_AddStringToObject(payload, "json_attr_tpl",
+                            "{{ {'min_heap': value_json.min_heap} | tojson }}");
+}
+
+static void build_app_build_time_attrs(cJSON *payload, const char *sanitized_name) {
+    (void)sanitized_name;
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+    cJSON_AddStringToObject(payload, "json_attr_tpl",
+                            "{{ {'version': value_json.version, 'idf': value_json.idf} "
+                            "| tojson }}");
+}
+
+static void build_bootloader_build_time_attrs(cJSON *payload, const char *sanitized_name) {
+    (void)sanitized_name;
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+    cJSON_AddStringToObject(payload, "json_attr_tpl",
+                            "{{ {'version': value_json.bootloader_version, "
+                            "'idf': value_json.bootloader_idf} | tojson }}");
+}
+
+static void register_core_ha_entities(void) {
+    // Runtime
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "Boot Time",
+                                             .device_class = "timestamp",
+                                             .icon = "mdi:clock-start",
+                                             .entity_category = "diagnostic"});
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "Free Heap",
+                                             .device_class = "data_size",
+                                             .unit = "B",
+                                             .icon = "mdi:memory",
+                                             .entity_category = "diagnostic",
+                                             .custom_builder = build_free_heap_attrs});
+
+    // Device info
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "Chip",
+                                             .icon = "mdi:chip",
+                                             .entity_category = "diagnostic",
+                                             .custom_builder = build_chip_attrs});
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "ID",
+                                             .icon = "mdi:identifier",
+                                             .entity_category = "diagnostic"});
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "App Build Time",
+                                             .device_class = "timestamp",
+                                             .icon = "mdi:wrench-clock",
+                                             .entity_category = "diagnostic",
+                                             .custom_builder = build_app_build_time_attrs});
+
+    // Bootloader
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "Bootloader Build Time",
+                                             .device_class = "timestamp",
+                                             .icon = "mdi:clock-outline",
+                                             .entity_category = "diagnostic",
+                                             .custom_builder = build_bootloader_build_time_attrs});
+
+    // OTA
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "OTA State",
+                                             .icon = "mdi:cloud-upload-outline",
+                                             .entity_category = "diagnostic"});
+
+    // Hardware
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "Reset Reason",
+                                             .icon = "mdi:restart-alert",
+                                             .entity_category = "diagnostic"});
+    ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                             .name = "FS Used",
+                                             .device_class = "data_size",
+                                             .unit = "B",
+                                             .icon = "mdi:folder-outline",
+                                             .entity_category = "diagnostic",
+                                             .custom_builder = build_fs_used_attrs});
+    float chip_temp;
+    if (get_chip_temp(&chip_temp)) {
+        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                                 .name = "Chip Temp",
+                                                 .device_class = "temperature",
+                                                 .unit = "°C",
+                                                 .icon = "mdi:thermometer",
+                                                 .entity_category = "diagnostic"});
+    }
+
+    // Controls
+    ha_register_entity(
+        &(ha_entity_config_t){.type = HA_SWITCH, .name = "Onboard Led", .icon = "mdi:led-on"});
+    ha_register_entity(&(ha_entity_config_t){.type = HA_BUTTON,
+                                             .name = "Restart",
+                                             .device_class = "restart",
+                                             .icon = "mdi:restart",
+                                             .entity_category = "diagnostic"});
+}
+
 void inet_common_register_all_ha_entities(void) {
     ESP_LOGI(TAG, "Registering all HA entities from adapters");
+
+    register_core_ha_entities();
 
     // Iterate through all adapters and register their HA metadata
     const supervisor_platform_adapter_t **adapters = supervisor_get_adapters();
@@ -226,13 +347,27 @@ void inet_common_on_interval(supervisor_interval_stage_t stage) {
     }
 }
 
+static void tele_common_mdns(const char *tele_id, cJSON *json_root) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s.local", inet_common_get_hostname());
+    cJSON_AddStringToObject(json_root, tele_id, buf);
+}
+
 void inet_common_on_event(EventBits_t bits) {
+    if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
+        tele_register("mdns", tele_common_mdns);
+    }
+
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
         inet_common_register_all_ha_entities();
         ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
                                                  .name = "IP",
                                                  .icon = "mdi:ip-outline",
+                                                 .entity_category = "diagnostic"});
+        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                                 .name = "mDNS",
+                                                 .icon = "mdi:dns",
                                                  .entity_category = "diagnostic"});
     }
 #endif

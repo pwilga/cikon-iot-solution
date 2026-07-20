@@ -225,6 +225,7 @@ static void inet_adapter_on_event(EventBits_t bits) {
             inet_common_mdns_init();
             inet_common_sntp_init();
             inet_common_mqtt_init();
+            inet_common_http_init(config_get()->http_secure);
         }
 
         sta_services_running = true;
@@ -288,17 +289,6 @@ static void tele_inet_ip_address(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, ip);
 }
 
-static void tele_inet_mdns(const char *tele_id, cJSON *json_root) {
-    const char *host = config_get()->mdns_host;
-    char buf[64];
-    if (host && strlen(host) > 0) {
-        snprintf(buf, sizeof(buf), "%s", host);
-    } else {
-        snprintf(buf, sizeof(buf), "%s.local", config_get()->dev_name);
-    }
-    cJSON_AddStringToObject(json_root, tele_id, buf);
-}
-
 static void tele_inet_link(const char *tele_id, cJSON *json_root) {
     char ip[16] = {0};
     wifi_get_interface_ip(ip, sizeof(ip));
@@ -320,12 +310,32 @@ static void tele_inet_ssid(const char *tele_id, cJSON *json_root) {
 
 static const tele_entry_t inet_tele[] = {
     {"ip",   tele_inet_ip_address},
-    {"mdns", tele_inet_mdns},
     {"link", tele_inet_link},
     {"rssi", tele_inet_rssi},
     {"ssid", tele_inet_ssid},
     {NULL, NULL}
 };
+
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+static void build_link_attrs(cJSON *payload, const char *sanitized_name) {
+    (void)sanitized_name;
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+    cJSON_AddStringToObject(payload, "json_attr_tpl",
+                            "{{ {'rssi': value_json.rssi | default(0), "
+                            "'ssid': value_json.ssid | default('')} "
+                            "| tojson }}");
+}
+
+static const ha_metadata_t inet_ha_metadata = {
+    .magic = HA_METADATA_MAGIC,
+    .entities = {{.type = HA_SENSOR,
+                 .name = "Link",
+                 .icon = "mdi:lan-connect",
+                 .entity_category = "diagnostic",
+                 .custom_builder = build_link_attrs},
+                {.type = HA_ENTITY_NONE}},
+};
+#endif
 
 static const command_entry_t inet_commands[] = {
     {"ap", "Switch to AP mode", set_ap_handler},
@@ -348,4 +358,7 @@ supervisor_platform_adapter_t inet_adapter = {
     .on_interval = inet_adapter_on_interval,
     .cmnd_group = inet_commands,
     .tele_group = inet_tele,
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    .metadata = &inet_ha_metadata,
+#endif
 };

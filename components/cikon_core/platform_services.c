@@ -112,7 +112,6 @@ const device_info_t *get_device_info(void) {
     esp_chip_info_t chip = {};
     esp_chip_info(&chip);
 
-    device_info_s.app_name = desc->project_name;
     device_info_s.app_version = desc->version;
     device_info_s.idf_version = desc->idf_ver;
     device_info_s.chip = esp_chip_model_to_string(chip.model);
@@ -137,7 +136,8 @@ const device_info_t *get_device_info(void) {
         struct tm boot_tm = {0};
         if (strptime(boot_desc_s.date_time, "%b %d %Y %H:%M:%S", &boot_tm)) {
             time_t boot_epoch = timegm(&boot_tm) - CIKON_BUILD_TZ_OFFSET_S;
-            format_iso8601(gmtime(&boot_epoch), bootloader_build_time_s, sizeof(bootloader_build_time_s));
+            format_iso8601(gmtime(&boot_epoch), bootloader_build_time_s,
+                           sizeof(bootloader_build_time_s));
         }
         device_info_s.bootloader_build_time = bootloader_build_time_s;
     }
