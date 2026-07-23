@@ -6,6 +6,7 @@
 #include "esp_openthread.h"
 #include "esp_openthread_lock.h"
 #include "openthread/dataset.h"
+#include "openthread/ip6.h"
 #include "openthread/link.h"
 #include "openthread/thread.h"
 
@@ -48,6 +49,42 @@ void thread_log_network_info(void) {
              pan_id, rloc16, (unsigned long)part_id);
 
     esp_openthread_lock_release();
+}
+
+bool thread_get_reachable_ip6(char *out, size_t out_size) {
+    otInstance *ot = esp_openthread_get_instance();
+    if (!ot) {
+        return false;
+    }
+
+    esp_openthread_lock_acquire(portMAX_DELAY);
+
+    const otNetifAddress *omr = NULL;
+    const otNetifAddress *mesh_local = NULL;
+
+    for (const otNetifAddress *addr = otIp6GetUnicastAddresses(ot); addr != NULL; addr = addr->mNext) {
+        if (!addr->mValid || addr->mRloc) {
+            continue;
+        }
+        if (addr->mMeshLocal) {
+            mesh_local = addr;
+            continue;
+        }
+        if (addr->mAddressOrigin == OT_ADDRESS_ORIGIN_SLAAC && addr->mPreferred) {
+            omr = addr;
+            break; // OMR is the best possible match
+        }
+    }
+
+    const otNetifAddress *best = omr ? omr : mesh_local;
+    bool found = false;
+    if (best) {
+        otIp6AddressToString(&best->mAddress, out, (uint16_t)out_size);
+        found = true;
+    }
+
+    esp_openthread_lock_release();
+    return found;
 }
 
 #if CONFIG_OPENTHREAD_CLI

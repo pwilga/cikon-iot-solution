@@ -21,10 +21,13 @@
 #include "openthread/thread.h"
 
 #include "bits_helper.h"
+#include "cJSON.h"
 #include "config_manager.h"
 #include "inet_common.h"
+#include "metadata.h"
 #include "platform_services.h"
 #include "supervisor.h"
+#include "tele.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
 
@@ -229,11 +232,43 @@ static const command_entry_t s_thread_device_cmnd[] = {
     {NULL, NULL, NULL},
 };
 
+static void tele_thread_ip_address(const char *tele_id, cJSON *json_root) {
+    char ip[OT_IP6_ADDRESS_STRING_SIZE];
+    if (thread_get_reachable_ip6(ip, sizeof(ip))) {
+        cJSON_AddStringToObject(json_root, tele_id, ip);
+    }
+}
+
+static void tele_thread_link(const char *tele_id, cJSON *json_root) {
+    cJSON_AddStringToObject(json_root, tele_id, "thread");
+}
+
+static const tele_entry_t s_thread_device_tele[] = {
+    {"ip",   tele_thread_ip_address},
+    {"link", tele_thread_link},
+    {NULL, NULL},
+};
+
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+static const ha_metadata_t s_thread_device_ha_metadata = {
+    .magic = HA_METADATA_MAGIC,
+    .entities = {{.type = HA_SENSOR,
+                 .name = "Link",
+                 .icon = "mdi:lan-connect",
+                 .entity_category = "diagnostic"},
+                {.type = HA_ENTITY_NONE}},
+};
+#endif
+
 supervisor_platform_adapter_t thread_device_adapter = {
     .name = "thread_device",
     .enable_in_safe_mode = false,
     .init = thread_device_adapter_init,
     .shutdown = thread_device_adapter_shutdown,
     .on_event = thread_device_adapter_on_event,
+    .tele_group = s_thread_device_tele,
     .cmnd_group = s_thread_device_cmnd,
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    .metadata = &s_thread_device_ha_metadata,
+#endif
 };

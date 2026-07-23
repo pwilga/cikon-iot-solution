@@ -285,43 +285,12 @@
     // last reset reason → shown in System list (below Firmware), not as a chip
     var resetLabel = null, resetColor = null;
     if (t.reset_reason) {
-      var RESET_MAP = {
-        ESP_RST_UNKNOWN: ["Unknown", false],
-        ESP_RST_POWERON: ["Power-on", false],
-        ESP_RST_EXT: ["External pin", false],
-        ESP_RST_SW: ["Software", false],
-        ESP_RST_PANIC: ["Panic", true],
-        ESP_RST_INT_WDT: ["Int watchdog", true],
-        ESP_RST_TASK_WDT: ["Task watchdog", true],
-        ESP_RST_WDT: ["Watchdog", true],
-        ESP_RST_DEEPSLEEP: ["Deep sleep", false],
-        ESP_RST_BROWNOUT: ["Brownout", true],
-        ESP_RST_SDIO: ["SDIO", false],
-        ESP_RST_USB: ["USB", false],
-        ESP_RST_JTAG: ["JTAG", false],
-        ESP_RST_EFUSE: ["eFuse error", true],
-        ESP_RST_PWR_GLITCH: ["Power glitch", true],
-        ESP_RST_CPU_LOCKUP: ["CPU lockup", true]
-      };
-      var ri = RESET_MAP[String(t.reset_reason).toUpperCase()] || [t.reset_reason, false];
-      resetLabel = ri[0];
-      resetColor = ri[1] ? "#cf8f86" : (dark ? "#b4afbe" : "#a89c91");
+      resetLabel = t.reset_reason;
+      resetColor = dark ? "#b4afbe" : "#a89c91";
     }
 
-    // OTA image state → ["Label", severity]  (ok | bad | muted)
-    function parseOtaState(s) { return String(s || "").split(":").pop().trim().toUpperCase(); }
-    var OTA_MAP = {
-      ESP_OTA_IMG_NEW: ["New", "muted"],
-      ESP_OTA_IMG_PENDING_VERIFY: ["Pending verify", "muted"],
-      ESP_OTA_IMG_VALID: ["Valid", "ok"],
-      ESP_OTA_IMG_INVALID: ["Invalid", "bad"],
-      ESP_OTA_IMG_ABORTED: ["Aborted", "bad"],
-      ESP_OTA_IMG_UNDEFINED: ["Undefined", "muted"],
-      UNKNOWN: ["Unknown", "muted"]
-    };
-    var oi = OTA_MAP[parseOtaState(t.ota_state)] || [t.ota_state || "—", "muted"];
-    var otaLabel = oi[0];
-    var otaColor = oi[1] === "ok" ? "var(--accent,#5aa06f)" : oi[1] === "bad" ? "#cf8f86" : (dark ? "#b4afbe" : "#a89c91");
+    var otaLabel = t.ota_state || "—";
+    var otaColor = dark ? "#b4afbe" : "#a89c91";
 
     var statusEl = $("status-chips");
     statusEl.hidden = statusHTML === "";
