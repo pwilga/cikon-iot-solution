@@ -379,7 +379,7 @@
     $("led-sub").textContent = led ? "On" : "Off";
 
     // LED strips (present only when the pwm_led component is enabled) — data-driven
-    var pwm = (t.pwm_led && typeof t.pwm_led === "object" && !Array.isArray(t.pwm_led)) ? t.pwm_led : null;
+    var pwm = (t.pwm_led && typeof t.pwm_led === "object" && !Array.isArray(t.pwm_led) && Object.keys(t.pwm_led).length) ? t.pwm_led : null;
     $("pwm-card").hidden = !pwm;
     if (pwm) {
       var keys = Object.keys(pwm);
