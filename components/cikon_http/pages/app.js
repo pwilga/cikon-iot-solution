@@ -110,6 +110,81 @@
     }).catch(function () {});
   }
 
+  // ---- LED strips: fully data-driven from whatever keys tele sends under pwm_led ----
+  var pwmPrev = {};       // remembered per-key values for on/off restore
+  var pwmKeysBuilt = "";  // signature of the currently-built key set
+
+  function pwmPost(obj) {
+    fetch("/cmnd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pwm_led: obj }) }).catch(function () {});
+  }
+  function pwmPretty(k) {
+    return k.replace(/_/g, " ").replace(/^./, function (c) { return c.toUpperCase(); });
+  }
+  function buildPwmStrips(keys) {
+    var grid = $("pwm-strips");
+    grid.innerHTML = "";
+    function syncMaster() {
+      var anyOn = false;
+      [].forEach.call(grid.children, function (s) {
+        if ((parseInt(s.querySelector(".slider").value, 10) || 0) > 0) anyOn = true;
+      });
+      $("pwm-toggle").setAttribute("aria-checked", anyOn ? "true" : "false");
+    }
+    keys.forEach(function (k) {
+      var strip = document.createElement("div");
+      strip.className = "pwm-strip";
+      strip.innerHTML =
+        '<div class="pwm-head"><span class="pwm-lbl"><button class="toggle sm pwm-strip-toggle" role="switch" aria-checked="false"><span class="knob"></span></button>' + pwmPretty(k) +
+        '</span><span class="mono">0%</span></div>' +
+        '<div class="pwm-bar"><div class="pwm-fill"></div><input type="range" min="0" max="255" class="slider"></div>';
+      var toggle = strip.querySelector(".toggle");
+      var valEl = strip.querySelector(".mono");
+      var fill = strip.querySelector(".pwm-fill");
+      var inp = strip.querySelector(".slider");
+      strip._key = k;
+      strip._setUI = function (v) {
+        inp.value = v;
+        valEl.textContent = Math.round(v / 255 * 100) + "%";
+        fill.style.width = Math.round(v / 255 * 100) + "%";
+        toggle.setAttribute("aria-checked", v > 0 ? "true" : "false");
+      };
+      var last = 0, timer = null;
+      inp.addEventListener("input", function () {
+        var v = parseInt(inp.value, 10) || 0;
+        strip._setUI(v); syncMaster();
+        var o = {}; o[k] = v;
+        var now = Date.now();
+        if (now - last > 120) { last = now; pwmPost(o); }
+        else { clearTimeout(timer); timer = setTimeout(function () { last = Date.now(); pwmPost(o); }, 130); }
+      });
+      inp.addEventListener("click", function (e) {
+        var r = inp.getBoundingClientRect();
+        var v = Math.max(0, Math.min(255, Math.round((e.clientX - r.left) / r.width * 255)));
+        strip._setUI(v); syncMaster(); var o = {}; o[k] = v; pwmPost(o);
+      });
+      toggle.addEventListener("click", function () {
+        var on = toggle.getAttribute("aria-checked") === "true";
+        var v;
+        if (on) { pwmPrev[k] = parseInt(inp.value, 10) || 0; v = 0; }
+        else { v = pwmPrev[k] || 255; }
+        strip._setUI(v); syncMaster(); var o = {}; o[k] = v; pwmPost(o);
+      });
+      grid.appendChild(strip);
+    });
+    $("pwm-toggle").onclick = function () {
+      var on = $("pwm-toggle").getAttribute("aria-checked") === "true";
+      var obj = {};
+      [].forEach.call(grid.children, function (strip) {
+        var inp = strip.querySelector(".slider"), key = strip._key;
+        if (on) { pwmPrev[key] = parseInt(inp.value, 10) || 0; obj[key] = 0; }
+        else { obj[key] = pwmPrev[key] || 255; }
+        strip._setUI(obj[key]);
+      });
+      $("pwm-toggle").setAttribute("aria-checked", on ? "false" : "true");
+      pwmPost(obj);
+    };
+  }
+
   function doReset() {
     if (state.resetPhase === "sending") return;
     if (state.resetPhase === "confirm") { runReset(); return; }
@@ -302,6 +377,22 @@
     var lt = $("led-toggle");
     lt.setAttribute("aria-checked", led ? "true" : "false");
     $("led-sub").textContent = led ? "On" : "Off";
+
+    // LED strips (present only when the pwm_led component is enabled) — data-driven
+    var pwm = (t.pwm_led && typeof t.pwm_led === "object" && !Array.isArray(t.pwm_led)) ? t.pwm_led : null;
+    $("pwm-card").hidden = !pwm;
+    if (pwm) {
+      var keys = Object.keys(pwm);
+      var sig = keys.join(",");
+      if (sig !== pwmKeysBuilt) { buildPwmStrips(keys); pwmKeysBuilt = sig; }
+      var anyOn = false;
+      [].forEach.call($("pwm-strips").children, function (strip) {
+        var v = pwm[strip._key] | 0;
+        if (document.activeElement !== strip.querySelector(".slider")) strip._setUI(v);
+        if (v > 0) anyOn = true;
+      });
+      $("pwm-toggle").setAttribute("aria-checked", anyOn ? "true" : "false");
+    }
 
     // system
     var rows = [

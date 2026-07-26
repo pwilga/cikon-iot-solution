@@ -43,14 +43,16 @@
     </section>
 
     <div class="grid">
-    <div class="cell" id="hw-cell" hidden>
-      <div class="chip-label" id="caps-label">Hardware</div>
-      <div class="caps" id="caps"></div>
-    </div>
-    <div class="cell" id="status-cell" hidden>
-      <div class="chip-label" id="status-label">Live status</div>
-      <div class="caps" id="status-chips"></div>
-    </div>
+    <div class="cols">
+      <div class="col">
+      <div class="cell band" id="hw-cell" hidden>
+        <div class="chip-label" id="caps-label">Hardware</div>
+        <div class="caps" id="caps"></div>
+      </div>
+      <div class="cell band" id="status-cell" hidden>
+        <div class="chip-label" id="status-label">Live status</div>
+        <div class="caps" id="status-chips"></div>
+      </div>
       <section class="cell">
         <div class="label section-label">Controls</div>
         <div class="card row" id="led-card">
@@ -60,7 +62,16 @@
           </div>
           <button class="toggle" id="led-toggle" role="switch" aria-checked="false"><span class="knob"></span></button>
         </div>
+        <div class="card" id="pwm-card" hidden style="margin-top:12px;display:flex;flex-direction:column;gap:16px;padding:16px 18px">
+          <div class="row" style="padding:0">
+            <div class="row-title">Analog LEDs</div>
+            <button class="toggle" id="pwm-toggle" role="switch" aria-checked="false"><span class="knob"></span></button>
+          </div>
+          <div class="pwm-grid" id="pwm-strips"></div>
+        </div>
       </section>
+      </div>
+      <div class="col">
 
       <section class="cell cell-system">
         <div class="label section-label">System</div>
@@ -88,6 +99,8 @@
           </div>
         </div>
       </section>
+      </div>
+    </div>
     </div>
 
     <!-- FreeRTOS tasks (optional) -->

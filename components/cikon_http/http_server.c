@@ -16,6 +16,7 @@
 static httpd_handle_t s_server = NULL;
 static bool s_secure = false;
 static char s_path[sizeof(WWW_ROOT) + CONFIG_HTTPD_MAX_URI_LEN];
+static char gz_path[sizeof(s_path) + 4]; /* + ".gz\0" */
 
 static void http_log(const char *method, int status, const char *path, size_t bytes) {
     if (status >= 500)
@@ -45,21 +46,33 @@ static esp_err_t static_file_handler(httpd_req_t *req, httpd_err_code_t err) {
 
     snprintf(s_path, sizeof(s_path), WWW_ROOT "%s", uri);
 
-    FILE *f = fopen(s_path, "r");
-    if (!f) {
-        http_log("GET", 404, s_path, 0);
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, NULL);
-        return ESP_FAIL;
-    }
-
     const char *ct = "text/html";
     if (strstr(s_path, ".css"))
         ct = "text/css";
     else if (strstr(s_path, ".js"))
         ct = "application/javascript";
 
+    FILE *f = fopen(s_path, "r");
+    bool gzipped = false;
+    if (!f) {
+        char enc_hdr[32] = "";
+        httpd_req_get_hdr_value_str(req, "Accept-Encoding", enc_hdr, sizeof(enc_hdr));
+        if (strstr(enc_hdr, "gzip")) {
+            snprintf(gz_path, sizeof(gz_path), "%s.gz", s_path);
+            f = fopen(gz_path, "r");
+            gzipped = (f != NULL);
+        }
+    }
+    if (!f) {
+        http_log("GET", 404, s_path, 0);
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, NULL);
+        return ESP_FAIL;
+    }
+
     set_keepalive_timeout(req);
     httpd_resp_set_type(req, ct);
+    if (gzipped)
+        httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
 
     char buf[1024];
     size_t n;
