@@ -15,12 +15,38 @@
 
 static bool initialized = false;
 static button_handle_t button_handles[CONFIG_BUTTON_MAX_COUNT] = {0};
+static char button_names[CONFIG_BUTTON_MAX_COUNT][16] = {0};
 static uint8_t button_count = 0;
 static button_event_callback_t user_callback = NULL;
 
 void button_adapter_register_callback(button_event_callback_t callback) {
     user_callback = callback;
     ESP_LOGI(TAG, "Custom button callback %s", callback ? "registered" : "cleared");
+}
+
+const char *button_adapter_get_name(uint8_t idx) {
+    if (idx >= button_count) {
+        return NULL;
+    }
+    return button_names[idx];
+}
+
+void button_adapter_log_event(uint8_t button_idx, button_event_t event) {
+    const char *name = button_adapter_get_name(button_idx);
+    switch (event) {
+    case BUTTON_SINGLE_CLICK:
+        ESP_LOGI(TAG, "%s: Single click", name);
+        break;
+    case BUTTON_DOUBLE_CLICK:
+        ESP_LOGI(TAG, "%s: Double click", name);
+        break;
+    case BUTTON_LONG_PRESS_START:
+        ESP_LOGI(TAG, "%s: Long press start", name);
+        break;
+    default:
+        ESP_LOGI(TAG, "%s: Unhandled event %d", name, event);
+        break;
+    }
 }
 
 static void button_event_handler(void *handle, void *usr_data) {
@@ -31,7 +57,7 @@ static void button_event_handler(void *handle, void *usr_data) {
     uint8_t idx = (uint8_t)(uintptr_t)usr_data;
     button_event_t event = iot_button_get_event(handle);
 
-    user_callback(idx, event);
+    user_callback(idx, button_adapter_get_name(idx), event);
 }
 
 static esp_err_t button_adapter_init(void) {
@@ -53,14 +79,22 @@ static esp_err_t button_adapter_init(void) {
 
         char *colon = strchr(token, ':');
         if (!colon) {
-            ESP_LOGW(TAG, "Invalid format (expected gpio:active_level): %s", token);
+            ESP_LOGW(TAG, "Invalid format (expected gpio:active_level[:name]): %s", token);
             token = strtok(NULL, ",");
             continue;
         }
 
         *colon = '\0';
         int gpio = atoi(token);
-        int active_level = atoi(colon + 1);
+
+        char *remainder = colon + 1;
+        char *name_colon = strchr(remainder, ':');
+        const char *name = NULL;
+        if (name_colon) {
+            *name_colon = '\0';
+            name = name_colon + 1;
+        }
+        int active_level = atoi(remainder);
 
         if (gpio < 0 || gpio >= SOC_GPIO_PIN_COUNT) {
             ESP_LOGW(TAG, "Invalid GPIO %d, skipping", gpio);
@@ -99,14 +133,29 @@ static esp_err_t button_adapter_init(void) {
             iot_button_register_cb(btn, BUTTON_LONG_PRESS_START, NULL, button_event_handler,
                                    (void *)(uintptr_t)button_count);
 
-            ESP_LOGI(TAG, "Button %d initialized on GPIO %d (active %s)", button_count, gpio,
-                     active_level ? "HIGH" : "LOW");
+            if (name && strlen(name) > 0) {
+                strncpy(button_names[button_count], name, sizeof(button_names[button_count]) - 1);
+                button_names[button_count][sizeof(button_names[button_count]) - 1] = '\0';
+                ESP_LOGI(TAG, "Button %d '%s' initialized on GPIO %d (active %s)", button_count,
+                         button_names[button_count], gpio, active_level ? "HIGH" : "LOW");
+            } else {
+                snprintf(button_names[button_count], sizeof(button_names[button_count]), "gpio%d",
+                         gpio);
+                ESP_LOGI(TAG, "Button %d initialized on GPIO %d (active %s, auto-named '%s')",
+                         button_count, gpio, active_level ? "HIGH" : "LOW",
+                         button_names[button_count]);
+            }
             button_count++;
         } else {
             ESP_LOGE(TAG, "Failed to initialize button on GPIO %d", gpio);
         }
 
         token = strtok(NULL, ",");
+    }
+
+    if (token != NULL) {
+        ESP_LOGE(TAG, "Too many buttons configured, max is %d, remaining entries were ignored",
+                 CONFIG_BUTTON_MAX_COUNT);
     }
 
     free(str);
@@ -133,6 +182,7 @@ static esp_err_t button_adapter_shutdown(void) {
             iot_button_delete(button_handles[i]);
             button_handles[i] = NULL;
         }
+        button_names[i][0] = '\0';
     }
     button_count = 0;
     initialized = false;

@@ -8,12 +8,14 @@ menu "Cikon IoT Supervisor Button Adapter"
             Adjust based on available GPIOs and memory constraints.
 
     config BUTTON_GPIO_LIST
-        string "Button GPIO List (gpio:active_level pairs, comma-separated)"
+        string "Button GPIO List (gpio:active_level[:name] tuples, comma-separated)"
         default "0:0"
         help
-            Comma-separated list of GPIO:active_level pairs for buttons.
-            Format: "gpio:active_level" where active_level is 0 (LOW) or 1 (HIGH).
-            Example: "0:0,9:0" for two buttons (GPIO0 active-low, GPIO9 active-low).
-            Example: "2:1,4:0" for GPIO2 active-high, GPIO4 active-low.
+            Comma-separated list of GPIO:active_level:name entries for buttons.
+            Format: "gpio:active_level" or "gpio:active_level:name".
+            active_level is 0 (LOW) or 1 (HIGH). name is optional and free-form
+            (auto-named as "gpio<N>" if omitted, e.g. "gpio18").
+            Example: "0:0,9:0" for two unnamed buttons.
+            Example: "18:0:switch_a,19:0:switch_b" for two named buttons.
 
 endmenu
