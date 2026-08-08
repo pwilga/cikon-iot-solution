@@ -1,6 +1,5 @@
 #include <time.h>
 
-#include "driver/gpio.h"
 #include "esp_app_desc.h"
 #include "esp_bootloader_desc.h"
 #include "esp_chip_info.h"
@@ -38,8 +37,6 @@
 static void (*restart_callback)(void) = NULL;
 static bool s_restarting = false;
 
-static bool onboard_led_state = true;
-
 void core_system_init(void) {
 
     ESP_ERROR_CHECK(nvs_flash_safe_init());
@@ -74,10 +71,6 @@ void core_system_init(void) {
         ESP_LOGI(TAG, "SPIFFS mounted at %s", CONFIG_VFS_SPIFFS_MOUNT_POINT);
     }
 #endif
-
-    // onboard_led
-    ESP_ERROR_CHECK(gpio_reset_pin(CONFIG_BOARD_STATUS_LED_GPIO));
-    ESP_ERROR_CHECK(gpio_set_direction(CONFIG_BOARD_STATUS_LED_GPIO, GPIO_MODE_OUTPUT));
 }
 
 void set_restart_callback(void (*cb)(void)) { restart_callback = cb; }
@@ -178,18 +171,6 @@ const char *get_boot_time(void) {
     }
 
     return iso8601;
-}
-
-bool get_onboard_led_state(void) { return onboard_led_state; }
-
-void onboard_led_set_state(bool state) {
-
-    if (onboard_led_state == state) {
-        return;
-    }
-
-    ESP_ERROR_CHECK(gpio_set_level(CONFIG_BOARD_STATUS_LED_GPIO, !state));
-    onboard_led_state = state;
 }
 
 esp_err_t nvs_flash_safe_init() {

@@ -6,7 +6,6 @@ idf_component_register(
     PRIV_REQUIRES
         app_update
         esp_bootloader_format
-        esp_driver_gpio
         esp_driver_tsens
         esp_event
         spi_flash

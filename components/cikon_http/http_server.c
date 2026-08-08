@@ -177,6 +177,7 @@ void http_init(const http_config_t *cfg) {
         http_cfg.server_port = cfg->port;
         http_cfg.stack_size = CONFIG_HTTP_STACK_SIZE;
         http_cfg.max_uri_handlers = CONFIG_HTTP_MAX_HANDLERS;
+        http_cfg.max_open_sockets = cfg->max_open_sockets ? cfg->max_open_sockets : 1;
         http_cfg.recv_wait_timeout = CONFIG_HTTP_SESSION_TIMEOUT;
         http_cfg.send_wait_timeout = CONFIG_HTTP_SESSION_TIMEOUT;
         http_cfg.lru_purge_enable = true;

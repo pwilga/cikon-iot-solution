@@ -30,4 +30,5 @@
     U64(led_state, 0)                                                                              \
     U64(led_last_state, 0)                                                                         \
     U32(boot_counter, 0)                                                                           \
+    U32(switch_state, 0)                                                                           \
     U8(mesh_id, 0xAA)

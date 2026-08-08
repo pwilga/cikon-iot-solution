@@ -510,20 +510,6 @@ static void reset_conf_handler(const char *args_json_str) {
     esp_safe_restart();
 }
 
-static void onboard_led_handler(const char *args_json_str) {
-    logic_state_t state = json_str_as_logic_state(args_json_str);
-    bool new_state;
-
-    if (state == STATE_TOGGLE) {
-        new_state = !get_onboard_led_state();
-    } else {
-        new_state = (state == STATE_ON) ? true : false;
-    }
-
-    ESP_LOGI(TAG, "Setting LED to %s", new_state ? "ON" : "OFF");
-    onboard_led_set_state(new_state);
-}
-
 static void tele_uptime_appender(const char *tele_id, cJSON *json_root) {
     uint32_t uptime = esp_timer_get_time() / 1000000ULL;
     cJSON_AddNumberToObject(json_root, tele_id, uptime);
@@ -531,10 +517,6 @@ static void tele_uptime_appender(const char *tele_id, cJSON *json_root) {
 
 static void tele_startup_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, get_boot_time());
-}
-
-static void tele_onboard_led_appender(const char *tele_id, cJSON *json_root) {
-    cJSON_AddBoolToObject(json_root, tele_id, get_onboard_led_state());
 }
 
 static void tele_free_heap_appender(const char *tele_id, cJSON *json_root) {
@@ -649,13 +631,11 @@ static const command_entry_t core_commands[] = {
     {"help", "Show available commands", help_handler},
     {"setconf", "Set configuration from JSON", set_conf_handler},
     {"resetconf", "Reset configuration and restart", reset_conf_handler},
-    {"onboard_led", "Set onboard LED state (on/off/toggle)", onboard_led_handler},
     {"adapter", "Enable/disable adapter by name", supervisor_adapter_control_handler},
     {NULL, NULL, NULL}};
 
 static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
                                          {"boot_time", tele_startup_appender},
-                                         {"onboard_led", tele_onboard_led_appender},
                                          {"free_heap", tele_free_heap_appender},
                                          {"min_heap", tele_min_heap_appender},
                                          {"name", tele_name_appender},

@@ -1,0 +1,20 @@
+name: cikon_supervisor_adapters_switch
+version: "1.0.0"
+description: "Supervisor switch adapter - generic digital on/off outputs (relays, plain LEDs, valves, buzzers, ...)"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=5.0"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_config:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_config
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
+  espressif/cjson: "*"

@@ -191,8 +191,6 @@ static void register_core_ha_entities(void) {
     }
 
     // Controls
-    ha_register_entity(
-        &(ha_entity_config_t){.type = HA_SWITCH, .name = "Onboard Led", .icon = "mdi:led-on"});
     ha_register_entity(&(ha_entity_config_t){.type = HA_BUTTON,
                                              .name = "Restart",
                                              .device_class = "restart",

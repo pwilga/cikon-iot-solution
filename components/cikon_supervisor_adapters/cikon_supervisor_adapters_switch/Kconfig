@@ -1,0 +1,21 @@
+menu "Cikon IoT Supervisor Switch Adapter"
+    config SWITCH_MAX_COUNT
+        int "Maximum number of switches"
+        default 4
+        range 1 16
+        help
+            Maximum number of digital outputs that can be configured.
+            Adjust based on available GPIOs and memory constraints.
+
+    config SWITCH_GPIO_LIST
+        string "Switch GPIO List (gpio:active_level[:name] tuples, comma-separated)"
+        default "0:1"
+        help
+            Comma-separated list of GPIO:active_level:name entries for digital outputs
+            (relays, plain LEDs, valves, buzzers - anything that's just on/off).
+            Format: "gpio:active_level" or "gpio:active_level:name".
+            active_level is 0 (LOW) or 1 (HIGH) - the physical level that means "on".
+            name is optional and free-form (auto-named as "gpio<N>" if omitted).
+            Example: "14:1:ceiling_relay,27:0:garden_valve".
+
+endmenu
