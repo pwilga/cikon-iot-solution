@@ -245,12 +245,19 @@ void switch_toggle(const char *name) { switch_set_state(name, !switch_get_state(
 static void tele_switch(const char *tele_id, cJSON *json_root) {
     (void)tele_id;
 
+    // "switches" lists the names of the flat per-switch booleans above, so a UI polling
+    // /tele can tell which top-level keys are switches without the state itself being nested.
+    cJSON *names = cJSON_CreateArray();
+
     for (int i = 0; i < CONFIG_SWITCH_MAX_COUNT; i++) {
         if (switches[i].gpio == GPIO_NUM_NC) {
             break;
         }
         cJSON_AddBoolToObject(json_root, switches[i].name, switches[i].state);
+        cJSON_AddItemToArray(names, cJSON_CreateString(switches[i].name));
     }
+
+    cJSON_AddItemToObject(json_root, "switches", names);
 }
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY

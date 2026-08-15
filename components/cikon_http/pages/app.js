@@ -88,7 +88,16 @@
     var to = setTimeout(function () { ctrl.abort(); }, 3500);
     return fetch("/tele", { cache: "no-store", signal: ctrl.signal })
       .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
-      .then(function (t) { computeCpu(t); state.tele = t; state.online = true; state.live = true; render(); })
+      .then(function (t) {
+        computeCpu(t);
+        Object.keys(pendingSwitch).forEach(function (name) {
+          var p = pendingSwitch[name];
+          if (t[name] === p.value) { delete pendingSwitch[name]; }
+          else if (Date.now() - p.ts < 4000) { t[name] = p.value; }
+          else { delete pendingSwitch[name]; }
+        });
+        state.tele = t; state.online = true; state.live = true; render();
+      })
       .catch(function () { if (state.live) { state.online = false; render(); } })
       .finally(function () { clearTimeout(to); });
   }
@@ -99,15 +108,38 @@
     });
   }
 
-  // ---- actions ----
-  function toggleLed() {
-    var t = state.tele, next = !t.onboard_led;
-    t.onboard_led = next; render();
+  // ---- switches: fully data-driven from t.switches (flat bool per name) ----
+  var switchKeysBuilt = "";
+  var pendingSwitch = {}; // name -> { value, ts }
+
+  function switchPretty(k) {
+    return k.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+  function switchToggle(name) {
+    var t = state.tele, next = !t[name];
+    t[name] = next; render();
+    pendingSwitch[name] = { value: next, ts: Date.now() };
+    var body = {}; body[name] = next ? "on" : "off";
     fetch("/cmnd", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ onboard_led: next ? "on" : "off" })
+      body: JSON.stringify(body)
     }).catch(function () {});
+  }
+  function buildSwitchCards(keys) {
+    var wrap = $("switch-cards");
+    wrap.innerHTML = "";
+    keys.forEach(function (name) {
+      var card = document.createElement("div");
+      card.className = "card row";
+      card.innerHTML =
+        '<div><div class="row-title"></div><div class="row-sub"></div></div>' +
+        '<button class="toggle" role="switch" aria-checked="false"><span class="knob"></span></button>';
+      card.querySelector(".row-title").textContent = switchPretty(name);
+      card._name = name;
+      card.querySelector(".toggle").addEventListener("click", function () { switchToggle(name); });
+      wrap.appendChild(card);
+    });
   }
 
   // ---- LED strips: fully data-driven from whatever keys tele sends under pwm_led ----
@@ -266,7 +298,7 @@
     // offline → dim whole dashboard; controls also inert
     var off = !state.online;
     document.querySelector(".wrap").classList.toggle("offline", off);
-    $("led-card").classList.toggle("ctl-off", off);
+    $("switch-cards").classList.toggle("ctl-off", off);
     rb.classList.toggle("ctl-off", off && state.resetPhase === "idle");
     $("reconnect").hidden = !off;
 
@@ -372,11 +404,15 @@
     statusEl.innerHTML = statusHTML;
     $("status-cell").hidden = statusHTML === "";
 
-    // controls
-    var led = !!t.onboard_led;
-    var lt = $("led-toggle");
-    lt.setAttribute("aria-checked", led ? "true" : "false");
-    $("led-sub").textContent = led ? "On" : "Off";
+    // switch cards
+    var switchKeys = Array.isArray(t.switches) ? t.switches : [];
+    var swSig = switchKeys.join(",");
+    if (swSig !== switchKeysBuilt) { buildSwitchCards(switchKeys); switchKeysBuilt = swSig; }
+    [].forEach.call($("switch-cards").children, function (card) {
+      var on = !!t[card._name];
+      card.querySelector(".toggle").setAttribute("aria-checked", on ? "true" : "false");
+      card.querySelector(".row-sub").textContent = on ? "On" : "Off";
+    });
 
     // LED strips (present only when the pwm_led component is enabled) — data-driven
     var pwm = (t.pwm_led && typeof t.pwm_led === "object" && !Array.isArray(t.pwm_led) && Object.keys(t.pwm_led).length) ? t.pwm_led : null;
@@ -487,7 +523,6 @@
       if (saved) document.documentElement.setAttribute("data-theme", saved);
     } catch (e) {}
 
-    $("led-toggle").addEventListener("click", toggleLed);
     $("btn-restart").addEventListener("click", doReset);
     $("btn-theme").addEventListener("click", toggleTheme);
     $("tasks-toggle").addEventListener("click", function () { state.tasksOpen = !state.tasksOpen; render(); });
