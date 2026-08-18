@@ -157,7 +157,7 @@
     var raw = state.tele[name] || {};
     var pend = pendingLights[name];
     var fresh = pend && (Date.now() - pend.ts < PENDING_TTL_MS);
-    return fresh && pend.patch.v != null ? pend.patch.v : Math.max(0, Math.min(100, raw.v | 0));
+    return fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
   }
   function lightMergePending(name, group, key, patch) {
     var prev = pendingLights[name];
@@ -210,7 +210,7 @@
   }
   var lightLast = {}, lightTimer = {};
   function lightSetValue(name, v) {
-    v = Math.max(0, Math.min(100, v | 0));
+    v = Math.max(1, Math.min(100, v | 0));
     lightMergePending(name, undefined, undefined, { on: true, v: v });
     render();
     var send = function () {
@@ -249,7 +249,7 @@
             '<span class="light-pct mono">0%</span>' +
           '</div>' +
         '</div>' +
-        '<div class="light-slider"><div class="light-slider-fill"></div><input type="range" min="0" max="100" class="slider"></div>';
+        '<div class="light-slider"><div class="light-slider-fill"></div><input type="range" min="1" max="100" class="slider"></div>';
 
       card._name = name;
       card._rgbKeys = rgbKeys;
@@ -266,7 +266,7 @@
       inp.addEventListener("input", function () { lightSetValue(name, +inp.value); });
       inp.addEventListener("click", function (e) {
         var r = inp.getBoundingClientRect();
-        var v = Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
+        var v = Math.max(1, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
         lightSetValue(name, v);
       });
       [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
@@ -490,7 +490,7 @@
       var pend = pendingLights[name];
       var fresh = pend && (Date.now() - pend.ts < PENDING_TTL_MS);
       var on = fresh && pend.patch.on != null ? pend.patch.on : !!raw.on;
-      var v = fresh && pend.patch.v != null ? pend.patch.v : Math.max(0, Math.min(100, raw.v | 0));
+      var v = fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
 
       var rgbKeys = card._rgbKeys, cwKeys = card._cwKeys;
       var activeRgb = (fresh && pend.group === "rgb") ? pend.key : lightActiveInGroup(raw, rgbKeys);

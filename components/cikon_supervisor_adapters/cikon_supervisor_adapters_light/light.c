@@ -52,7 +52,10 @@ static uint8_t gamma_lut[101];
 
 static void light_gamma_init(void) {
     for (int i = 0; i <= 100; i++) {
-        gamma_lut[i] = (uint8_t)roundf(powf(i / 100.0f, LIGHT_GAMMA) * 255.0f);
+        uint8_t duty = (uint8_t)roundf(powf(i / 100.0f, LIGHT_GAMMA) * 255.0f);
+        // Gamma curve rounds anything below ~6% to a duty of 0 (fully off), even
+        // though the user asked for a nonzero brightness - keep it just visible.
+        gamma_lut[i] = (i > 0 && duty == 0) ? 1 : duty;
     }
 }
 
@@ -340,6 +343,19 @@ static void light_update_output(light_config_t *light) {
     }
 }
 
+// Brightness 0 would leave "on" true but every channel physically dark - an ambiguous
+// state a slider dragged to the bottom (or any client sending v=0) can trigger. Floor it
+// at 1 so "on" and "visibly lit" never disagree.
+static uint8_t light_clamp_brightness(int value) {
+    if (value < 1) {
+        return 1;
+    }
+    if (value > 100) {
+        return 100;
+    }
+    return (uint8_t)value;
+}
+
 static void light_apply(light_config_t *light, const char *args_json_str) {
     cJSON *root = cJSON_Parse(args_json_str);
     if (!root) {
@@ -358,7 +374,7 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
             light->cct = (uint16_t)cct->valueint;
             light->color_mode = false;
             if (v) {
-                light->val = (uint8_t)v->valueint;
+                light->val = light_clamp_brightness(v->valueint);
             }
         } else if (h || s) {
             if (h) {
@@ -368,11 +384,11 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
                 light->sat = (uint8_t)s->valueint;
             }
             if (v) {
-                light->val = (uint8_t)v->valueint;
+                light->val = light_clamp_brightness(v->valueint);
             }
             light->color_mode = true;
         } else if (v) {
-            light->val = (uint8_t)v->valueint;
+            light->val = light_clamp_brightness(v->valueint);
         }
 
         if (on) {
