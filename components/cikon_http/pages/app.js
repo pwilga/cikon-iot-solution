@@ -182,10 +182,9 @@
     });
     return bestV > 0 ? best : null;
   }
-  function lightTone(rgbKeys, cwKeys, activeRgb, activeCw, pendingKey) {
-    if (pendingKey) return LIGHT_DOT_COLOR[pendingKey];
-    if (rgbKeys.length === 3) return activeRgb ? LIGHT_DOT_COLOR[activeRgb] : "var(--accent)";
-    if (cwKeys.length) return activeCw ? LIGHT_DOT_COLOR[activeCw] : LIGHT_DOT_COLOR[cwKeys[0]];
+  function lightTone(allKeys, activeKey) {
+    if (activeKey) return LIGHT_DOT_COLOR[activeKey];
+    if (allKeys.length === 1) return LIGHT_DOT_COLOR[allKeys[0]];
     return "var(--accent)";
   }
   function lightPost(name, payload) {
@@ -492,10 +491,9 @@
       var on = fresh && pend.patch.on != null ? pend.patch.on : !!raw.on;
       var v = fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
 
-      var rgbKeys = card._rgbKeys, cwKeys = card._cwKeys;
-      var activeRgb = (fresh && pend.group === "rgb") ? pend.key : lightActiveInGroup(raw, rgbKeys);
-      var activeCw = (fresh && pend.group === "cw") ? pend.key : lightActiveInGroup(raw, cwKeys);
-      var tone = lightTone(rgbKeys, cwKeys, activeRgb, activeCw, fresh && pend.key);
+      var allChKeys = card._rgbKeys.concat(card._cwKeys);
+      var activeKey = (fresh && pend.key) ? pend.key : lightActiveInGroup(raw, allChKeys);
+      var tone = lightTone(allChKeys, activeKey);
 
       var toggle = card.querySelector(".toggle");
       toggle.setAttribute("aria-checked", on ? "true" : "false");
@@ -503,7 +501,7 @@
 
       [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
         var k = dot.getAttribute("data-ch");
-        dot.classList.toggle("active", k === activeRgb || k === activeCw);
+        dot.classList.toggle("active", k === activeKey);
       });
 
       card.querySelector(".light-pct").textContent = v + "%";
