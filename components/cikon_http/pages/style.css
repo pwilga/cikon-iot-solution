@@ -119,6 +119,7 @@ body {
 
 /* (grid handles columns) */
 .section-label { display: block; margin: 0 4px 12px; }
+.section-label[hidden] { display: none !important; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 1px 2px var(--shadow2); }
 .row { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -145,8 +146,8 @@ body {
 }
 .fw-built { font-size: 11.5px; color: var(--faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fw-built[hidden] { display: none; }
-#pwm-card[hidden] { display: none !important; }
 .switch-cards .card + .card { margin-top: 12px; }
+.light-cards .card + .card { margin-top: 12px; }
 
 /* Toggle */
 .toggle { width: 52px; height: 30px; border-radius: 15px; background: var(--track-off); border: none; position: relative; cursor: pointer; padding: 0; transition: background .25s; }
@@ -156,8 +157,6 @@ body {
 .toggle.sm { width: 40px; height: 24px; border-radius: 12px; }
 .toggle.sm .knob { width: 18px; height: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
 .toggle.sm[aria-checked="true"] .knob { transform: translateX(16px); }
-#pwm-toggle[aria-checked="true"], .pwm-strip-toggle[aria-checked="true"] { background: linear-gradient(90deg, #f4d3b0, #e9a68f); }
-.pwm-lbl { display: flex; align-items: center; gap: 10px; }
 
 /* Tasks */
 .tasks-section { margin-top: 26px; }
@@ -191,16 +190,20 @@ body {
 
 .footer { margin-top: 26px; text-align: center; font-size: 11px; color: var(--faint); }
 
-/* LED strips */
-.pwm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.pwm-strip { display: flex; flex-direction: column; gap: 9px; }
-.pwm-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); }
-.pwm-head .mono { font-weight: 600; color: var(--text); }
-.pwm-bar { position: relative; height: 24px; display: flex; align-items: center; }
-.pwm-bar .pwm-track, .pwm-bar { }
-.pwm-fill { pointer-events: none; height: 12px; width: 0%; border-radius: 6px; background: linear-gradient(90deg, #f4d3b0, #e9a68f); transition: width .06s; }
-.pwm-bar::before { content: ""; position: absolute; left: 0; right: 0; height: 12px; border-radius: 6px; background: var(--track-off); }
-.pwm-bar .pwm-fill { position: relative; z-index: 1; }
+/* Lights */
+.light-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.light-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.light-card-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.light-card-left .row-title { margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.light-card-right { display: flex; align-items: center; gap: 10px; flex: none; }
+.light-dots { display: flex; align-items: center; gap: 8px; }
+.light-dot { width: 18px; height: 18px; border-radius: 50%; border: none; cursor: pointer; padding: 0; flex: none; opacity: .4; transform: none; transition: opacity .15s, transform .15s, box-shadow .15s; }
+.light-dot.cold { border: 1px solid var(--faint); }
+.light-dot.active { opacity: 1; transform: scale(1.08); }
+.light-pct { font-size: 13px; font-weight: 600; color: var(--muted); min-width: 34px; text-align: right; font-family: ui-monospace, Menlo, monospace; }
+.light-slider { position: relative; height: 24px; display: flex; align-items: center; }
+.light-slider::before { content: ""; position: absolute; left: 0; right: 0; height: 12px; border-radius: 6px; background: var(--track-off); }
+.light-slider-fill { pointer-events: none; position: relative; z-index: 1; height: 12px; border-radius: 6px; transition: width .06s; }
 .slider { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
 
 /* Narrow screens (phones): drop the CPU bar and shrink its column so task names stay visible */

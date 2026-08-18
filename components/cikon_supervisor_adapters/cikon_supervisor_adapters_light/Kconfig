@@ -1,0 +1,48 @@
+menu "Cikon IoT Supervisor Light Adapter"
+
+    config LIGHT_MAX_COUNT
+        int "Maximum number of lights"
+        default 4
+        range 1 8
+        help
+            Maximum number of logical "light" entities. Each light is one physical
+            fixture (1-5 GPIO channels: Red/Green/Blue/Cold-white/Warm-white).
+
+    config LIGHT_GPIO_LIST
+        string "Light channel list (role+gpio pairs per light, comma-separated)"
+        default "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip,W27:Right Strip"
+        help
+            Comma-separated list of lights. Each light is a '+'-joined set of
+            <role><gpio> channel tokens, optionally followed by ":name".
+            Roles: R=red, G=green, B=blue, C=cold-white, W=warm-white.
+            Supported role sets (one token per role): C | W | CW | RGB | RGBC |
+            RGBW | RGBCW.
+            Example: "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip"
+
+    config LIGHT_PWM_FREQUENCY
+        int "PWM frequency (Hz)"
+        default 20000
+        range 100 40000
+        help
+            PWM frequency for light channels (LEDC). Default is at the edge of human
+            hearing to avoid audible coil/driver whine at lower frequencies.
+
+    config LIGHT_ENABLE_FADE
+        bool "Enable smooth fade transitions"
+        default y
+        help
+            Use LEDC hardware fade for color/brightness/CCT transitions instead of
+            snapping to the new value immediately.
+
+    if LIGHT_ENABLE_FADE
+
+        config LIGHT_FADE_TIME_MS
+            int "Default fade time (ms)"
+            default 200
+            range 0 5000
+            help
+                Default fade duration for color/brightness/CCT transitions.
+
+    endif
+
+endmenu

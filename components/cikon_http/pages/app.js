@@ -3,6 +3,7 @@
   "use strict";
 
   var POLL_MS = 5000;
+  var PENDING_TTL_MS = POLL_MS * 2; // must outlast one full poll cycle with margin
 
   // ---- state ----
   var state = {
@@ -93,7 +94,7 @@
         Object.keys(pendingSwitch).forEach(function (name) {
           var p = pendingSwitch[name];
           if (t[name] === p.value) { delete pendingSwitch[name]; }
-          else if (Date.now() - p.ts < 4000) { t[name] = p.value; }
+          else if (Date.now() - p.ts < PENDING_TTL_MS) { t[name] = p.value; }
           else { delete pendingSwitch[name]; }
         });
         state.tele = t; state.online = true; state.live = true; render();
@@ -142,79 +143,140 @@
     });
   }
 
-  // ---- LED strips: fully data-driven from whatever keys tele sends under pwm_led ----
-  var pwmPrev = {};       // remembered per-key values for on/off restore
-  var pwmKeysBuilt = "";  // signature of the currently-built key set
+  // ---- Lights: fully data-driven from t.lights (names) + flat t[name] = {on,v,r?,g?,b?,c?,w?}.
+  // Channel presence (which of r/g/b/c/w exist) is fixed by hardware config, so dots are built
+  // once per card alongside the rest of the DOM, not recomputed every poll - only their
+  // active/inactive state and the toggle/slider tone update each poll.
+  var lightKeysBuilt = "";
+  var pendingLights = {}; // name -> { ts, patch: {on?, v?}, group?, key? } - optimistic, merged across calls
 
-  function pwmPost(obj) {
-    fetch("/cmnd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pwm_led: obj }) }).catch(function () {});
+  var LIGHT_DOT_COLOR = { r: "#cf8f86", g: "#8fb88a", b: "#6f8fd6", c: "#f7f5f0", w: "#deb98c" };
+  var LIGHT_DOT_LABEL = { r: "Red", g: "Green", b: "Blue", c: "Cold white", w: "Warm white" };
+
+  function lightEffectiveV(name) {
+    var raw = state.tele[name] || {};
+    var pend = pendingLights[name];
+    var fresh = pend && (Date.now() - pend.ts < PENDING_TTL_MS);
+    return fresh && pend.patch.v != null ? pend.patch.v : Math.max(0, Math.min(100, raw.v | 0));
   }
-  function pwmPretty(k) {
-    return k.replace(/_/g, " ").replace(/^./, function (c) { return c.toUpperCase(); });
+  function lightMergePending(name, group, key, patch) {
+    var prev = pendingLights[name];
+    var prevFresh = prev && (Date.now() - prev.ts < PENDING_TTL_MS);
+    var mergedPatch = prevFresh ? prev.patch : {};
+    for (var k in patch) { mergedPatch[k] = patch[k]; }
+    pendingLights[name] = {
+      ts: Date.now(),
+      group: group !== undefined ? group : (prevFresh ? prev.group : undefined),
+      key: key !== undefined ? key : (prevFresh ? prev.key : undefined),
+      patch: mergedPatch
+    };
   }
-  function buildPwmStrips(keys) {
-    var grid = $("pwm-strips");
-    grid.innerHTML = "";
-    function syncMaster() {
-      var anyOn = false;
-      [].forEach.call(grid.children, function (s) {
-        if ((parseInt(s.querySelector(".slider").value, 10) || 0) > 0) anyOn = true;
-      });
-      $("pwm-toggle").setAttribute("aria-checked", anyOn ? "true" : "false");
-    }
+
+  function lightPretty(k) {
+    return k.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+  function lightActiveInGroup(raw, keys) {
+    var best = null, bestV = -1;
     keys.forEach(function (k) {
-      var strip = document.createElement("div");
-      strip.className = "pwm-strip";
-      strip.innerHTML =
-        '<div class="pwm-head"><span class="pwm-lbl"><button class="toggle sm pwm-strip-toggle" role="switch" aria-checked="false"><span class="knob"></span></button>' + pwmPretty(k) +
-        '</span><span class="mono">0%</span></div>' +
-        '<div class="pwm-bar"><div class="pwm-fill"></div><input type="range" min="0" max="255" class="slider"></div>';
-      var toggle = strip.querySelector(".toggle");
-      var valEl = strip.querySelector(".mono");
-      var fill = strip.querySelector(".pwm-fill");
-      var inp = strip.querySelector(".slider");
-      strip._key = k;
-      strip._setUI = function (v) {
-        inp.value = v;
-        valEl.textContent = Math.round(v / 255 * 100) + "%";
-        fill.style.width = Math.round(v / 255 * 100) + "%";
-        toggle.setAttribute("aria-checked", v > 0 ? "true" : "false");
-      };
-      var last = 0, timer = null;
-      inp.addEventListener("input", function () {
-        var v = parseInt(inp.value, 10) || 0;
-        strip._setUI(v); syncMaster();
-        var o = {}; o[k] = v;
-        var now = Date.now();
-        if (now - last > 120) { last = now; pwmPost(o); }
-        else { clearTimeout(timer); timer = setTimeout(function () { last = Date.now(); pwmPost(o); }, 130); }
-      });
-      inp.addEventListener("click", function (e) {
-        var r = inp.getBoundingClientRect();
-        var v = Math.max(0, Math.min(255, Math.round((e.clientX - r.left) / r.width * 255)));
-        strip._setUI(v); syncMaster(); var o = {}; o[k] = v; pwmPost(o);
-      });
+      if (raw[k] != null && raw[k] > bestV) { bestV = raw[k]; best = k; }
+    });
+    return bestV > 0 ? best : null;
+  }
+  function lightTone(rgbKeys, cwKeys, activeRgb, activeCw, pendingKey) {
+    if (pendingKey) return LIGHT_DOT_COLOR[pendingKey];
+    if (rgbKeys.length === 3) return activeRgb ? LIGHT_DOT_COLOR[activeRgb] : "var(--accent)";
+    if (cwKeys.length) return activeCw ? LIGHT_DOT_COLOR[activeCw] : LIGHT_DOT_COLOR[cwKeys[0]];
+    return "var(--accent)";
+  }
+  function lightPost(name, payload) {
+    var body = {}; body[name] = payload;
+    fetch("/cmnd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(function () {});
+  }
+  function lightToggle(name, nextOn) {
+    lightMergePending(name, undefined, undefined, { on: nextOn });
+    render();
+    lightPost(name, { on: nextOn });
+  }
+  function lightSetColor(name, key, group) {
+    var v = lightEffectiveV(name) || 100;
+    var payload = key === "r" ? { h: 0, s: 100, v: v, on: true }
+      : key === "g" ? { h: 120, s: 100, v: v, on: true }
+      : key === "b" ? { h: 240, s: 100, v: v, on: true }
+      : key === "c" ? { cct: 100, v: v, on: true }
+      : { cct: 0, v: v, on: true };
+    lightMergePending(name, group, key, { on: true });
+    render();
+    lightPost(name, payload);
+  }
+  var lightLast = {}, lightTimer = {};
+  function lightSetValue(name, v) {
+    v = Math.max(0, Math.min(100, v | 0));
+    lightMergePending(name, undefined, undefined, { on: true, v: v });
+    render();
+    var send = function () {
+      lightLast[name] = Date.now();
+      lightPost(name, { v: v, on: true });
+    };
+    var now = Date.now();
+    if (now - (lightLast[name] || 0) > 120) send();
+    else { clearTimeout(lightTimer[name]); lightTimer[name] = setTimeout(send, 130); }
+  }
+  function buildLightCards(keys, t) {
+    var wrap = $("light-cards");
+    wrap.innerHTML = "";
+    keys.forEach(function (name) {
+      var raw = t[name] || {};
+      var rgbKeys = ["r", "g", "b"].filter(function (k) { return raw[k] != null; });
+      var cwKeys = ["c", "w"].filter(function (k) { return raw[k] != null; });
+      var allKeys = rgbKeys.concat(cwKeys);
+      var showDots = allKeys.length >= 2;
+
+      var dotsHtml = !showDots ? "" : allKeys.map(function (k) {
+        return '<button class="light-dot' + (k === "c" ? " cold" : "") + '" data-ch="' + k +
+          '" title="' + LIGHT_DOT_LABEL[k] + '" style="background:' + LIGHT_DOT_COLOR[k] + '"></button>';
+      }).join("");
+
+      var card = document.createElement("div");
+      card.className = "card light-card";
+      card.innerHTML =
+        '<div class="light-card-head">' +
+          '<div class="light-card-left">' +
+            '<button class="toggle sm" role="switch" aria-checked="false"><span class="knob"></span></button>' +
+            '<div class="row-title"></div>' +
+          '</div>' +
+          '<div class="light-card-right">' +
+            '<span class="light-dots">' + dotsHtml + '</span>' +
+            '<span class="light-pct mono">0%</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="light-slider"><div class="light-slider-fill"></div><input type="range" min="0" max="100" class="slider"></div>';
+
+      card._name = name;
+      card._rgbKeys = rgbKeys;
+      card._cwKeys = cwKeys;
+      card._lastRaw = raw;
+      card.querySelector(".row-title").textContent = lightPretty(name);
+
+      var toggle = card.querySelector(".toggle");
+      var inp = card.querySelector(".slider");
       toggle.addEventListener("click", function () {
         var on = toggle.getAttribute("aria-checked") === "true";
-        var v;
-        if (on) { pwmPrev[k] = parseInt(inp.value, 10) || 0; v = 0; }
-        else { v = pwmPrev[k] || 255; }
-        strip._setUI(v); syncMaster(); var o = {}; o[k] = v; pwmPost(o);
+        lightToggle(name, !on);
       });
-      grid.appendChild(strip);
+      inp.addEventListener("input", function () { lightSetValue(name, +inp.value); });
+      inp.addEventListener("click", function (e) {
+        var r = inp.getBoundingClientRect();
+        var v = Math.max(0, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
+        lightSetValue(name, v);
+      });
+      [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
+        var k = dot.getAttribute("data-ch");
+        dot.addEventListener("click", function () {
+          lightSetColor(name, k, rgbKeys.indexOf(k) >= 0 ? "rgb" : "cw");
+        });
+      });
+      wrap.appendChild(card);
     });
-    $("pwm-toggle").onclick = function () {
-      var on = $("pwm-toggle").getAttribute("aria-checked") === "true";
-      var obj = {};
-      [].forEach.call(grid.children, function (strip) {
-        var inp = strip.querySelector(".slider"), key = strip._key;
-        if (on) { pwmPrev[key] = parseInt(inp.value, 10) || 0; obj[key] = 0; }
-        else { obj[key] = pwmPrev[key] || 255; }
-        strip._setUI(obj[key]);
-      });
-      $("pwm-toggle").setAttribute("aria-checked", on ? "false" : "true");
-      pwmPost(obj);
-    };
   }
 
   function doReset() {
@@ -299,6 +361,7 @@
     var off = !state.online;
     document.querySelector(".wrap").classList.toggle("offline", off);
     $("switch-cards").classList.toggle("ctl-off", off);
+    $("light-cards").classList.toggle("ctl-off", off);
     rb.classList.toggle("ctl-off", off && state.resetPhase === "idle");
     $("reconnect").hidden = !off;
 
@@ -406,6 +469,7 @@
 
     // switch cards
     var switchKeys = Array.isArray(t.switches) ? t.switches : [];
+    $("controls-label").hidden = switchKeys.length === 0;
     var swSig = switchKeys.join(",");
     if (swSig !== switchKeysBuilt) { buildSwitchCards(switchKeys); switchKeysBuilt = swSig; }
     [].forEach.call($("switch-cards").children, function (card) {
@@ -414,21 +478,41 @@
       card.querySelector(".row-sub").textContent = on ? "On" : "Off";
     });
 
-    // LED strips (present only when the pwm_led component is enabled) — data-driven
-    var pwm = (t.pwm_led && typeof t.pwm_led === "object" && !Array.isArray(t.pwm_led) && Object.keys(t.pwm_led).length) ? t.pwm_led : null;
-    $("pwm-card").hidden = !pwm;
-    if (pwm) {
-      var keys = Object.keys(pwm);
-      var sig = keys.join(",");
-      if (sig !== pwmKeysBuilt) { buildPwmStrips(keys); pwmKeysBuilt = sig; }
-      var anyOn = false;
-      [].forEach.call($("pwm-strips").children, function (strip) {
-        var v = pwm[strip._key] | 0;
-        if (document.activeElement !== strip.querySelector(".slider")) strip._setUI(v);
-        if (v > 0) anyOn = true;
+    // Lights — data-driven from t.lights
+    var lightNames = Array.isArray(t.lights) ? t.lights : [];
+    $("light-label").hidden = lightNames.length === 0;
+    var lightSig = lightNames.join(",");
+    if (lightSig !== lightKeysBuilt) { buildLightCards(lightNames, t); lightKeysBuilt = lightSig; }
+    [].forEach.call($("light-cards").children, function (card) {
+      var name = card._name;
+      var raw = t[name] || {};
+      card._lastRaw = raw;
+      var pend = pendingLights[name];
+      var fresh = pend && (Date.now() - pend.ts < PENDING_TTL_MS);
+      var on = fresh && pend.patch.on != null ? pend.patch.on : !!raw.on;
+      var v = fresh && pend.patch.v != null ? pend.patch.v : Math.max(0, Math.min(100, raw.v | 0));
+
+      var rgbKeys = card._rgbKeys, cwKeys = card._cwKeys;
+      var activeRgb = (fresh && pend.group === "rgb") ? pend.key : lightActiveInGroup(raw, rgbKeys);
+      var activeCw = (fresh && pend.group === "cw") ? pend.key : lightActiveInGroup(raw, cwKeys);
+      var tone = lightTone(rgbKeys, cwKeys, activeRgb, activeCw, fresh && pend.key);
+
+      var toggle = card.querySelector(".toggle");
+      toggle.setAttribute("aria-checked", on ? "true" : "false");
+      toggle.style.background = on ? tone : "";
+
+      [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
+        var k = dot.getAttribute("data-ch");
+        dot.classList.toggle("active", k === activeRgb || k === activeCw);
       });
-      $("pwm-toggle").setAttribute("aria-checked", anyOn ? "true" : "false");
-    }
+
+      card.querySelector(".light-pct").textContent = v + "%";
+      var slider = card.querySelector(".slider");
+      if (document.activeElement !== slider) slider.value = v;
+      card.querySelector(".light-slider-fill").style.width = v + "%";
+      card.querySelector(".light-slider-fill").style.background = tone;
+      card.querySelector(".light-slider").style.opacity = on ? 1 : 0.5;
+    });
 
     // system
     var rows = [
