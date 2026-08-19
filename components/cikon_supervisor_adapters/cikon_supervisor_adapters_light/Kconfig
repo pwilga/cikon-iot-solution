@@ -66,4 +66,12 @@ menu "Cikon IoT Supervisor Light Adapter"
 
     endif
 
+    config LIGHT_PERSIST_STATE
+        bool "Persist light state across reboots (NVS)"
+        default y
+        help
+            Save brightness/color/CCT to NVS and restore on boot. On/off is only
+            restored after a planned restart (cmnd restart/OTA/resetconf) -
+            after power loss/panic/watchdog the light stays off.
+
 endmenu

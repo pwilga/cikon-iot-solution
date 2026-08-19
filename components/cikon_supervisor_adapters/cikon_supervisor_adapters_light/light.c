@@ -6,8 +6,13 @@
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "soc/gpio_num.h"
 #include "soc/soc_caps.h"
+
+#if CONFIG_LIGHT_PERSIST_STATE
+#include "nvs.h"
+#endif
 
 #include "cJSON.h"
 
@@ -37,8 +42,8 @@ typedef enum {
 typedef struct {
     gpio_num_t gpio;
     light_channel_role_t role;
-    ledc_channel_t ledc_ch;  // unused when role == CH_SWITCH
-    bool active_level;       // physical level meaning "on"; only meaningful when role == CH_SWITCH
+    ledc_channel_t ledc_ch; // unused when role == CH_SWITCH
+    bool active_level;      // physical level meaning "on"; only meaningful when role == CH_SWITCH
 } light_channel_t;
 
 typedef struct {
@@ -47,7 +52,7 @@ typedef struct {
     bool has_color;        // has R+G+B
     bool has_white;        // has C and/or W
     bool has_cct;          // has C and W together (real cold/warm mixing)
-    bool is_switch;         // true = pure on/off relay light (role S) - no PWM/brightness at all
+    bool is_switch;        // true = pure on/off relay light (role S) - no PWM/brightness at all
     char name[16];
     bool on;
     bool color_mode;  // true = RGB output active, false = C/W output active
@@ -55,6 +60,25 @@ typedef struct {
     uint8_t sat, val; // 0-100, color mode (val also doubles as white-mode brightness)
     uint16_t cct;     // 0-100, white mode cold/warm ratio
 } light_config_t;
+
+#if CONFIG_LIGHT_PERSIST_STATE
+// "on" is persisted but only conditionally restored (light_should_restore_on) - see
+// light_restore_state.
+typedef struct __attribute__((packed)) {
+    uint8_t on;
+    uint8_t color_mode;
+    uint8_t val;
+    uint8_t sat;
+    uint16_t hue;
+    uint16_t cct;
+} light_persist_entry_t;
+
+#define LIGHT_NVS_NAMESPACE "light_state"
+
+static light_persist_entry_t last_saved_state[CONFIG_LIGHT_MAX_COUNT];
+static bool state_dirty = false;
+static uint32_t light_config_fingerprint_cached;
+#endif
 
 static light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 static bool light_initialized = false;
@@ -463,6 +487,9 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
     cJSON_Delete(root);
 
     light_update_output(light);
+#if CONFIG_LIGHT_PERSIST_STATE
+    state_dirty = true;
+#endif
 }
 
 // One cmnd is registered per configured light, each pointing at its own trampoline below -
@@ -484,6 +511,109 @@ LIGHT_CMND_LIST
 static const command_handler_t light_cmnd_trampolines[] = {LIGHT_CMND_LIST};
 #undef X
 
+#if CONFIG_LIGHT_PERSIST_STATE
+// Local hash (FNV-1a) - CONFIG_LIGHT_GPIO_LIST is a fixed string at build time, so this only
+// needs to run once per boot; the result is cached in light_config_fingerprint_cached.
+static uint32_t light_config_fingerprint(void) {
+    const char *s = CONFIG_LIGHT_GPIO_LIST;
+    uint32_t hash = 2166136261u;
+    while (*s) {
+        hash ^= (uint8_t)(*s++);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+// Only restore on/off after a restart we triggered ourselves (cmnd restart, OTA, resetconf -
+// all go through esp_safe_restart() -> esp_restart(), which reports as ESP_RST_SW on the next
+// boot). Any other reset reason (power loss, brownout, panic, watchdog) leaves lights off,
+// matching ESPHome's RESTORE_AND_OFF - color/brightness are restored either way, just not the
+// on/off state itself.
+static bool light_should_restore_on(void) { return esp_reset_reason() == ESP_RST_SW; }
+
+static void light_save_state(void) {
+    light_persist_entry_t current[CONFIG_LIGHT_MAX_COUNT] = {0};
+    for (int i = 0; lights[i].channel_count != 0; i++) {
+        current[i].on = lights[i].on;
+        current[i].color_mode = lights[i].color_mode;
+        current[i].val = lights[i].val;
+        current[i].sat = lights[i].sat;
+        current[i].hue = lights[i].hue;
+        current[i].cct = lights[i].cct;
+    }
+
+    if (memcmp(current, last_saved_state, sizeof(current)) == 0) {
+        return;
+    }
+
+    nvs_handle_t handle;
+    if (nvs_open(LIGHT_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for light state save");
+        return;
+    }
+    if (nvs_set_blob(handle, "state", current, sizeof(current)) == ESP_OK &&
+        nvs_commit(handle) == ESP_OK) {
+        memcpy(last_saved_state, current, sizeof(current));
+        state_dirty = false;
+        ESP_LOGI(TAG, "Light state saved to NVS");
+    } else {
+        ESP_LOGW(TAG, "Failed to save light state to NVS");
+    }
+    nvs_close(handle);
+}
+
+// Must run before any LEDC/GPIO output setup below, so lights snap straight to their
+// restored state instead of flashing defaults first (same reasoning as switch.c's restore
+// ordering comment).
+static void light_restore_state(void) {
+    nvs_handle_t handle;
+    if (nvs_open(LIGHT_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for light state restore");
+        return;
+    }
+
+    uint32_t saved_fingerprint = 0;
+    esp_err_t fp_err = nvs_get_u32(handle, "fingerprint", &saved_fingerprint);
+    if (fp_err != ESP_OK || saved_fingerprint != light_config_fingerprint_cached) {
+        nvs_set_u32(handle, "fingerprint", light_config_fingerprint_cached);
+        nvs_commit(handle);
+        ESP_LOGI(TAG, "Light config changed or first boot, discarding saved light state");
+        nvs_close(handle);
+        return;
+    }
+
+    light_persist_entry_t saved[CONFIG_LIGHT_MAX_COUNT] = {0};
+    size_t size = sizeof(saved);
+    if (nvs_get_blob(handle, "state", saved, &size) == ESP_OK) {
+        bool restore_on = light_should_restore_on();
+        for (int i = 0; lights[i].channel_count != 0; i++) {
+            lights[i].color_mode = saved[i].color_mode;
+            lights[i].val = saved[i].val;
+            lights[i].sat = saved[i].sat;
+            lights[i].hue = saved[i].hue;
+            lights[i].cct = saved[i].cct;
+            if (restore_on) {
+                lights[i].on = saved[i].on;
+            }
+        }
+        memcpy(last_saved_state, saved, sizeof(saved));
+        ESP_LOGI(TAG, "Light state restored from NVS (on/off %s)",
+                 restore_on ? "restored" : "left off");
+    }
+    nvs_close(handle);
+}
+
+#endif
+
+static void light_adapter_on_interval(supervisor_interval_stage_t stage) {
+#if CONFIG_LIGHT_PERSIST_STATE
+    if (stage == SUPERVISOR_INTERVAL_10S && state_dirty) {
+        light_save_state();
+    }
+#endif
+    (void)stage;
+}
+
 static esp_err_t light_adapter_init(void) {
 
     ESP_LOGI(TAG, "Initializing light adapter");
@@ -494,6 +624,11 @@ static esp_err_t light_adapter_init(void) {
 
     light_gamma_init();
     light_parse_list();
+
+#if CONFIG_LIGHT_PERSIST_STATE
+    light_config_fingerprint_cached = light_config_fingerprint();
+    light_restore_state();
+#endif
 
     ledc_timer_config_t timer_config = {.speed_mode = LEDC_LOW_SPEED_MODE,
                                         .duty_resolution = LEDC_TIMER_8_BIT,
@@ -547,8 +682,19 @@ static esp_err_t light_adapter_init(void) {
                      light->name, i);
             break;
         }
-        cmnd_register(light->name, "Set light color/CCT/state ({h,s,v,cct,on} or on/off/toggle)",
-                      light_cmnd_trampolines[i]);
+        const char *description;
+        if (light->is_switch) {
+            description = "Set switch state (on/off/toggle)";
+        } else if (light->has_color && light->has_cct) {
+            description = "Set light color/CCT/brightness/state ({h,s,v,cct,on} or on/off/toggle)";
+        } else if (light->has_color) {
+            description = "Set light color/brightness/state ({h,s,v,on} or on/off/toggle)";
+        } else if (light->has_cct) {
+            description = "Set light CCT/brightness/state ({cct,v,on} or on/off/toggle)";
+        } else {
+            description = "Set light brightness/state ({v,on} or on/off/toggle)";
+        }
+        cmnd_register(light->name, description, light_cmnd_trampolines[i]);
     }
 
     light_initialized = true;
@@ -560,6 +706,10 @@ static esp_err_t light_adapter_shutdown(void) {
     if (!light_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
+
+#if CONFIG_LIGHT_PERSIST_STATE
+    light_save_state();
+#endif
 
     for (int i = 0; lights[i].channel_count != 0; i++) {
         cmnd_unregister(lights[i].name);
@@ -581,6 +731,9 @@ void light_set_state(const char *name, bool on) {
     }
     lights[idx].on = on;
     light_update_output(&lights[idx]);
+#if CONFIG_LIGHT_PERSIST_STATE
+    state_dirty = true;
+#endif
 }
 
 bool light_get_state(const char *name) {
@@ -724,10 +877,7 @@ static void light_ha_build(cJSON *payload, const char *sanitized_name) {
 }
 
 #define HA_ENTITY_ENTRY(light_name)                                                                \
-    {.type = HA_LIGHT,                                                                             \
-     .name = light_name,                                                                           \
-     .icon = "mdi:led-strip-variant",                                                              \
-     .custom_builder = light_ha_build},
+    {.type = HA_LIGHT, .name = light_name, .custom_builder = light_ha_build},
 
 static const ha_metadata_t light_ha_metadata = {
     .magic = HA_METADATA_MAGIC, .entities = {HA_ENTITY_LIST{.type = HA_ENTITY_NONE}}};
@@ -738,6 +888,7 @@ supervisor_platform_adapter_t light_adapter = {
     .name = "light",
     .init = light_adapter_init,
     .shutdown = light_adapter_shutdown,
+    .on_interval = light_adapter_on_interval,
     .tele_group = (const tele_entry_t[]){{"light", tele_light}, {NULL, NULL}},
     .cmnd_group = NULL, // registered dynamically per light in light_adapter_init
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
