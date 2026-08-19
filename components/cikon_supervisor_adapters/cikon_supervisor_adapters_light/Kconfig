@@ -2,11 +2,12 @@ menu "Cikon IoT Supervisor Light Adapter"
 
     config LIGHT_MAX_COUNT
         int "Maximum number of lights"
-        default 4
+        default 6
         range 1 8
         help
             Maximum number of logical "light" entities. Each light is one physical
-            fixture (1-5 GPIO channels: Red/Green/Blue/Cold-white/Warm-white).
+            fixture (1-5 GPIO channels: Red/Green/Blue/Cold-white/Warm-white, or a
+            single plain on/off relay/switch channel).
 
     config LIGHT_GPIO_LIST
         string "Light channel list (role+gpio pairs per light, comma-separated)"
@@ -14,10 +15,30 @@ menu "Cikon IoT Supervisor Light Adapter"
         help
             Comma-separated list of lights. Each light is a '+'-joined set of
             <role><gpio> channel tokens, optionally followed by ":name".
-            Roles: R=red, G=green, B=blue, C=cold-white, W=warm-white.
-            Supported role sets (one token per role): C | W | CW | RGB | RGBC |
-            RGBW | RGBCW.
-            Example: "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip"
+
+            Roles:
+              - R = red
+              - G = green
+              - B = blue
+              - C = cold-white
+              - W = warm-white
+              - S = plain on/off relay/switch (no PWM/brightness/color)
+
+            Supported role sets (one token per role):
+              - C | W | CW                (white / CCT only)
+              - RGB | RGBC | RGBW | RGBCW (color, optionally + white)
+              - S                         (on/off only - cannot combine
+                                            with any other role)
+
+            S active-level suffix (appended directly to the GPIO number,
+            not ':'-separated - ':' is reserved for the trailing light
+            name):
+              - S<gpio>   -> active-high (default)
+              - S<gpio>H  -> active-high (explicit)
+              - S<gpio>L  -> active-low
+
+            Example:
+              "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip,S26L:Porch Bulb"
 
     config LIGHT_PWM_FREQUENCY
         int "PWM frequency (Hz)"

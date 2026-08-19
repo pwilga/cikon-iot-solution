@@ -1,4 +1,4 @@
-menu "DS18B20 Temperature Sensor Adapter"
+menu "Cikon IoT Supervisor DS18B20 Adapter"
 
 config DS18B20_GPIO
     int "1-Wire GPIO pin"

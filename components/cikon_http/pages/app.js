@@ -225,6 +225,7 @@
     wrap.innerHTML = "";
     keys.forEach(function (name) {
       var raw = t[name] || {};
+      var hasBrightness = raw.v != null;
       var rgbKeys = ["r", "g", "b"].filter(function (k) { return raw[k] != null; });
       var cwKeys = ["c", "w"].filter(function (k) { return raw[k] != null; });
       var allKeys = rgbKeys.concat(cwKeys);
@@ -235,6 +236,10 @@
           '" title="' + LIGHT_DOT_LABEL[k] + '" style="background:' + LIGHT_DOT_COLOR[k] + '"></button>';
       }).join("");
 
+      var rightHtml = hasBrightness
+        ? '<span class="light-dots">' + dotsHtml + '</span><span class="light-pct mono">0%</span>'
+        : '<span class="light-state-text">Off</span>';
+
       var card = document.createElement("div");
       card.className = "card light-card";
       card.innerHTML =
@@ -243,31 +248,33 @@
             '<button class="toggle sm" role="switch" aria-checked="false"><span class="knob"></span></button>' +
             '<div class="row-title"></div>' +
           '</div>' +
-          '<div class="light-card-right">' +
-            '<span class="light-dots">' + dotsHtml + '</span>' +
-            '<span class="light-pct mono">0%</span>' +
-          '</div>' +
+          '<div class="light-card-right">' + rightHtml + '</div>' +
         '</div>' +
-        '<div class="light-slider"><div class="light-slider-fill"></div><input type="range" min="1" max="100" class="slider"></div>';
+        (hasBrightness
+          ? '<div class="light-slider"><div class="light-slider-fill"></div><input type="range" min="1" max="100" class="slider"></div>'
+          : '');
 
       card._name = name;
+      card._hasBrightness = hasBrightness;
       card._rgbKeys = rgbKeys;
       card._cwKeys = cwKeys;
       card._lastRaw = raw;
       card.querySelector(".row-title").textContent = lightPretty(name);
 
       var toggle = card.querySelector(".toggle");
-      var inp = card.querySelector(".slider");
       toggle.addEventListener("click", function () {
         var on = toggle.getAttribute("aria-checked") === "true";
         lightToggle(name, !on);
       });
-      inp.addEventListener("input", function () { lightSetValue(name, +inp.value); });
-      inp.addEventListener("click", function (e) {
-        var r = inp.getBoundingClientRect();
-        var v = Math.max(1, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
-        lightSetValue(name, v);
-      });
+      if (hasBrightness) {
+        var inp = card.querySelector(".slider");
+        inp.addEventListener("input", function () { lightSetValue(name, +inp.value); });
+        inp.addEventListener("click", function (e) {
+          var r = inp.getBoundingClientRect();
+          var v = Math.max(1, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
+          lightSetValue(name, v);
+        });
+      }
       [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
         var k = dot.getAttribute("data-ch");
         dot.addEventListener("click", function () {
@@ -493,11 +500,17 @@
 
       var allChKeys = card._rgbKeys.concat(card._cwKeys);
       var activeKey = (fresh && pend.key) ? pend.key : lightActiveInGroup(raw, allChKeys);
-      var tone = lightTone(allChKeys, activeKey);
+      var tone = !card._hasBrightness ? "#deb98c" : lightTone(allChKeys, activeKey);
 
       var toggle = card.querySelector(".toggle");
       toggle.setAttribute("aria-checked", on ? "true" : "false");
       toggle.style.background = on ? tone : "";
+
+      if (!card._hasBrightness) {
+        var stateText = card.querySelector(".light-state-text");
+        if (stateText) stateText.textContent = on ? "On" : "Off";
+        return;
+      }
 
       [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
         var k = dot.getAttribute("data-ch");

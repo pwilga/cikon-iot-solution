@@ -1,4 +1,4 @@
-menu "Cikon Ethernet Hardware"
+menu "Cikon IoT Ethernet Configuration"
 
 choice ETHERNET_HARDWARE
     prompt "Ethernet Backend"

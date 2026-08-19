@@ -1,4 +1,4 @@
-menu "Certificate Loader"
+menu "Cikon IoT Certificate Loader Configuration"
 
     config CERTS_DIR
         string "Directory for TLS certificates on LittleFS"

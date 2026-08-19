@@ -1,4 +1,4 @@
-menu "Thread Common - Radio"
+menu "Cikon IoT Thread Common Radio Configuration"
 
     config THREAD_RADIO_RCP_UART_PORT
         int "UART port number for RCP"

@@ -1,4 +1,4 @@
-menu "ESP-NOW RX Adapter"
+menu "Cikon IoT Supervisor ESP-NOW RX Adapter"
 
     config ESPNOW_RX_AUTO_START
         bool "Auto-start ESP-NOW RX on boot"

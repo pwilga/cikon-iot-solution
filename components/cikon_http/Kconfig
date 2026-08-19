@@ -1,4 +1,4 @@
-menu "cikon_http"
+menu "Cikon IoT HTTP Configuration"
 
     config HTTP_ENABLE_WEBDAV
         bool "Enable WebDAV server at /dav/"

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_log.h"
 #include "soc/gpio_num.h"
@@ -23,12 +24,21 @@
 #define LIGHT_KELVIN_MIN 2200
 #define LIGHT_KELVIN_MAX 7000
 
-typedef enum { CH_NONE = 0, CH_R, CH_G, CH_B, CH_C, CH_W } light_channel_role_t;
+typedef enum {
+    CH_NONE = 0,
+    CH_RED,
+    CH_GREEN,
+    CH_BLUE,
+    CH_COLD_WHITE,
+    CH_WARM_WHITE,
+    CH_SWITCH
+} light_channel_role_t;
 
 typedef struct {
     gpio_num_t gpio;
     light_channel_role_t role;
-    ledc_channel_t ledc_ch;
+    ledc_channel_t ledc_ch;  // unused when role == CH_SWITCH
+    bool active_level;       // physical level meaning "on"; only meaningful when role == CH_SWITCH
 } light_channel_t;
 
 typedef struct {
@@ -37,6 +47,7 @@ typedef struct {
     bool has_color;        // has R+G+B
     bool has_white;        // has C and/or W
     bool has_cct;          // has C and W together (real cold/warm mixing)
+    bool is_switch;         // true = pure on/off relay light (role S) - no PWM/brightness at all
     char name[16];
     bool on;
     bool color_mode;  // true = RGB output active, false = C/W output active
@@ -96,14 +107,18 @@ static bool light_shape_from_mask(uint8_t mask, bool *has_color, bool *has_white
         uint8_t mask;
         bool has_color, has_white, has_cct;
     } table[] = {
-        {(1u << CH_C), false, true, false},
-        {(1u << CH_W), false, true, false},
-        {(1u << CH_C) | (1u << CH_W), false, true, true},
-        {(1u << CH_R) | (1u << CH_G) | (1u << CH_B), true, false, false},
-        {(1u << CH_R) | (1u << CH_G) | (1u << CH_B) | (1u << CH_C), true, true, false},
-        {(1u << CH_R) | (1u << CH_G) | (1u << CH_B) | (1u << CH_W), true, true, false},
-        {(1u << CH_R) | (1u << CH_G) | (1u << CH_B) | (1u << CH_C) | (1u << CH_W), true, true,
-         true},
+        {(1u << CH_COLD_WHITE), false, true, false},
+        {(1u << CH_WARM_WHITE), false, true, false},
+        {(1u << CH_COLD_WHITE) | (1u << CH_WARM_WHITE), false, true, true},
+        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE), true, false, false},
+        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE) | (1u << CH_COLD_WHITE), true, true,
+         false},
+        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE) | (1u << CH_WARM_WHITE), true, true,
+         false},
+        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE) | (1u << CH_COLD_WHITE) |
+             (1u << CH_WARM_WHITE),
+         true, true, true},
+        {(1u << CH_SWITCH), false, false, false},
     };
 
     for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
@@ -135,19 +150,22 @@ static bool light_parse_channels(char *channels_str, light_channel_t *out_channe
         light_channel_role_t role;
         switch (toupper((unsigned char)cursor[0])) {
         case 'R':
-            role = CH_R;
+            role = CH_RED;
             break;
         case 'G':
-            role = CH_G;
+            role = CH_GREEN;
             break;
         case 'B':
-            role = CH_B;
+            role = CH_BLUE;
             break;
         case 'C':
-            role = CH_C;
+            role = CH_COLD_WHITE;
             break;
         case 'W':
-            role = CH_W;
+            role = CH_WARM_WHITE;
+            break;
+        case 'S':
+            role = CH_SWITCH;
             break;
         default:
             ESP_LOGW(TAG, "Unknown channel role '%c' in '%s'", cursor[0], channels_str);
@@ -159,15 +177,35 @@ static bool light_parse_channels(char *channels_str, light_channel_t *out_channe
             return false;
         }
 
+        char *digits_end = cursor + 1;
+        while (isdigit((unsigned char)*digits_end)) {
+            digits_end++;
+        }
+
         int gpio = atoi(cursor + 1);
         if (gpio < 0 || gpio >= SOC_GPIO_PIN_COUNT) {
             ESP_LOGW(TAG, "Invalid GPIO %d in '%s'", gpio, channels_str);
             return false;
         }
 
+        bool active_level = true; // default active-high; only meaningful for role CH_SWITCH
+        if (role == CH_SWITCH) {
+            char suffix = (char)toupper((unsigned char)*digits_end);
+            if (suffix == 'L') {
+                active_level = false;
+            } else if (suffix != '\0' && suffix != 'H') {
+                ESP_LOGW(TAG,
+                         "Invalid active-level suffix '%c' for S channel in '%s' (expected "
+                         "'H' or 'L')",
+                         *digits_end, channels_str);
+                return false;
+            }
+        }
+
         role_mask |= (1u << role);
         out_channels[channel_count].gpio = (gpio_num_t)gpio;
         out_channels[channel_count].role = role;
+        out_channels[channel_count].active_level = active_level;
         channel_count++;
 
         cursor = separator ? separator + 1 : NULL;
@@ -215,12 +253,15 @@ static void light_parse_list(void) {
             role_mask |= (1u << parsed[c].role);
         }
 
+        bool is_switch = (role_mask == (1u << CH_SWITCH));
+
         if (!light_shape_from_mask(role_mask, &light->has_color, &light->has_white,
                                    &light->has_cct)) {
             ESP_LOGE(TAG, "Skipping light '%s': unsupported channel combination", token);
             token = strtok(NULL, ",");
             continue;
         }
+        light->is_switch = is_switch;
 
         // default values
         light->val = 50;
@@ -229,7 +270,7 @@ static void light_parse_list(void) {
         light->cct = 50;
         light->color_mode = light->has_color && !light->has_white;
 
-        if (next_ledc_channel + parsed_count > SOC_LEDC_CHANNEL_NUM) {
+        if (!is_switch && next_ledc_channel + parsed_count > SOC_LEDC_CHANNEL_NUM) {
             ESP_LOGE(TAG, "Skipping light '%s': not enough LEDC channels left", token);
             token = strtok(NULL, ",");
             continue;
@@ -238,7 +279,8 @@ static void light_parse_list(void) {
         memcpy(light->channels, parsed, sizeof(parsed));
         light->channel_count = parsed_count;
         for (uint8_t c = 0; c < parsed_count; c++) {
-            light->channels[c].ledc_ch = (ledc_channel_t)next_ledc_channel++;
+            light->channels[c].ledc_ch =
+                is_switch ? (ledc_channel_t)0 : (ledc_channel_t)next_ledc_channel++;
         }
 
         if (name && strlen(name) > 0) {
@@ -303,6 +345,17 @@ static void light_update_output(light_config_t *light) {
             if (light->has_cct) {
                 c = gamma_lut[(light->val * light->cct) / 100];
                 w = gamma_lut[(light->val * (100 - light->cct)) / 100];
+                // Splitting val between two channels before the gamma lookup can
+                // round both shares down to 0 at low brightness (e.g. val=1,
+                // cct=50: 50/100 truncates to 0 twice), even though val > 0 -
+                // keep the dominant channel of the mix at least barely lit.
+                if (light->val > 0 && c == 0 && w == 0) {
+                    if (light->cct >= 50) {
+                        c = 1;
+                    } else {
+                        w = 1;
+                    }
+                }
             } else {
                 uint8_t value = gamma_lut[light->val];
                 c = value;
@@ -312,21 +365,27 @@ static void light_update_output(light_config_t *light) {
     }
 
     for (uint8_t i = 0; i < light->channel_count; i++) {
+        if (light->channels[i].role == CH_SWITCH) {
+            gpio_set_level(light->channels[i].gpio,
+                           light->on == light->channels[i].active_level ? 1 : 0);
+            continue;
+        }
+
         uint8_t value = 0;
         switch (light->channels[i].role) {
-        case CH_R:
+        case CH_RED:
             value = r;
             break;
-        case CH_G:
+        case CH_GREEN:
             value = g;
             break;
-        case CH_B:
+        case CH_BLUE:
             value = b;
             break;
-        case CH_C:
+        case CH_COLD_WHITE:
             value = c;
             break;
-        case CH_W:
+        case CH_WARM_WHITE:
             value = w;
             break;
         default:
@@ -457,6 +516,16 @@ static esp_err_t light_adapter_init(void) {
         light_config_t *light = &lights[i];
 
         for (uint8_t c = 0; c < light->channel_count; c++) {
+            if (light->channels[c].role == CH_SWITCH) {
+                gpio_num_t gpio = light->channels[c].gpio;
+                if (gpio_reset_pin(gpio) != ESP_OK ||
+                    gpio_set_direction(gpio, GPIO_MODE_OUTPUT) != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to configure GPIO %d for light '%s'", gpio, light->name);
+                }
+                gpio_set_level(gpio, light->on == light->channels[c].active_level ? 1 : 0);
+                continue;
+            }
+
             ledc_channel_config_t ch_config = {.gpio_num = light->channels[c].gpio,
                                                .speed_mode = LEDC_LOW_SPEED_MODE,
                                                .channel = light->channels[c].ledc_ch,
@@ -534,7 +603,9 @@ static void tele_light(const char *tele_id, cJSON *json_root) {
         cJSON *obj = cJSON_CreateObject();
 
         cJSON_AddBoolToObject(obj, "on", light->on);
-        cJSON_AddNumberToObject(obj, "v", light->val);
+        if (!light->is_switch) {
+            cJSON_AddNumberToObject(obj, "v", light->val);
+        }
 
         if (light->has_cct) {
             cJSON_AddNumberToObject(obj, "cct", light->cct);
@@ -565,8 +636,8 @@ static void tele_light(const char *tele_id, cJSON *json_root) {
         // color_temp_template still reads cct) so a simple UI can render one control per
         // physical channel just by checking which keys are present, with no capability
         // flags to interpret: has "c" -> cold-white button, has "w" -> warm-white button.
-        bool has_c = light_has_role(light, CH_C);
-        bool has_w = light_has_role(light, CH_W);
+        bool has_c = light_has_role(light, CH_COLD_WHITE);
+        bool has_w = light_has_role(light, CH_WARM_WHITE);
         if (has_c || has_w) {
             uint8_t c_val = 0, w_val = 0;
             if (!light->color_mode || !light->has_color) {
@@ -626,8 +697,10 @@ static void light_ha_build(cJSON *payload, const char *sanitized_name) {
              sanitized_name);
     cJSON_AddStringToObject(payload, "state_template", buf);
 
-    snprintf(buf, sizeof(buf), "{{ (value_json.%s.v / 100 * 255) | round }}", sanitized_name);
-    cJSON_AddStringToObject(payload, "brightness_template", buf);
+    if (idx >= 0 && !lights[idx].is_switch) {
+        snprintf(buf, sizeof(buf), "{{ (value_json.%s.v / 100 * 255) | round }}", sanitized_name);
+        cJSON_AddStringToObject(payload, "brightness_template", buf);
+    }
 
     if (idx >= 0 && lights[idx].has_color) {
         snprintf(buf, sizeof(buf), "{{ value_json.%s.r }}", sanitized_name);

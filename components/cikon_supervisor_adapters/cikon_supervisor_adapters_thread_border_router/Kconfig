@@ -1,4 +1,4 @@
-menu "Thread Border Router Adapter"
+menu "Cikon IoT Supervisor Thread Border Router Adapter"
 
     config THREAD_BORDER_ROUTER_NETWORK_NAME
         string "Thread network name"

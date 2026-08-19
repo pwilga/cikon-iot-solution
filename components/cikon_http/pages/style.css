@@ -201,6 +201,7 @@ body {
 .light-dot.cold { border: 1px solid var(--faint); }
 .light-dot.active { opacity: 1; transform: scale(1.08); }
 .light-pct { font-size: 13px; font-weight: 600; color: var(--muted); min-width: 34px; text-align: right; font-family: ui-monospace, Menlo, monospace; }
+.light-state-text { font-size: 13px; font-weight: 600; color: var(--muted); }
 .light-slider { position: relative; height: 24px; display: flex; align-items: center; }
 .light-slider::before { content: ""; position: absolute; left: 0; right: 0; height: 12px; border-radius: 6px; background: var(--track-off); }
 .light-slider-fill { pointer-events: none; position: relative; z-index: 1; height: 12px; border-radius: 6px; transition: width .06s; }
