@@ -8,5 +8,7 @@ maintainers:
 
 dependencies:
   idf: ">=5.0"
-  espressif/cjson: "*"
+  espressif/cjson:
+    version: "*"
+    require: public  # json_parser.h (public header) includes cJSON.h
 

@@ -5,6 +5,7 @@ idf_component_register(
         "include"
     PRIV_REQUIRES
         esp_driver_gpio
+        nvs_flash
 )
 
 # X-Macro Pattern for Dynamic cmnd Trampoline Generation

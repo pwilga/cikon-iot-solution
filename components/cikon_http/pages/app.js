@@ -134,8 +134,11 @@
       var card = document.createElement("div");
       card.className = "card row";
       card.innerHTML =
-        '<div><div class="row-title"></div><div class="row-sub"></div></div>' +
-        '<button class="toggle" role="switch" aria-checked="false"><span class="knob"></span></button>';
+        '<div class="switch-card-left">' +
+          '<button class="toggle switch-toggle" role="switch" aria-checked="false"><span class="knob"></span></button>' +
+          '<div class="row-title"></div>' +
+        '</div>' +
+        '<div class="row-sub"></div>';
       card.querySelector(".row-title").textContent = switchPretty(name);
       card._name = name;
       card.querySelector(".toggle").addEventListener("click", function () { switchToggle(name); });

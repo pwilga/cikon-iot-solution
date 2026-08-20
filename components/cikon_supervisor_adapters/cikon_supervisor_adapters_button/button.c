@@ -1,4 +1,3 @@
-// TODO: Test on many buttons, currently tested just for one.
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +8,7 @@
 #include "soc/gpio_num.h"
 
 #include "button_adapter.h"
+#include "json_parser.h"
 #include "supervisor.h"
 
 #define TAG "cikon:adapter:button"
@@ -134,8 +134,12 @@ static esp_err_t button_adapter_init(void) {
                                    (void *)(uintptr_t)button_count);
 
             if (name && strlen(name) > 0) {
-                strncpy(button_names[button_count], name, sizeof(button_names[button_count]) - 1);
+                char *sanitized_name = sanitize(name);
+                strncpy(button_names[button_count], sanitized_name,
+                        sizeof(button_names[button_count]) - 1);
                 button_names[button_count][sizeof(button_names[button_count]) - 1] = '\0';
+                free(sanitized_name);
+
                 ESP_LOGI(TAG, "Button %d '%s' initialized on GPIO %d (active %s)", button_count,
                          button_names[button_count], gpio, active_level ? "HIGH" : "LOW");
             } else {

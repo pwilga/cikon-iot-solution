@@ -6,10 +6,13 @@
 #include "soc/gpio_num.h"
 #include "soc/soc_caps.h"
 
+#if CONFIG_SWITCH_PERSIST_STATE
+#include "nvs.h"
+#endif
+
 #include "cJSON.h"
 
 #include "cmnd.h"
-#include "config_manager.h"
 #include "json_parser.h"
 #include "metadata.h"
 #include "supervisor.h"
@@ -24,6 +27,15 @@ typedef struct {
     bool state;        // Cached logical state
     char name[16];
 } switch_config_t;
+
+#if CONFIG_SWITCH_PERSIST_STATE
+#define SWITCH_NVS_NAMESPACE "switch_state"
+
+// SWITCH_MAX_COUNT is capped at 16 (see Kconfig), so all on/off states fit in one bitmask -
+// no blob/array needed, just a plain NVS u16.
+static uint16_t last_saved_state = 0;
+static uint32_t switch_config_fingerprint_cached;
+#endif
 
 static switch_config_t switches[CONFIG_SWITCH_MAX_COUNT + 1]; // +1 sentinel
 static bool switch_initialized = false;
@@ -128,18 +140,77 @@ static int8_t switch_find_by_name(const char *name) {
     return -1;
 }
 
-// Persists on every change (not deferred to shutdown) - unlike LED brightness, a switch
-// changes rarely enough that NVS wear isn't a concern, and this is what actually survives a
-// software reset/watchdog/panic (shutdown() only runs on a clean cmnd/restart).
+#if CONFIG_SWITCH_PERSIST_STATE
+// Local hash (FNV-1a) - CONFIG_SWITCH_GPIO_LIST is a fixed string at build time, so this
+// only needs to run once per boot; the result is cached in switch_config_fingerprint_cached.
+static uint32_t switch_config_fingerprint(void) {
+    const char *s = CONFIG_SWITCH_GPIO_LIST;
+    uint32_t hash = 2166136261u;
+    while (*s) {
+        hash ^= (uint8_t)(*s++);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
 static void switch_save_state(void) {
-    uint32_t packed = 0;
+    uint16_t current = 0;
     for (int i = 0; switches[i].gpio != GPIO_NUM_NC; i++) {
         if (switches[i].state) {
-            packed |= (1U << i);
+            current |= (1U << i);
         }
     }
-    config_set_switch_state(packed);
+
+    if (current == last_saved_state) {
+        return;
+    }
+
+    nvs_handle_t handle;
+    if (nvs_open(SWITCH_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for switch state save");
+        return;
+    }
+    if (nvs_set_u16(handle, "state", current) == ESP_OK && nvs_commit(handle) == ESP_OK) {
+        last_saved_state = current;
+        ESP_LOGI(TAG, "Switch state saved to NVS");
+    } else {
+        ESP_LOGW(TAG, "Failed to save switch state to NVS");
+    }
+    nvs_close(handle);
 }
+
+// Must run before any gpio_set_direction/gpio_set_level below, so switches snap straight to
+// their restored state instead of "off" first and then corrected. Unlike light.c, on/off is
+// always restored here regardless of reset reason - a relay is expected to come back to its
+// last state even after a power loss, not just a planned restart.
+static void switch_restore_state(void) {
+    nvs_handle_t handle;
+    if (nvs_open(SWITCH_NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to open NVS for switch state restore");
+        return;
+    }
+
+    uint32_t saved_fingerprint = 0;
+    esp_err_t fp_err = nvs_get_u32(handle, "fingerprint", &saved_fingerprint);
+    if (fp_err != ESP_OK || saved_fingerprint != switch_config_fingerprint_cached) {
+        nvs_set_u32(handle, "fingerprint", switch_config_fingerprint_cached);
+        nvs_commit(handle);
+        ESP_LOGI(TAG, "Switch config changed or first boot, discarding saved switch state");
+        nvs_close(handle);
+        return;
+    }
+
+    uint16_t saved = 0;
+    if (nvs_get_u16(handle, "state", &saved) == ESP_OK) {
+        for (int i = 0; switches[i].gpio != GPIO_NUM_NC; i++) {
+            switches[i].state = (saved >> i) & 1U;
+        }
+        last_saved_state = saved;
+        ESP_LOGI(TAG, "Switch state restored from NVS");
+    }
+    nvs_close(handle);
+}
+#endif // CONFIG_SWITCH_PERSIST_STATE
 
 // One cmnd is registered per configured switch (see switch_adapter_init), each pointing at
 // its own trampoline below - command_handler_t carries no context, so a single shared
@@ -174,15 +245,17 @@ static esp_err_t switch_adapter_init(void) {
 
     switch_parse_list();
 
+#if CONFIG_SWITCH_PERSIST_STATE
     // Restore before the first gpio_set_direction/gpio_set_level so the pin goes straight to
     // its intended state, instead of "off" first and then corrected - minimizes the glitch
     // window on relays after a reset (the GPIO reset itself briefly de-energizes it either way,
     // that part isn't avoidable in software).
-    uint32_t saved_state = config_get()->switch_state;
+    switch_config_fingerprint_cached = switch_config_fingerprint();
+    switch_restore_state();
+#endif
 
     for (int i = 0; switches[i].gpio != GPIO_NUM_NC; i++) {
         switch_config_t *out = &switches[i];
-        out->state = (saved_state >> i) & 1U;
         ESP_ERROR_CHECK(gpio_reset_pin(out->gpio));
         ESP_ERROR_CHECK(gpio_set_direction(out->gpio, GPIO_MODE_OUTPUT));
         ESP_ERROR_CHECK(gpio_set_level(out->gpio, out->state == out->active_level ? 1 : 0));
@@ -229,7 +302,9 @@ void switch_set_state(const char *name, bool on) {
     switch_config_t *out = &switches[idx];
     out->state = on;
     ESP_ERROR_CHECK(gpio_set_level(out->gpio, on == out->active_level ? 1 : 0));
+#if CONFIG_SWITCH_PERSIST_STATE
     switch_save_state();
+#endif
 }
 
 bool switch_get_state(const char *name) {

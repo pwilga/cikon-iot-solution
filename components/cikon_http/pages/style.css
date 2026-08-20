@@ -98,6 +98,10 @@ body {
 /* Layout */
 .chip-label { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 4px 8px; }
 .caps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* Vanilla-port-only override, no .dc.html equivalent (sc-if removes the node there
+   instead of using [hidden]) - #caps/#status-chips are toggled via .hidden in app.js,
+   and without this the display:flex above beats the browser's [hidden] rule. */
+.caps[hidden] { display: none; }
 .grid { margin-top: 14px; }
 .cols { display: flex; gap: 22px; align-items: flex-start; }
 .col { flex: 1 1 0; min-width: 0; }
@@ -147,6 +151,9 @@ body {
 .fw-built { font-size: 11.5px; color: var(--faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fw-built[hidden] { display: none; }
 .switch-cards .card + .card { margin-top: 12px; }
+.switch-card-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.switch-card-left .row-title { margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switch-cards .row-sub { font-size: 13px; font-weight: 600; }
 .light-cards .card + .card { margin-top: 12px; }
 
 /* Toggle */
@@ -157,6 +164,8 @@ body {
 .toggle.sm { width: 40px; height: 24px; border-radius: 12px; }
 .toggle.sm .knob { width: 18px; height: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
 .toggle.sm[aria-checked="true"] .knob { transform: translateX(16px); }
+.toggle.switch-toggle { width: 44px; height: 26px; border-radius: 13px; }
+.toggle.switch-toggle .knob { width: 20px; height: 20px; }
 
 /* Tasks */
 .tasks-section { margin-top: 26px; }

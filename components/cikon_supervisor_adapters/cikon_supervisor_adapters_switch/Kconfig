@@ -18,4 +18,12 @@ menu "Cikon IoT Supervisor Switch Adapter"
             name is optional and free-form (auto-named as "gpio<N>" if omitted).
             Example: "14:1:ceiling_relay,27:0:garden_valve".
 
+    config SWITCH_PERSIST_STATE
+        bool "Persist switch state across reboots (NVS)"
+        default y
+        help
+            Save on/off state to NVS and restore on boot. Only restored after a planned
+            restart (cmnd restart/OTA/resetconf) - after power loss/panic/watchdog the
+            switch stays off, matching ESPHome's RESTORE_AND_OFF.
+
 endmenu
