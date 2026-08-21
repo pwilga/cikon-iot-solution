@@ -164,8 +164,6 @@ body {
 .toggle.sm { width: 40px; height: 24px; border-radius: 12px; }
 .toggle.sm .knob { width: 18px; height: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
 .toggle.sm[aria-checked="true"] .knob { transform: translateX(16px); }
-.toggle.switch-toggle { width: 44px; height: 26px; border-radius: 13px; }
-.toggle.switch-toggle .knob { width: 20px; height: 20px; }
 
 /* Tasks */
 .tasks-section { margin-top: 26px; }
@@ -208,7 +206,7 @@ body {
 .light-dots { display: flex; align-items: center; gap: 8px; }
 .light-dot { width: 18px; height: 18px; border-radius: 50%; border: none; cursor: pointer; padding: 0; flex: none; opacity: .4; transform: none; transition: opacity .15s, transform .15s, box-shadow .15s; }
 .light-dot.cold { border: 1px solid var(--faint); }
-.light-dot.active { opacity: 1; transform: scale(1.08); }
+.light-dot.active { opacity: 1; transform: scale(1.08); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--dot-c); }
 .light-pct { font-size: 13px; font-weight: 600; color: var(--muted); min-width: 34px; text-align: right; font-family: ui-monospace, Menlo, monospace; }
 .light-state-text { font-size: 13px; font-weight: 600; color: var(--muted); }
 .light-slider { position: relative; height: 24px; display: flex; align-items: center; }

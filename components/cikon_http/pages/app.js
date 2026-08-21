@@ -135,7 +135,7 @@
       card.className = "card row";
       card.innerHTML =
         '<div class="switch-card-left">' +
-          '<button class="toggle switch-toggle" role="switch" aria-checked="false"><span class="knob"></span></button>' +
+          '<button class="toggle sm" role="switch" aria-checked="false"><span class="knob"></span></button>' +
           '<div class="row-title"></div>' +
         '</div>' +
         '<div class="row-sub"></div>';
@@ -234,9 +234,12 @@
       var allKeys = rgbKeys.concat(cwKeys);
       var showDots = allKeys.length >= 2;
 
+      // --dot-c carries this dot's own color into .light-dot.active's box-shadow ring in
+      // style.css (matches .dc.html's boxShadow: '0 0 0 2px var(--surface), 0 0 0 4px ' + dotColor[k]).
       var dotsHtml = !showDots ? "" : allKeys.map(function (k) {
         return '<button class="light-dot' + (k === "c" ? " cold" : "") + '" data-ch="' + k +
-          '" title="' + LIGHT_DOT_LABEL[k] + '" style="background:' + LIGHT_DOT_COLOR[k] + '"></button>';
+          '" title="' + LIGHT_DOT_LABEL[k] + '" style="background:' + LIGHT_DOT_COLOR[k] +
+          ';--dot-c:' + LIGHT_DOT_COLOR[k] + '"></button>';
       }).join("");
 
       var rightHtml = hasBrightness
