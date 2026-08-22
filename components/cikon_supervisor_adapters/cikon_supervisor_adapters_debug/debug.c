@@ -252,7 +252,7 @@ static esp_err_t debug_adapter_shutdown(void) {
     return ESP_OK;
 }
 
-static void tele_debug_temperature(const char *tele_id, cJSON *json_root) {
+static void tele_debug_sensor_temp(const char *tele_id, cJSON *json_root) {
     float temp = random_float(20.5f, 25.9f);
     cJSON_AddNumberToObject(json_root, tele_id, temp);
 }
@@ -322,13 +322,13 @@ static const command_entry_t debug_commands[] = {
     {"coredump_erase", "Erase core dump partition", cmnd_debug_coredump_erase},
     {NULL, NULL, NULL}};
 
-static const tele_entry_t debug_telemetry[] = {{"temperature", tele_debug_temperature},
+static const tele_entry_t debug_telemetry[] = {{"debug_sensor_temp", tele_debug_sensor_temp},
                                                {NULL, NULL}};
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 static const ha_metadata_t debug_ha_metadata = {
     .magic = HA_METADATA_MAGIC,
-    .entities = {{.type = HA_SENSOR, .name = "Temperature", .device_class = "temperature"},
+    .entities = {{.type = HA_SENSOR, .name = "Debug Sensor Temp", .device_class = "temperature"},
                  {.type = HA_ENTITY_NONE}}};
 #endif
 
