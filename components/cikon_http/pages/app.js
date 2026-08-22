@@ -505,7 +505,11 @@
       var v = fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
 
       var allChKeys = card._rgbKeys.concat(card._cwKeys);
-      var activeKey = (fresh && pend.key) ? pend.key : lightActiveInGroup(raw, allChKeys);
+      // c/w are always trustworthy: either real scaled brightness (white mode) or exactly 0
+      // (RGB mode). r/g/b in white mode is a decorative cct-only approximation and inflated,
+      // so never compare the two groups together.
+      var activeKey = (fresh && pend.key) ? pend.key
+        : (lightActiveInGroup(raw, card._cwKeys) || lightActiveInGroup(raw, card._rgbKeys));
       var tone = !card._hasBrightness ? "#deb98c" : lightTone(allChKeys, activeKey);
 
       var toggle = card.querySelector(".toggle");

@@ -146,7 +146,7 @@ esp_err_t inet_adapter_init(void) {
 
     wifi_configure(&creds);
 
-    set_restart_callback(inet_restart_cb);
+    register_restart_callback(inet_restart_cb);
 
     // Register callback for AP timeout -> STA mode switch
     wifi_set_ap_timeout_callback(inet_stop_services);
@@ -189,7 +189,7 @@ esp_err_t inet_adapter_shutdown(void) {
     inet_common_mdns_shutdown();
 
     // Unregister callbacks
-    set_restart_callback(NULL);
+    unregister_restart_callback(inet_restart_cb);
     wifi_set_ap_timeout_callback(NULL);
 
     if (network_transition_mutex) {

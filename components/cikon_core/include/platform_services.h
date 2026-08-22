@@ -25,7 +25,19 @@ const device_info_t *get_device_info(void);
 
 void core_system_init(void);
 
-void set_restart_callback(void (*cb)(void));
+/**
+ * @brief Register a callback to run when esp_safe_restart() is called, before the reset.
+ * Multiple independent callbacks may be registered (e.g. one from cikon_supervisor for
+ * crash-loop bookkeeping, one from a network adapter for graceful MQTT shutdown) — they do
+ * not overwrite each other. Registering the same function pointer twice is a no-op.
+ */
+void register_restart_callback(void (*cb)(void));
+
+/**
+ * @brief Unregister a previously registered restart callback. No-op if not registered.
+ */
+void unregister_restart_callback(void (*cb)(void));
+
 void esp_safe_restart();
 /**
  * @brief Returns true from the moment esp_safe_restart() is called until the device resets.

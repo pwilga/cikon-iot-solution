@@ -34,7 +34,7 @@
 
 #define TAG "cikon:platform"
 
-static void (*restart_callback)(void) = NULL;
+static void (*restart_callbacks[CONFIG_RESTART_MAX_CALLBACKS])(void) = {0};
 static bool s_restarting = false;
 
 void core_system_init(void) {
@@ -73,13 +73,38 @@ void core_system_init(void) {
 #endif
 }
 
-void set_restart_callback(void (*cb)(void)) { restart_callback = cb; }
+void register_restart_callback(void (*cb)(void)) {
+    if (!cb) {
+        return;
+    }
+    for (int i = 0; i < CONFIG_RESTART_MAX_CALLBACKS; i++) {
+        if (restart_callbacks[i] == cb) {
+            return; // already registered
+        }
+        if (restart_callbacks[i] == NULL) {
+            restart_callbacks[i] = cb;
+            return;
+        }
+    }
+    ESP_LOGE(TAG, "No free restart callback slots (max %d)", CONFIG_RESTART_MAX_CALLBACKS);
+}
+
+void unregister_restart_callback(void (*cb)(void)) {
+    for (int i = 0; i < CONFIG_RESTART_MAX_CALLBACKS; i++) {
+        if (restart_callbacks[i] == cb) {
+            restart_callbacks[i] = NULL;
+            return;
+        }
+    }
+}
 
 void esp_safe_restart() {
     s_restarting = true;
 
-    if (restart_callback) {
-        restart_callback();
+    for (int i = 0; i < CONFIG_RESTART_MAX_CALLBACKS; i++) {
+        if (restart_callbacks[i]) {
+            restart_callbacks[i]();
+        }
     }
 
     esp_restart();

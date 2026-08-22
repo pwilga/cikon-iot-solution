@@ -117,7 +117,7 @@ static esp_err_t inet_ethernet_adapter_init(void) {
         return ret;
     }
 
-    set_restart_callback(inet_common_on_restart);
+    register_restart_callback(inet_common_on_restart);
 
     initialized = true;
     ESP_LOGI(TAG, "Ethernet adapter initialized, waiting for IP...");
@@ -143,7 +143,7 @@ static esp_err_t inet_ethernet_adapter_shutdown(void) {
     }
 
     inet_ethernet_stop_services();
-    set_restart_callback(NULL);
+    unregister_restart_callback(inet_common_on_restart);
     ethernet_shutdown();
 
     initialized = false;

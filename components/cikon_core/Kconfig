@@ -36,4 +36,12 @@ menu "Cikon IoT Board Configuration"
         default "web_storage"
         depends on VFS_SPIFFS_ENABLED
 
+    config RESTART_MAX_CALLBACKS
+        int "Maximum number of restart callbacks"
+        default 4
+        range 2 8
+        help
+            Maximum number of callbacks that can register via register_restart_callback()
+            to run before esp_safe_restart() resets the device.
+
 endmenu

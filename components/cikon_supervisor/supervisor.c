@@ -15,11 +15,15 @@
 #include "config_manager.h"
 #include "enum_helpers.h"
 #include "json_parser.h"
+#include "nvs.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
 
 #define TAG "cikon:supervisor"
+
+#define SUPERVISOR_NVS_NAMESPACE "supervisor"
+#define SUPERVISOR_NVS_KEY_BOOT_COUNTER "boot_counter"
 
 static QueueHandle_t supervisor_queue;
 static EventGroupHandle_t supervisor_event_group;
@@ -30,9 +34,9 @@ static uint8_t adapter_count = 0;
 // OTA rollback validation
 static bool firmware_validated = false;
 
-
 // Safe mode state
 static bool safe_mode_active = false;
+static uint32_t s_boot_counter = 0;
 
 // Forward declarations for readability - handlers/appenders defined at end of file
 static const command_entry_t core_commands[];
@@ -140,13 +144,36 @@ const supervisor_platform_adapter_t **supervisor_get_adapters(void) {
 
 bool supervisor_is_safe_mode_active(void) { return safe_mode_active; }
 
+static void supervisor_boot_counter_set(uint32_t value) {
+    s_boot_counter = value;
+    nvs_handle_t nvs;
+    if (nvs_open(SUPERVISOR_NVS_NAMESPACE, NVS_READWRITE, &nvs) != ESP_OK) {
+        return;
+    }
+    nvs_set_u32(nvs, SUPERVISOR_NVS_KEY_BOOT_COUNTER, value);
+    nvs_commit(nvs);
+    nvs_close(nvs);
+}
+
+static void supervisor_boot_counter_load(void) {
+    nvs_handle_t nvs;
+    if (nvs_open(SUPERVISOR_NVS_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) {
+        s_boot_counter = 0;
+        return;
+    }
+    if (nvs_get_u32(nvs, SUPERVISOR_NVS_KEY_BOOT_COUNTER, &s_boot_counter) != ESP_OK) {
+        s_boot_counter = 0;
+    }
+    nvs_close(nvs);
+}
+
 // Safe mode implementation - inspired by ESPHome safe mode mechanism
 // https://github.com/esphome/esphome/blob/dev/esphome/components/safe_mode/safe_mode.cpp
 // Detects repeated crashes/panics and automatically clears after stable operation
 static bool safe_mode_check(void) {
 
     esp_reset_reason_t reason = esp_reset_reason();
-    uint32_t boot_counter = config_get()->boot_counter;
+    uint32_t boot_counter = s_boot_counter;
 
     if (is_abnormal_reset(reason)) {
 
@@ -154,7 +181,7 @@ static bool safe_mode_check(void) {
         ESP_LOGW(TAG, "Crash detected (%s), boot counter: %" PRIu32 "/%" PRIu32,
                  esp_reset_reason_to_string(reason), boot_counter,
                  (uint32_t)CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD);
-        config_set_boot_counter(boot_counter);
+        supervisor_boot_counter_set(boot_counter);
     }
 
     if (boot_counter >= CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD) {
@@ -170,8 +197,15 @@ static bool safe_mode_check(void) {
     return false;
 }
 
+static void supervisor_on_restart(void) {
+    if (safe_mode_active) {
+        supervisor_boot_counter_set(0);
+        ESP_LOGI(TAG, "Boot counter cleared before restart (exiting safe mode)");
+    }
+}
+
 static void safe_mode_clear(void) {
-    config_set_boot_counter(0);
+    supervisor_boot_counter_set(0);
 
     if (safe_mode_active) {
         ESP_LOGI(TAG, "Boot counter cleared - restart to exit safe mode");
@@ -220,7 +254,7 @@ static void supervisor_on_interval(supervisor_interval_stage_t stage) {
 
     // Auto-clear boot counter after stable operation (check every 5s)
     // This prevents false positives from sporadic crashes spread over time
-    if (stage == SUPERVISOR_INTERVAL_5S && config_get()->boot_counter > 0 &&
+    if (stage == SUPERVISOR_INTERVAL_5S && s_boot_counter > 0 &&
         (esp_timer_get_time() / 1000000ULL) > CONFIG_SUPERVISOR_SAFE_MODE_STABLE_TIME_S) {
         safe_mode_clear();
     }
@@ -358,6 +392,8 @@ void supervisor_init(void) {
 
     core_system_init();
     config_manager_init();
+    supervisor_boot_counter_load();
+    register_restart_callback(supervisor_on_restart);
 
     static StaticQueue_t supervisor_queue_storage;
     static uint8_t
@@ -634,28 +670,29 @@ static const command_entry_t core_commands[] = {
     {"adapter", "Enable/disable adapter by name", supervisor_adapter_control_handler},
     {NULL, NULL, NULL}};
 
-static const tele_entry_t core_tele[] = {{"uptime", tele_uptime_appender},
-                                         {"boot_time", tele_startup_appender},
-                                         {"free_heap", tele_free_heap_appender},
-                                         {"min_heap", tele_min_heap_appender},
-                                         {"name", tele_name_appender},
-                                         {"version", tele_version_appender},
-                                         {"idf", tele_idf_appender},
-                                         {"chip", tele_chip_appender},
-                                         {"chip_rev", tele_chip_rev_appender},
-                                         {"cores", tele_cores_appender},
-                                         {"id", tele_id_appender},
-                                         {"app_build_time", tele_app_build_time_appender},
-                                         {"bootloader_version", tele_bootloader_version_appender},
-                                         {"bootloader_idf", tele_bootloader_idf_appender},
-                                         {"bootloader_build_time", tele_bootloader_build_time_appender},
-                                         {"ota_state", tele_ota_state_appender},
-                                         {"features", tele_features_appender},
-                                         {"flash_size", tele_flash_size_appender},
-                                         {"psram_size", tele_psram_size_appender},
-                                         {"cpu_freq", tele_cpu_freq_appender},
-                                         {"reset_reason", tele_reset_reason_appender},
-                                         {"fs_used", tele_fs_used_appender},
-                                         {"fs_total", tele_fs_total_appender},
-                                         {"chip_temp", tele_chip_temp_appender},
-                                         {NULL, NULL}};
+static const tele_entry_t core_tele[] = {
+    {"uptime", tele_uptime_appender},
+    {"boot_time", tele_startup_appender},
+    {"free_heap", tele_free_heap_appender},
+    {"min_heap", tele_min_heap_appender},
+    {"name", tele_name_appender},
+    {"version", tele_version_appender},
+    {"idf", tele_idf_appender},
+    {"chip", tele_chip_appender},
+    {"chip_rev", tele_chip_rev_appender},
+    {"cores", tele_cores_appender},
+    {"id", tele_id_appender},
+    {"app_build_time", tele_app_build_time_appender},
+    {"bootloader_version", tele_bootloader_version_appender},
+    {"bootloader_idf", tele_bootloader_idf_appender},
+    {"bootloader_build_time", tele_bootloader_build_time_appender},
+    {"ota_state", tele_ota_state_appender},
+    {"features", tele_features_appender},
+    {"flash_size", tele_flash_size_appender},
+    {"psram_size", tele_psram_size_appender},
+    {"cpu_freq", tele_cpu_freq_appender},
+    {"reset_reason", tele_reset_reason_appender},
+    {"fs_used", tele_fs_used_appender},
+    {"fs_total", tele_fs_total_appender},
+    {"chip_temp", tele_chip_temp_appender},
+    {NULL, NULL}};

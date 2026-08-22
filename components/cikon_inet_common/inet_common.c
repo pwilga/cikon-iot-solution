@@ -460,10 +460,8 @@ void inet_common_http_handler(const char *args_json_str) {
 
 void inet_common_on_restart(void) {
     if (supervisor_is_safe_mode_active()) {
-        /* Clear boot counter so the device exits safe mode after restart.
-         * TODO: this does not conceptually belong in inet_common — find a better home. */
-        config_set_boot_counter(0);
-        vTaskDelay(pdMS_TO_TICKS(500)); // Ensure NVS write completes before reset
+        // Skip graceful MQTT shutdown in safe mode to avoid delaying the restart
+        // waiting on broker ack.
         return;
     }
     mqtt_publish_offline_state();
