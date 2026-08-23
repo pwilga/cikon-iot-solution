@@ -8,6 +8,7 @@ idf_component_register(
         esp_bootloader_format
         esp_driver_tsens
         esp_event
+        espcoredump
         spi_flash
         esp_hw_support
         esp_timer

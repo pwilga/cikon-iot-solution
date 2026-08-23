@@ -1,14 +1,20 @@
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #include "esp_app_desc.h"
 #include "esp_bootloader_desc.h"
 #include "esp_chip_info.h"
+#include "esp_core_dump.h"
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_ota_ops.h"
+#include "esp_partition.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -283,6 +289,65 @@ bool get_chip_temp(float *out) {
     return s_temp_sensor && temperature_sensor_get_celsius(s_temp_sensor, out) == ESP_OK;
 #else
     (void)out;
+    return false;
+#endif
+}
+
+bool coredump_export_to_littlefs(void) {
+#if CONFIG_VFS_LITTLEFS_ENABLED
+    esp_err_t err = esp_core_dump_image_check();
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "No coredump to export (%s)", esp_err_to_name(err));
+        return false;
+    }
+
+    size_t addr, size;
+    if (esp_core_dump_image_get(&addr, &size) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get coredump image info");
+        return false;
+    }
+
+    const esp_partition_t *part =
+        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+    if (!part) {
+        ESP_LOGE(TAG, "Coredump partition not found");
+        return false;
+    }
+
+    if (mkdir(CONFIG_VFS_LITTLEFS_MOUNT_POINT "/coredump", 0755) != 0 && errno != EEXIST) {
+        ESP_LOGE(TAG, "Failed to create coredump directory: %s", strerror(errno));
+        return false;
+    }
+
+    FILE *f = fopen(CONFIG_VFS_LITTLEFS_MOUNT_POINT "/coredump/coredump.bin", "wb");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to open coredump.bin for writing: %s", strerror(errno));
+        return false;
+    }
+
+    uint8_t buf[1024];
+    size_t offset = 0;
+    bool ok = true;
+    while (offset < size) {
+        size_t chunk = (size - offset) < sizeof(buf) ? (size - offset) : sizeof(buf);
+        if (esp_partition_read(part, offset, buf, chunk) != ESP_OK || fwrite(buf, 1, chunk, f) != chunk) {
+            ESP_LOGE(TAG, "Failed while copying coredump at offset %u", (unsigned)offset);
+            ok = false;
+            break;
+        }
+        offset += chunk;
+    }
+    fclose(f);
+
+    if (ok) {
+        ESP_LOGI(TAG,
+                 "Exported coredump (addr 0x%x, %u bytes) to " CONFIG_VFS_LITTLEFS_MOUNT_POINT
+                 "/coredump/coredump.bin",
+                 (unsigned)addr, (unsigned)size);
+    }
+    return ok;
+#else
+    ESP_LOGW(TAG, "Cannot export coredump: littlefs disabled");
     return false;
 #endif
 }

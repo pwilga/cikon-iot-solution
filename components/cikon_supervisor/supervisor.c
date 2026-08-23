@@ -517,6 +517,11 @@ static void restart_handler(const char *args_json_str) {
     esp_safe_restart();
 }
 
+static void coredump_export_handler(const char *args_json_str) {
+    (void)args_json_str;
+    coredump_export_to_littlefs();
+}
+
 static void help_handler(const char *args_json_str) {
     (void)args_json_str;
 
@@ -668,6 +673,7 @@ static const command_entry_t core_commands[] = {
     {"setconf", "Set configuration from JSON", set_conf_handler},
     {"resetconf", "Reset configuration and restart", reset_conf_handler},
     {"adapter", "Enable/disable adapter by name", supervisor_adapter_control_handler},
+    {"coredump_export", "Export coredump partition to littlefs", coredump_export_handler},
     {NULL, NULL, NULL}};
 
 static const tele_entry_t core_tele[] = {

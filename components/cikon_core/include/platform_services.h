@@ -85,6 +85,7 @@ size_t get_psram_size(void);
 int get_cpu_freq_mhz(void);
 bool get_fs_info(size_t *used, size_t *total);
 bool get_chip_temp(float *out);
+bool coredump_export_to_littlefs(void);
 
 #ifdef __cplusplus
 }
