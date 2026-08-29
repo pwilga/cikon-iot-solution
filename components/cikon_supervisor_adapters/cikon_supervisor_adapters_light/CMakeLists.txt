@@ -27,6 +27,24 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     LIGHT_CMND_LIST=${LIGHT_CMND_LIST}
 )
 
+# LIGHT_HAS_ADDRESSABLE Detection
+# ================================
+# Scans LIGHT_GPIO_LIST for a role-N (addressable WS2812/SK6812 strip) channel token, so
+# the CH_ADDRESSABLE code path in light.c (and its espressif/led_strip usage) is only
+# compiled in when actually configured - devices without a strip don't pay for it.
+string(REPLACE "," ";" LIGHT_ADDR_ITEMS "${CONFIG_LIGHT_GPIO_LIST}")
+set(LIGHT_HAS_ADDRESSABLE FALSE)
+foreach(item ${LIGHT_ADDR_ITEMS})
+    string(REPLACE ":" ";" LIGHT_ADDR_TUPLE "${item}")
+    list(GET LIGHT_ADDR_TUPLE 0 light_addr_channels)
+    if(light_addr_channels MATCHES "(^|\\+)[Nn][0-9]")
+        set(LIGHT_HAS_ADDRESSABLE TRUE)
+    endif()
+endforeach()
+if(LIGHT_HAS_ADDRESSABLE)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_HAS_ADDRESSABLE=1)
+endif()
+
 # X-Macro Pattern for Dynamic HA Entity Generation
 # =================================================
 # Same approach as cikon_supervisor_adapters_switch/CMakeLists.txt, adapted for the

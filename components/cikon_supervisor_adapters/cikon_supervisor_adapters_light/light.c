@@ -23,6 +23,10 @@
 #include "supervisor.h"
 #include "tele.h"
 
+#ifdef LIGHT_HAS_ADDRESSABLE
+#include "led_strip.h"
+#endif
+
 #define TAG "cikon:adapter:light"
 #define LIGHT_MAX_CHANNELS 5
 #define LIGHT_GAMMA 2.2f
@@ -36,14 +40,20 @@ typedef enum {
     CH_BLUE,
     CH_COLD_WHITE,
     CH_WARM_WHITE,
-    CH_SWITCH
+    CH_SWITCH,
+    CH_ADDRESSABLE
 } light_channel_role_t;
 
 typedef struct {
     gpio_num_t gpio;
     light_channel_role_t role;
-    ledc_channel_t ledc_ch; // unused when role == CH_SWITCH
+    ledc_channel_t ledc_ch; // unused when role == CH_SWITCH or CH_ADDRESSABLE
     bool active_level;      // physical level meaning "on"; only meaningful when role == CH_SWITCH
+#ifdef LIGHT_HAS_ADDRESSABLE
+    uint16_t led_count;                            // only meaningful when role == CH_ADDRESSABLE
+    led_color_component_format_t led_color_format; // only meaningful when role == CH_ADDRESSABLE
+    bool has_white_channel; // format has a 4th (W) component; only for CH_ADDRESSABLE
+#endif
 } light_channel_t;
 
 typedef struct {
@@ -53,6 +63,11 @@ typedef struct {
     bool has_white;        // has C and/or W
     bool has_cct;          // has C and W together (real cold/warm mixing)
     bool is_switch;        // true = pure on/off relay light (role S) - no PWM/brightness at all
+#ifdef LIGHT_HAS_ADDRESSABLE
+    bool is_addressable; // true = WS2812/SK6812-style strip (role N) - driven via led_strip, not
+                         // LEDC
+    led_strip_handle_t addressable_handle;
+#endif
     char name[16];
     bool on;
     bool color_mode;  // true = RGB output active, false = C/W output active
@@ -143,6 +158,12 @@ static bool light_shape_from_mask(uint8_t mask, bool *has_color, bool *has_white
              (1u << CH_WARM_WHITE),
          true, true, true},
         {(1u << CH_SWITCH), false, false, false},
+#ifdef LIGHT_HAS_ADDRESSABLE
+        // has_white here is a placeholder - light_parse_list() overrides it per-light from
+        // the channel's actual format suffix (grb vs grbw/rgbw), since that's a per-token
+        // attribute the role bitmask alone can't express.
+        {(1u << CH_ADDRESSABLE), true, false, false},
+#endif
     };
 
     for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
@@ -191,6 +212,11 @@ static bool light_parse_channels(char *channels_str, light_channel_t *out_channe
         case 'S':
             role = CH_SWITCH;
             break;
+#ifdef LIGHT_HAS_ADDRESSABLE
+        case 'N':
+            role = CH_ADDRESSABLE;
+            break;
+#endif
         default:
             ESP_LOGW(TAG, "Unknown channel role '%c' in '%s'", cursor[0], channels_str);
             return false;
@@ -226,10 +252,67 @@ static bool light_parse_channels(char *channels_str, light_channel_t *out_channe
             }
         }
 
+#ifdef LIGHT_HAS_ADDRESSABLE
+        uint16_t led_count = 0;
+        led_color_component_format_t led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
+        bool has_white_channel = false;
+        if (role == CH_ADDRESSABLE) {
+            if (toupper((unsigned char)*digits_end) != 'X') {
+                ESP_LOGW(TAG, "Addressable channel '%s' missing 'x<led count>' (e.g. N4x30)",
+                         channels_str);
+                return false;
+            }
+            char *count_str = digits_end + 1;
+            char *count_end = count_str;
+            while (isdigit((unsigned char)*count_end)) {
+                count_end++;
+            }
+            if (count_end == count_str) {
+                ESP_LOGW(TAG, "Addressable channel '%s' has invalid LED count", channels_str);
+                return false;
+            }
+            led_count = (uint16_t)atoi(count_str);
+            if (led_count == 0) {
+                ESP_LOGW(TAG, "Addressable channel '%s' has zero LED count", channels_str);
+                return false;
+            }
+
+            // Trailing letters after the count = led_strip color component format name
+            // (grb/rgb/grbw/rgbw) - different WS2812 batches/clones use different channel
+            // order, and some strips (e.g. SK6812) have a 4th, separate white channel.
+            char format_buf[8] = {0};
+            size_t format_len = 0;
+            for (char *p = count_end; *p && format_len < sizeof(format_buf) - 1; p++) {
+                format_buf[format_len++] = (char)tolower((unsigned char)*p);
+            }
+
+            if (format_len == 0 || strcmp(format_buf, "grb") == 0) {
+                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
+            } else if (strcmp(format_buf, "rgb") == 0) {
+                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB;
+            } else if (strcmp(format_buf, "grbw") == 0) {
+                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_GRBW;
+                has_white_channel = true;
+            } else if (strcmp(format_buf, "rgbw") == 0) {
+                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_RGBW;
+                has_white_channel = true;
+            } else {
+                ESP_LOGW(TAG, "Addressable channel '%s' has unknown color format '%s'",
+                         channels_str, format_buf);
+                return false;
+            }
+        }
+#endif
+
         role_mask |= (1u << role);
         out_channels[channel_count].gpio = (gpio_num_t)gpio;
         out_channels[channel_count].role = role;
         out_channels[channel_count].active_level = active_level;
+#ifdef LIGHT_HAS_ADDRESSABLE
+        out_channels[channel_count].led_count = led_count;
+        out_channels[channel_count].led_color_format = led_color_format;
+        out_channels[channel_count].has_white_channel = has_white_channel;
+#endif
         channel_count++;
 
         cursor = separator ? separator + 1 : NULL;
@@ -278,6 +361,9 @@ static void light_parse_list(void) {
         }
 
         bool is_switch = (role_mask == (1u << CH_SWITCH));
+#ifdef LIGHT_HAS_ADDRESSABLE
+        bool is_addressable = (role_mask == (1u << CH_ADDRESSABLE));
+#endif
 
         if (!light_shape_from_mask(role_mask, &light->has_color, &light->has_white,
                                    &light->has_cct)) {
@@ -286,6 +372,14 @@ static void light_parse_list(void) {
             continue;
         }
         light->is_switch = is_switch;
+#ifdef LIGHT_HAS_ADDRESSABLE
+        light->is_addressable = is_addressable;
+        // has_white can't be expressed by role_mask alone for CH_ADDRESSABLE (single role bit
+        // covers both grb and grbw tokens) - override from the actual parsed format suffix.
+        if (is_addressable) {
+            light->has_white = parsed[0].has_white_channel;
+        }
+#endif
 
         // default values
         light->val = 50;
@@ -294,7 +388,12 @@ static void light_parse_list(void) {
         light->cct = 50;
         light->color_mode = light->has_color && !light->has_white;
 
-        if (!is_switch && next_ledc_channel + parsed_count > SOC_LEDC_CHANNEL_NUM) {
+#ifdef LIGHT_HAS_ADDRESSABLE
+        bool skip_ledc_alloc = is_switch || is_addressable;
+#else
+        bool skip_ledc_alloc = is_switch;
+#endif
+        if (!skip_ledc_alloc && next_ledc_channel + parsed_count > SOC_LEDC_CHANNEL_NUM) {
             ESP_LOGE(TAG, "Skipping light '%s': not enough LEDC channels left", token);
             token = strtok(NULL, ",");
             continue;
@@ -304,7 +403,7 @@ static void light_parse_list(void) {
         light->channel_count = parsed_count;
         for (uint8_t c = 0; c < parsed_count; c++) {
             light->channels[c].ledc_ch =
-                is_switch ? (ledc_channel_t)0 : (ledc_channel_t)next_ledc_channel++;
+                skip_ledc_alloc ? (ledc_channel_t)0 : (ledc_channel_t)next_ledc_channel++;
         }
 
         if (name && strlen(name) > 0) {
@@ -359,6 +458,23 @@ static int8_t light_find_by_name(const char *name) {
     return -1;
 }
 
+#ifdef LIGHT_HAS_ADDRESSABLE
+// led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw.
+static void addressable_fill(led_strip_handle_t handle, uint16_t count, uint8_t r, uint8_t g,
+                             uint8_t b) {
+    for (uint16_t i = 0; i < count; i++) {
+        led_strip_set_pixel(handle, i, r, g, b);
+    }
+}
+
+static void addressable_fill_rgbw(led_strip_handle_t handle, uint16_t count, uint8_t r, uint8_t g,
+                                  uint8_t b, uint8_t w) {
+    for (uint16_t i = 0; i < count; i++) {
+        led_strip_set_pixel_rgbw(handle, i, r, g, b, w);
+    }
+}
+#endif
+
 static void light_update_output(light_config_t *light) {
     uint8_t r = 0, g = 0, b = 0, c = 0, w = 0;
 
@@ -394,6 +510,22 @@ static void light_update_output(light_config_t *light) {
                            light->on == light->channels[i].active_level ? 1 : 0);
             continue;
         }
+
+#ifdef LIGHT_HAS_ADDRESSABLE
+        if (light->channels[i].role == CH_ADDRESSABLE) {
+            if (light->addressable_handle) {
+                if (light->channels[i].has_white_channel) {
+                    addressable_fill_rgbw(light->addressable_handle, light->channels[i].led_count,
+                                          r, g, b, w);
+                } else {
+                    addressable_fill(light->addressable_handle, light->channels[i].led_count, r, g,
+                                     b);
+                }
+                led_strip_refresh(light->addressable_handle);
+            }
+            continue;
+        }
+#endif
 
         uint8_t value = 0;
         switch (light->channels[i].role) {
@@ -515,10 +647,10 @@ static const command_handler_t light_cmnd_trampolines[] = {LIGHT_CMND_LIST};
 // Local hash (FNV-1a) - CONFIG_LIGHT_GPIO_LIST is a fixed string at build time, so this only
 // needs to run once per boot; the result is cached in light_config_fingerprint_cached.
 static uint32_t light_config_fingerprint(void) {
-    const char *s = CONFIG_LIGHT_GPIO_LIST;
+    const char *cursor = CONFIG_LIGHT_GPIO_LIST;
     uint32_t hash = 2166136261u;
-    while (*s) {
-        hash ^= (uint8_t)(*s++);
+    while (*cursor) {
+        hash ^= (uint8_t)(*cursor++);
         hash *= 16777619u;
     }
     return hash;
@@ -573,8 +705,8 @@ static void light_restore_state(void) {
     }
 
     uint32_t saved_fingerprint = 0;
-    esp_err_t fp_err = nvs_get_u32(handle, "fingerprint", &saved_fingerprint);
-    if (fp_err != ESP_OK || saved_fingerprint != light_config_fingerprint_cached) {
+    esp_err_t fingerprint_err = nvs_get_u32(handle, "fingerprint", &saved_fingerprint);
+    if (fingerprint_err != ESP_OK || saved_fingerprint != light_config_fingerprint_cached) {
         nvs_set_u32(handle, "fingerprint", light_config_fingerprint_cached);
         nvs_commit(handle);
         ESP_LOGI(TAG, "Light config changed or first boot, discarding saved light state");
@@ -661,6 +793,50 @@ static esp_err_t light_adapter_init(void) {
                 continue;
             }
 
+#ifdef LIGHT_HAS_ADDRESSABLE
+            if (light->channels[c].role == CH_ADDRESSABLE) {
+                led_strip_config_t strip_config = {
+                    .strip_gpio_num = light->channels[c].gpio,
+                    .max_leds = light->channels[c].led_count,
+                    .led_model =
+                        light->channels[c].has_white_channel ? LED_MODEL_SK6812 : LED_MODEL_WS2812,
+                    .color_component_format = light->channels[c].led_color_format,
+                    .flags = {.invert_out = false},
+                };
+                // Prefer RMT+DMA where the SoC supports it (S3/C3/C6/H2/P4): frees the SPI bus
+                // entirely for other peripherals (e.g. W5500 ethernet on P4/S3), and gives the
+                // same DMA-backed reliability as SPI without touching a scarce, single-device
+                // bus. Classic ESP32/S2 have no RMT+DMA (SOC_RMT_SUPPORT_DMA is undefined for
+                // them - confirmed in soc_caps.h), so their tiny RMT hardware memory block needs
+                // interrupt-driven refills that WiFi can delay, corrupting colors - SPI+DMA is
+                // the fallback there: real DMA on every ESP32 variant, whole frame streams via
+                // one hardware transfer, no per-refresh CPU-timing dependency. Only the MOSI
+                // line is used - clockless mode.
+                //
+                // NOTE: the RMT+DMA branch is untested on real hardware (only neocikon, a
+                // classic ESP32 using the SPI branch, has been verified end-to-end so far).
+                // Test on an actual S3/C3/C6/H2/P4 device with an addressable strip before
+                // relying on it.
+#if SOC_RMT_SUPPORT_DMA
+                led_strip_rmt_config_t rmt_config = {.clk_src = RMT_CLK_SRC_DEFAULT,
+                                                     .flags = {.with_dma = true}};
+                esp_err_t addressable_err = led_strip_new_rmt_device(&strip_config, &rmt_config,
+                                                                     &light->addressable_handle);
+#else
+                led_strip_spi_config_t spi_config = {.clk_src = SPI_CLK_SRC_DEFAULT,
+                                                     .spi_bus = SPI2_HOST,
+                                                     .flags = {.with_dma = true}};
+                esp_err_t addressable_err = led_strip_new_spi_device(&strip_config, &spi_config,
+                                                                     &light->addressable_handle);
+#endif
+                if (addressable_err != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to init addressable strip for light '%s' GPIO %d",
+                             light->name, light->channels[c].gpio);
+                }
+                continue;
+            }
+#endif
+
             ledc_channel_config_t ch_config = {.gpio_num = light->channels[c].gpio,
                                                .speed_mode = LEDC_LOW_SPEED_MODE,
                                                .channel = light->channels[c].ledc_ch,
@@ -713,6 +889,12 @@ static esp_err_t light_adapter_shutdown(void) {
 
     for (int i = 0; lights[i].channel_count != 0; i++) {
         cmnd_unregister(lights[i].name);
+#ifdef LIGHT_HAS_ADDRESSABLE
+        if (lights[i].is_addressable && lights[i].addressable_handle) {
+            led_strip_del(lights[i].addressable_handle);
+            lights[i].addressable_handle = NULL;
+        }
+#endif
     }
 
 #if CONFIG_LIGHT_ENABLE_FADE

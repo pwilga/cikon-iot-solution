@@ -23,11 +23,15 @@ menu "Cikon IoT Supervisor Light Adapter"
               - C = cold-white
               - W = warm-white
               - S = plain on/off relay/switch (no PWM/brightness/color)
+              - N = addressable strip (WS2812/SK6812), solid color only -
+                    exclusive, cannot combine with any other role
 
             Supported role sets (one token per role):
               - C | W | CW                (white / CCT only)
               - RGB | RGBC | RGBW | RGBCW (color, optionally + white)
               - S                         (on/off only - cannot combine
+                                            with any other role)
+              - N                         (addressable strip - cannot combine
                                             with any other role)
 
             S active-level suffix (appended directly to the GPIO number,
@@ -37,8 +41,19 @@ menu "Cikon IoT Supervisor Light Adapter"
               - S<gpio>H  -> active-high (explicit)
               - S<gpio>L  -> active-low
 
+            N<gpio>x<count>[<format>] suffix (LED count is required; color
+            format is optional, defaults to grb):
+              - N<gpio>x<count>       -> WS2812, GRB order (most common)
+              - N<gpio>x<count>rgb    -> WS2812, RGB order
+              - N<gpio>x<count>grbw   -> SK6812, GRB + separate white
+              - N<gpio>x<count>rgbw   -> SK6812, RGB + separate white
+            Even "plain" WS2812 strips vary in channel order between
+            batches/clones - grb is a starting guess to verify on the actual
+            strip (send a known color and check it comes out right), not a
+            given.
+
             Example:
-              "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip,S26L:Porch Bulb"
+              "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip,S26L:Porch Bulb,N4x30:Tree"
 
     config LIGHT_PWM_FREQUENCY
         int "PWM frequency (Hz)"
