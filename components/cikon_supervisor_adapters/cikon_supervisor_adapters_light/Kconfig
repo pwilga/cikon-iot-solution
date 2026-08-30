@@ -89,4 +89,33 @@ menu "Cikon IoT Supervisor Light Adapter"
             restored after a planned restart (cmnd restart/OTA/resetconf) -
             after power loss/panic/watchdog the light stays off.
 
+    config LIGHT_ENABLE_EFFECTS
+        bool "Enable addressable strip animation effects"
+        default y
+        help
+            Dedicated FreeRTOS task driving time-based animations on addressable
+            (WS2812/SK6812, role N) lights. The task sleeps fully blocked (zero
+            CPU) whenever no light is animating, but still permanently reserves
+            its stack (~3-4KB RAM) once the device boots. Can be set to n for a
+            device with a strip that only ever wants a fixed color, to pay
+            nothing extra - light.c then behaves exactly as it does today.
+            No effect on pure PWM lights - only compiled in when a role-N
+            channel is also configured in LIGHT_GPIO_LIST.
+
+    if LIGHT_ENABLE_EFFECTS
+
+        config LIGHT_EFFECTS_FPS
+            int "Addressable effects animation frame rate"
+            default 60
+            range 10 120
+            help
+                Target frame rate for the effects task. WLED's field-proven
+                default is 42 (WLED_FPS in their FX.h), used across their whole
+                install base from a handful of LEDs to many hundreds - a
+                comfortable margin even there. 60 has more headroom for our
+                current (short, 30-LED) strips; adjust down for a device with a
+                much longer strip (led_strip_refresh time scales with LED count).
+
+    endif
+
 endmenu

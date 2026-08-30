@@ -19,6 +19,7 @@
 #include "cmnd.h"
 #include "json_parser.h"
 #include "light_adapter.h"
+#include "light_internal.h"
 #include "metadata.h"
 #include "supervisor.h"
 #include "tele.h"
@@ -27,54 +28,14 @@
 #include "led_strip.h"
 #endif
 
+#if LIGHT_EFFECTS_BUILD
+#include "light_effects.h"
+#endif
+
 #define TAG "cikon:adapter:light"
-#define LIGHT_MAX_CHANNELS 5
 #define LIGHT_GAMMA 2.2f
 #define LIGHT_KELVIN_MIN 2200
 #define LIGHT_KELVIN_MAX 7000
-
-typedef enum {
-    CH_NONE = 0,
-    CH_RED,
-    CH_GREEN,
-    CH_BLUE,
-    CH_COLD_WHITE,
-    CH_WARM_WHITE,
-    CH_SWITCH,
-    CH_ADDRESSABLE
-} light_channel_role_t;
-
-typedef struct {
-    gpio_num_t gpio;
-    light_channel_role_t role;
-    ledc_channel_t ledc_ch; // unused when role == CH_SWITCH or CH_ADDRESSABLE
-    bool active_level;      // physical level meaning "on"; only meaningful when role == CH_SWITCH
-#ifdef LIGHT_HAS_ADDRESSABLE
-    uint16_t led_count;                            // only meaningful when role == CH_ADDRESSABLE
-    led_color_component_format_t led_color_format; // only meaningful when role == CH_ADDRESSABLE
-    bool has_white_channel; // format has a 4th (W) component; only for CH_ADDRESSABLE
-#endif
-} light_channel_t;
-
-typedef struct {
-    light_channel_t channels[LIGHT_MAX_CHANNELS];
-    uint8_t channel_count; // 0 == unused slot (sentinel)
-    bool has_color;        // has R+G+B
-    bool has_white;        // has C and/or W
-    bool has_cct;          // has C and W together (real cold/warm mixing)
-    bool is_switch;        // true = pure on/off relay light (role S) - no PWM/brightness at all
-#ifdef LIGHT_HAS_ADDRESSABLE
-    bool is_addressable; // true = WS2812/SK6812-style strip (role N) - driven via led_strip, not
-                         // LEDC
-    led_strip_handle_t addressable_handle;
-#endif
-    char name[16];
-    bool on;
-    bool color_mode;  // true = RGB output active, false = C/W output active
-    uint16_t hue;     // 0-360, color mode
-    uint8_t sat, val; // 0-100, color mode (val also doubles as white-mode brightness)
-    uint16_t cct;     // 0-100, white mode cold/warm ratio
-} light_config_t;
 
 #if CONFIG_LIGHT_PERSIST_STATE
 // "on" is persisted but only conditionally restored (light_should_restore_on) - see
@@ -95,7 +56,7 @@ static bool state_dirty = false;
 static uint32_t light_config_fingerprint_cached;
 #endif
 
-static light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
+light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 static bool light_initialized = false;
 static uint8_t next_ledc_channel = 0;
 static uint8_t gamma_lut[101];
@@ -109,8 +70,8 @@ static void light_gamma_init(void) {
     }
 }
 
-static void light_hsv_to_rgb(uint16_t hue, uint8_t saturation, uint8_t value, uint8_t *red,
-                             uint8_t *green, uint8_t *blue) {
+void light_hsv_to_rgb(uint16_t hue, uint8_t saturation, uint8_t value, uint8_t *red,
+                      uint8_t *green, uint8_t *blue) {
 
     float saturation_frac = saturation / 100.0f;
     float value_frac = value / 100.0f;
@@ -459,50 +420,58 @@ static int8_t light_find_by_name(const char *name) {
 }
 
 #ifdef LIGHT_HAS_ADDRESSABLE
-// led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw.
-static void addressable_fill(led_strip_handle_t handle, uint16_t count, uint8_t r, uint8_t g,
-                             uint8_t b) {
+// led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw. w
+// is ignored when has_white is false. Non-static: shared with light_effects.c.
+void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white, uint8_t r,
+                            uint8_t g, uint8_t b, uint8_t w) {
     for (uint16_t i = 0; i < count; i++) {
-        led_strip_set_pixel(handle, i, r, g, b);
-    }
-}
-
-static void addressable_fill_rgbw(led_strip_handle_t handle, uint16_t count, uint8_t r, uint8_t g,
-                                  uint8_t b, uint8_t w) {
-    for (uint16_t i = 0; i < count; i++) {
-        led_strip_set_pixel_rgbw(handle, i, r, g, b, w);
+        if (has_white) {
+            led_strip_set_pixel_rgbw(handle, i, r, g, b, w);
+        } else {
+            led_strip_set_pixel(handle, i, r, g, b);
+        }
     }
 }
 #endif
 
-static void light_update_output(light_config_t *light) {
-    uint8_t r = 0, g = 0, b = 0, c = 0, w = 0;
+// Non-static: shared with light_effects.c, which needs the same on/color_mode/white/cct ->
+// r,g,b,c,w mapping to render a solid (effect == NONE) addressable light.
+void light_compute_rgbcw(light_config_t *light, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *c,
+                         uint8_t *w) {
+    *r = *g = *b = *c = *w = 0;
 
-    if (light->on) {
-        if (light->color_mode && light->has_color) {
-            light_hsv_to_rgb(light->hue, light->sat, light->val, &r, &g, &b);
-        } else if (light->has_white) {
-            if (light->has_cct) {
-                c = gamma_lut[(light->val * light->cct) / 100];
-                w = gamma_lut[(light->val * (100 - light->cct)) / 100];
-                // Splitting val between two channels before the gamma lookup can
-                // round both shares down to 0 at low brightness (e.g. val=1,
-                // cct=50: 50/100 truncates to 0 twice), even though val > 0 -
-                // keep the dominant channel of the mix at least barely lit.
-                if (light->val > 0 && c == 0 && w == 0) {
-                    if (light->cct >= 50) {
-                        c = 1;
-                    } else {
-                        w = 1;
-                    }
+    if (!light->on) {
+        return;
+    }
+
+    if (light->color_mode && light->has_color) {
+        light_hsv_to_rgb(light->hue, light->sat, light->val, r, g, b);
+    } else if (light->has_white) {
+        if (light->has_cct) {
+            *c = gamma_lut[(light->val * light->cct) / 100];
+            *w = gamma_lut[(light->val * (100 - light->cct)) / 100];
+            // Splitting val between two channels before the gamma lookup can
+            // round both shares down to 0 at low brightness (e.g. val=1,
+            // cct=50: 50/100 truncates to 0 twice), even though val > 0 -
+            // keep the dominant channel of the mix at least barely lit.
+            if (light->val > 0 && *c == 0 && *w == 0) {
+                if (light->cct >= 50) {
+                    *c = 1;
+                } else {
+                    *w = 1;
                 }
-            } else {
-                uint8_t value = gamma_lut[light->val];
-                c = value;
-                w = value;
             }
+        } else {
+            uint8_t value = gamma_lut[light->val];
+            *c = value;
+            *w = value;
         }
     }
+}
+
+static void light_drive_hardware(light_config_t *light) {
+    uint8_t r, g, b, c, w;
+    light_compute_rgbcw(light, &r, &g, &b, &c, &w);
 
     for (uint8_t i = 0; i < light->channel_count; i++) {
         if (light->channels[i].role == CH_SWITCH) {
@@ -513,16 +482,19 @@ static void light_update_output(light_config_t *light) {
 
 #ifdef LIGHT_HAS_ADDRESSABLE
         if (light->channels[i].role == CH_ADDRESSABLE) {
+#if LIGHT_EFFECTS_BUILD
+            // Rendering is owned exclusively by the effects task (single writer to
+            // led_strip_handle_t - see light_effects.c). This function only updates state;
+            // callers (light_apply/light_set_state) must call light_effects_notify() to
+            // actually push a change to the strip - the task's own boot-time initial render
+            // covers the very first state before it's ever notified.
+#else
             if (light->addressable_handle) {
-                if (light->channels[i].has_white_channel) {
-                    addressable_fill_rgbw(light->addressable_handle, light->channels[i].led_count,
-                                          r, g, b, w);
-                } else {
-                    addressable_fill(light->addressable_handle, light->channels[i].led_count, r, g,
-                                     b);
-                }
+                light_addressable_fill(light->addressable_handle, light->channels[i].led_count,
+                                       light->channels[i].has_white_channel, r, g, b, w);
                 led_strip_refresh(light->addressable_handle);
             }
+#endif
             continue;
         }
 #endif
@@ -611,6 +583,26 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
         } else if (h || s || v || (cct && light->has_white)) {
             light->on = true;
         }
+
+#if LIGHT_EFFECTS_BUILD
+        if (light->is_addressable) {
+            cJSON *effect = cJSON_GetObjectItem(root, "effect");
+            cJSON *speed = cJSON_GetObjectItem(root, "speed");
+            if (effect && cJSON_IsString(effect)) {
+                light_effect_t new_effect;
+                if (light_effect_from_name(effect->valuestring, &new_effect)) {
+                    light->effect = (uint8_t)new_effect;
+                } else {
+                    ESP_LOGW(TAG, "Unknown effect '%s'", effect->valuestring);
+                }
+            }
+            if (speed) {
+                int requested_speed = speed->valueint;
+                light->effect_speed =
+                    (uint8_t)(requested_speed < 0 ? 0 : (requested_speed > 100 ? 100 : requested_speed));
+            }
+        }
+#endif
     } else {
         logic_state_t state = json_str_as_logic_state(args_json_str);
         light->on = (state == STATE_TOGGLE) ? !light->on : (state == STATE_ON);
@@ -618,7 +610,12 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
 
     cJSON_Delete(root);
 
-    light_update_output(light);
+    light_drive_hardware(light);
+#if LIGHT_EFFECTS_BUILD
+    if (light->is_addressable) {
+        light_effects_notify();
+    }
+#endif
 #if CONFIG_LIGHT_PERSIST_STATE
     state_dirty = true;
 #endif
@@ -849,7 +846,7 @@ static esp_err_t light_adapter_init(void) {
             }
         }
 
-        light_update_output(light);
+        light_drive_hardware(light);
 
         if ((size_t)i >= trampoline_count) {
             ESP_LOGE(TAG,
@@ -873,6 +870,11 @@ static esp_err_t light_adapter_init(void) {
         cmnd_register(light->name, description, light_cmnd_trampolines[i]);
     }
 
+#if LIGHT_EFFECTS_BUILD
+    // Must run after the loop above, since it needs every addressable_handle already created.
+    light_effects_task_start();
+#endif
+
     light_initialized = true;
     ESP_LOGI(TAG, "Light adapter initialized");
     return ESP_OK;
@@ -882,6 +884,12 @@ static esp_err_t light_adapter_shutdown(void) {
     if (!light_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
+
+#if LIGHT_EFFECTS_BUILD
+    // Must run before the loop below deletes addressable_handle values, so the task never
+    // touches a freed handle.
+    light_effects_task_stop();
+#endif
 
 #if CONFIG_LIGHT_PERSIST_STATE
     light_save_state();
@@ -912,7 +920,12 @@ void light_set_state(const char *name, bool on) {
         return;
     }
     lights[idx].on = on;
-    light_update_output(&lights[idx]);
+    light_drive_hardware(&lights[idx]);
+#if LIGHT_EFFECTS_BUILD
+    if (lights[idx].is_addressable) {
+        light_effects_notify();
+    }
+#endif
 #if CONFIG_LIGHT_PERSIST_STATE
     state_dirty = true;
 #endif
@@ -952,7 +965,7 @@ static void tele_light(const char *tele_id, cJSON *json_root) {
                 light_hsv_to_rgb(light->hue, light->sat, light->val, &r, &g, &b);
             } else {
                 // Not RGBW/RGBCW's actual output (that's computed separately in
-                // light_update_output) - just an approximate warm<->cool tint from cct, so
+                // light_compute_rgbcw) - just an approximate warm<->cool tint from cct, so
                 // HA's MQTT "template" schema (no color_mode field, unlike "json" schema)
                 // doesn't keep painting its color-derived UI (e.g. the brightness slider)
                 // with the stale last color while white mode is active. Harmless without HA
