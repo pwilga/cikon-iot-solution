@@ -70,8 +70,8 @@ static void light_gamma_init(void) {
     }
 }
 
-void light_hsv_to_rgb(uint16_t hue, uint8_t saturation, uint8_t value, uint8_t *red,
-                      uint8_t *green, uint8_t *blue) {
+void light_hsv_to_rgb(uint16_t hue, uint8_t saturation, uint8_t value, uint8_t *red, uint8_t *green,
+                      uint8_t *blue) {
 
     float saturation_frac = saturation / 100.0f;
     float value_frac = value / 100.0f;
@@ -348,6 +348,16 @@ static void light_parse_list(void) {
         light->hue = 0;
         light->cct = 50;
         light->color_mode = light->has_color && !light->has_white;
+#if LIGHT_EFFECTS_BUILD
+        // WLED's own DEFAULT_SPEED/DEFAULT_INTENSITY are 128/255 (~50%) - same proportion here.
+        light->effect_speed = 50;
+        light->effect_intensity = 50;
+        // val2=0 (not just sat2=0) is required for a true default-black second color - see
+        // light_internal.h.
+        light->hue2 = 0;
+        light->sat2 = 0;
+        light->val2 = 0;
+#endif
 
 #ifdef LIGHT_HAS_ADDRESSABLE
         bool skip_ledc_alloc = is_switch || is_addressable;
@@ -420,16 +430,23 @@ static int8_t light_find_by_name(const char *name) {
 }
 
 #ifdef LIGHT_HAS_ADDRESSABLE
-// led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw. w
-// is ignored when has_white is false. Non-static: shared with light_effects.c.
+// Dispatches to the has_white-aware led_strip call for one pixel - the unit light_addressable_fill
+// loops over, and shared with light_effects.c so per-pixel effects don't each duplicate this
+// branch. w is ignored when has_white is false. Non-static: shared with light_effects.c.
+void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white, uint8_t r,
+                                 uint8_t g, uint8_t b, uint8_t w) {
+    if (has_white) {
+        led_strip_set_pixel_rgbw(handle, i, r, g, b, w);
+    } else {
+        led_strip_set_pixel(handle, i, r, g, b);
+    }
+}
+
+// led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw.
 void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white, uint8_t r,
                             uint8_t g, uint8_t b, uint8_t w) {
     for (uint16_t i = 0; i < count; i++) {
-        if (has_white) {
-            led_strip_set_pixel_rgbw(handle, i, r, g, b, w);
-        } else {
-            led_strip_set_pixel(handle, i, r, g, b);
-        }
+        light_addressable_set_pixel(handle, i, has_white, r, g, b, w);
     }
 }
 #endif
@@ -530,15 +547,16 @@ static void light_drive_hardware(light_config_t *light) {
     }
 }
 
-// Brightness 0 would leave "on" true but every channel physically dark - an ambiguous
-// state a slider dragged to the bottom (or any client sending v=0) can trigger. Floor it
-// at 1 so "on" and "visibly lit" never disagree.
-static uint8_t light_clamp_brightness(int value) {
-    if (value < 1) {
-        return 1;
+// Clamps to [min_val, max_val]. The main light's brightness (v) calls this with min_val=1:
+// "on" true with every channel at 0 is an ambiguous state a slider dragged to the bottom can
+// trigger, so it's floored just above off. Everything else (effect_speed/effect_intensity/
+// val2/...) has no such ambiguity - 0 is a valid, meaningful value - and uses min_val=0.
+static uint8_t light_clamp_range(int value, uint8_t min_val, uint8_t max_val) {
+    if (value < min_val) {
+        return min_val;
     }
-    if (value > 100) {
-        return 100;
+    if (value > max_val) {
+        return max_val;
     }
     return (uint8_t)value;
 }
@@ -561,7 +579,7 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
             light->cct = (uint16_t)cct->valueint;
             light->color_mode = false;
             if (v) {
-                light->val = light_clamp_brightness(v->valueint);
+                light->val = light_clamp_range(v->valueint, 1, 100);
             }
         } else if (h || s) {
             if (h) {
@@ -571,11 +589,11 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
                 light->sat = (uint8_t)s->valueint;
             }
             if (v) {
-                light->val = light_clamp_brightness(v->valueint);
+                light->val = light_clamp_range(v->valueint, 1, 100);
             }
             light->color_mode = true;
         } else if (v) {
-            light->val = light_clamp_brightness(v->valueint);
+            light->val = light_clamp_range(v->valueint, 1, 100);
         }
 
         if (on) {
@@ -588,18 +606,37 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
         if (light->is_addressable) {
             cJSON *effect = cJSON_GetObjectItem(root, "effect");
             cJSON *speed = cJSON_GetObjectItem(root, "speed");
+            cJSON *intensity = cJSON_GetObjectItem(root, "intensity");
+            cJSON *h2 = cJSON_GetObjectItem(root, "h2");
+            cJSON *s2 = cJSON_GetObjectItem(root, "s2");
+            cJSON *v2 = cJSON_GetObjectItem(root, "v2");
             if (effect && cJSON_IsString(effect)) {
                 light_effect_t new_effect;
                 if (light_effect_from_name(effect->valuestring, &new_effect)) {
+                    if ((uint8_t)new_effect != light->effect) {
+                        // Prevents stale state (e.g. android's bar position, fire's heat
+                        // array) from leaking into whichever effect gets picked next.
+                        memset(&light->fx_state, 0, sizeof(light->fx_state));
+                    }
                     light->effect = (uint8_t)new_effect;
                 } else {
                     ESP_LOGW(TAG, "Unknown effect '%s'", effect->valuestring);
                 }
             }
             if (speed) {
-                int requested_speed = speed->valueint;
-                light->effect_speed =
-                    (uint8_t)(requested_speed < 0 ? 0 : (requested_speed > 100 ? 100 : requested_speed));
+                light->effect_speed = light_clamp_range(speed->valueint, 0, 100);
+            }
+            if (intensity) {
+                light->effect_intensity = light_clamp_range(intensity->valueint, 0, 100);
+            }
+            if (h2) {
+                light->hue2 = (uint16_t)h2->valueint;
+            }
+            if (s2) {
+                light->sat2 = (uint8_t)s2->valueint;
+            }
+            if (v2) {
+                light->val2 = light_clamp_range(v2->valueint, 0, 100);
             }
         }
 #endif
@@ -955,6 +992,13 @@ static void tele_light(const char *tele_id, cJSON *json_root) {
             cJSON_AddNumberToObject(obj, "v", light->val);
         }
 
+#if LIGHT_EFFECTS_BUILD
+        if (light->is_addressable) {
+            cJSON_AddStringToObject(obj, "effect",
+                                    light_effect_name((light_effect_t)light->effect));
+        }
+#endif
+
         if (light->has_cct) {
             cJSON_AddNumberToObject(obj, "cct", light->cct);
         }
@@ -1033,6 +1077,7 @@ static void light_ha_build(cJSON *payload, const char *sanitized_name) {
              "endif %%}"
              "{%% if color_temp is defined %%}\"cct\":{{ ((color_temp - %d) / (%d - %d) * 100) | "
              "round }},{%% endif %%}"
+             "{%% if effect is defined %%}\"effect\":\"{{ effect }}\",{%% endif %%}"
              "\"on\":true}}",
              sanitized_name, LIGHT_KELVIN_MIN, LIGHT_KELVIN_MAX, LIGHT_KELVIN_MIN);
 
@@ -1067,6 +1112,20 @@ static void light_ha_build(cJSON *payload, const char *sanitized_name) {
                  sanitized_name, LIGHT_KELVIN_MAX, LIGHT_KELVIN_MIN, LIGHT_KELVIN_MIN);
         cJSON_AddStringToObject(payload, "color_temp_template", buf);
     }
+
+#if LIGHT_EFFECTS_BUILD
+    if (idx >= 0 && lights[idx].is_addressable) {
+        cJSON *effect_list = cJSON_CreateArray();
+        for (size_t i = 0; i < light_effect_count(); i++) {
+            cJSON_AddItemToArray(effect_list,
+                                 cJSON_CreateString(light_effect_name((light_effect_t)i)));
+        }
+        cJSON_AddItemToObject(payload, "effect_list", effect_list);
+
+        snprintf(buf, sizeof(buf), "{{ value_json.%s.effect }}", sanitized_name);
+        cJSON_AddStringToObject(payload, "effect_template", buf);
+    }
+#endif
 
     cJSON_DeleteItemFromObject(payload, "val_tpl");
 }

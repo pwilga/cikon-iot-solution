@@ -7,11 +7,20 @@
 # of SRCS.
 string(REPLACE "," ";" LIGHT_ADDR_ITEMS "${CONFIG_LIGHT_GPIO_LIST}")
 set(LIGHT_HAS_ADDRESSABLE FALSE)
+# Largest "x<led count>" seen across all N-role channels - sizes the effects engine's per-pixel
+# scratch buffer (light_effect_state_t.buf) exactly, computed here rather than guessed, the
+# same way LIGHT_HAS_ADDRESSABLE itself is derived from the config string below.
+set(LIGHT_EFFECTS_MAX_LEDS 0)
 foreach(item ${LIGHT_ADDR_ITEMS})
     string(REPLACE ":" ";" LIGHT_ADDR_TUPLE "${item}")
     list(GET LIGHT_ADDR_TUPLE 0 light_addr_channels)
     if(light_addr_channels MATCHES "(^|\\+)[Nn][0-9]")
         set(LIGHT_HAS_ADDRESSABLE TRUE)
+    endif()
+    if(light_addr_channels MATCHES "[Nn][0-9]+[Xx]([0-9]+)")
+        if(CMAKE_MATCH_1 GREATER LIGHT_EFFECTS_MAX_LEDS)
+            set(LIGHT_EFFECTS_MAX_LEDS "${CMAKE_MATCH_1}")
+        endif()
     endif()
 endforeach()
 
@@ -41,6 +50,7 @@ if(LIGHT_HAS_ADDRESSABLE)
 endif()
 if(CONFIG_LIGHT_ENABLE_EFFECTS AND LIGHT_HAS_ADDRESSABLE)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_EFFECTS_BUILD=1)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_EFFECTS_MAX_LEDS=${LIGHT_EFFECTS_MAX_LEDS})
 endif()
 
 # X-Macro Pattern for Dynamic cmnd Trampoline Generation

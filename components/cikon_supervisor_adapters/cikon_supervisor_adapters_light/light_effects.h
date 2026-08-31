@@ -4,17 +4,28 @@
 // LIGHT_EFFECTS_BUILD, see CMakeLists.txt). Not installed under include/.
 
 #include <stdbool.h>
+#include <stddef.h>
 
 typedef enum {
     LIGHT_EFFECT_NONE = 0, // "solid" - today's static fill, no animation
     LIGHT_EFFECT_BLINK,
     LIGHT_EFFECT_BREATHE,
     LIGHT_EFFECT_RAINBOW,
+    LIGHT_EFFECT_WASHING_MACHINE,
+    LIGHT_EFFECT_ANDROID,
+    LIGHT_EFFECT_FIRE_2012,
+    LIGHT_EFFECT_TWINKLE,
+    LIGHT_EFFECT_METEOR,
 } light_effect_t;
 
 // Case-insensitive name -> enum lookup for the cmnd "effect" field (e.g. "rainbow").
 // Returns false (and leaves *out untouched) if name doesn't match any known effect.
 bool light_effect_from_name(const char *name, light_effect_t *out);
+
+// Number of known effects, and name lookup by id - used to build HA's effect_list and to
+// publish the current effect's name in telemetry.
+size_t light_effect_count(void);
+const char *light_effect_name(light_effect_t effect);
 
 // Creates the effects task if >=1 configured light is addressable; no-op otherwise. Must be
 // called once, after light_adapter_init() has finished setting up all addressable_handle
