@@ -114,15 +114,17 @@ static void effect_solid(light_config_t *light, uint32_t now_ms) {
                            light->channels[0].has_white_channel, r, g, b, w);
 }
 
-// Square-wave brightness (WLED mode_blink), driven off an absolute timestamp so there's no
-// per-frame phase state to keep in light_config_t.
+// Square-wave brightness (WLED mode_blink_rainbow), driven off an absolute timestamp so
+// there's no per-frame phase state to keep in light_config_t. Ignores the light's configured
+// hue/sat - like WLED's rainbow variant, the "on" color rotates through the wheel instead.
 static void effect_blink(light_config_t *light, uint32_t now_ms) {
 
     uint32_t cycle_ms = 200 + (uint32_t)(100 - light->effect_speed) * 18;
     uint8_t level = ((now_ms % cycle_ms) < cycle_ms / 2) ? 100 : 0;
+    uint16_t hue = (uint16_t)((now_ms / 20) % 360);
     uint8_t r, g, b;
 
-    light_hsv_to_rgb(light->hue, light->sat, (uint8_t)((light->val * level) / 100), &r, &g, &b);
+    light_hsv_to_rgb(hue, 100, (uint8_t)((light->val * level) / 100), &r, &g, &b);
     light_addressable_fill(light->addressable_handle, light->channels[0].led_count,
                            light->channels[0].has_white_channel, r, g, b, 0);
 }
@@ -250,6 +252,10 @@ static void render_brightness_background(light_config_t *light) {
 }
 
 // Ported from WLED's mode_washing_machine: waves rotate forward, pause, then reverse.
+// Colored via a rainbow wheel (col -> hue), not the light's configured color - matches WLED,
+// where this effect declares zero color slots and always renders through its built-in
+// "Party" palette, ignoring segment color entirely (see FX.cpp mode_washing_machine /
+// FX_fcn.cpp color_from_palette's mcol=3 bypass of the plain-color shortcut).
 static void effect_washing_machine(light_config_t *light, uint32_t now_ms) {
     uint16_t led_count = light->channels[0].led_count;
     bool has_white = light->channels[0].has_white_channel;
@@ -258,16 +264,13 @@ static void effect_washing_machine(light_config_t *light, uint32_t now_ms) {
     int32_t delta = ((int32_t)speed * 2048) / (int32_t)(512 - wled_speed);
     light->fx_state.step += (uint32_t)delta;
 
-    uint8_t br, bg, bb;
-    light_hsv_to_rgb(light->hue, light->sat, light->val, &br, &bg, &bb);
     uint8_t density = (uint8_t)(light->effect_intensity / 25 + 1);
 
     for (uint16_t i = 0; i < led_count; i++) {
         uint8_t phase = (uint8_t)((density * 255u * i / led_count) + (light->fx_state.step >> 7));
         uint8_t col = sin8(phase);
-        uint8_t r = (uint8_t)(((uint16_t)br * col) / 255);
-        uint8_t g = (uint8_t)(((uint16_t)bg * col) / 255);
-        uint8_t b = (uint8_t)(((uint16_t)bb * col) / 255);
+        uint8_t r, g, b;
+        light_hsv_to_rgb((uint16_t)(col * 360 / 255), 100, light->val, &r, &g, &b);
         light_addressable_set_pixel(light->addressable_handle, i, has_white, r, g, b, 0);
     }
 }

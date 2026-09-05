@@ -60,6 +60,7 @@ light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 static bool light_initialized = false;
 static uint8_t next_ledc_channel = 0;
 static uint8_t gamma_lut[101];
+static uint8_t gamma_lut_rgb[256]; // same curve, indexed by raw 0-255 color byte
 
 static void light_gamma_init(void) {
     for (int i = 0; i <= 100; i++) {
@@ -67,6 +68,10 @@ static void light_gamma_init(void) {
         // Gamma curve rounds anything below ~6% to a duty of 0 (fully off), even
         // though the user asked for a nonzero brightness - keep it just visible.
         gamma_lut[i] = (i > 0 && duty == 0) ? 1 : duty;
+    }
+    for (int i = 0; i <= 255; i++) {
+        uint8_t out = (uint8_t)roundf(powf(i / 255.0f, LIGHT_GAMMA) * 255.0f);
+        gamma_lut_rgb[i] = (i > 0 && out == 0) ? 1 : out;
     }
 }
 
@@ -435,6 +440,9 @@ static int8_t light_find_by_name(const char *name) {
 // branch. w is ignored when has_white is false. Non-static: shared with light_effects.c.
 void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white, uint8_t r,
                                  uint8_t g, uint8_t b, uint8_t w) {
+    r = gamma_lut_rgb[r];
+    g = gamma_lut_rgb[g];
+    b = gamma_lut_rgb[b];
     if (has_white) {
         led_strip_set_pixel_rgbw(handle, i, r, g, b, w);
     } else {
@@ -519,13 +527,13 @@ static void light_drive_hardware(light_config_t *light) {
         uint8_t value = 0;
         switch (light->channels[i].role) {
         case CH_RED:
-            value = r;
+            value = gamma_lut_rgb[r];
             break;
         case CH_GREEN:
-            value = g;
+            value = gamma_lut_rgb[g];
             break;
         case CH_BLUE:
-            value = b;
+            value = gamma_lut_rgb[b];
             break;
         case CH_COLD_WHITE:
             value = c;
