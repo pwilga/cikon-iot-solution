@@ -136,7 +136,7 @@ static void publish_entity(const ha_entity_config_t *def, bool empty_payload) {
     char unique_id[64];
 
     // Build topic
-    snprintf(unique_id, sizeof(unique_id), "%.6s_%s", mqtt_get_config()->client_id, sanitized_name);
+    snprintf(unique_id, sizeof(unique_id), "%s_%s", mqtt_get_config()->client_id, sanitized_name);
     snprintf(topic, sizeof(topic), "%s/%s/%s/config", mqtt_get_config()->mqtt_disc_pref,
              get_type_str(def->type), unique_id);
 
