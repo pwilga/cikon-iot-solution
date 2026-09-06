@@ -24,6 +24,7 @@
 
 #include "bits_helper.h"
 #include "config_manager.h"
+#include "inet_common.h"
 #include "supervisor.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
@@ -47,6 +48,10 @@ static esp_err_t thread_border_router_adapter_init(void) {
     }
 
 #if CONFIG_THREAD_BORDER_ROUTER_WEB
+    // esp_br_web_start() registers an mDNS hostname-changed callback and aborts if mDNS
+    // isn't running yet. The inet adapter also brings mDNS up (on IP), but that happens
+    // after us — ensure it here. inet_common_mdns_init() is idempotent.
+    inet_common_mdns_init();
     esp_br_web_start(CONFIG_VFS_SPIFFS_MOUNT_POINT);
     ESP_LOGI(TAG, "Thread BR Web GUI handler registered");
 #endif

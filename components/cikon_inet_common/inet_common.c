@@ -376,6 +376,10 @@ void inet_common_on_event(EventBits_t bits) {
 }
 
 void inet_common_mdns_init(void) {
+    if (s_mdns_ready) {
+        return; // already up — no-op, keeps existing hostname/instance intact
+    }
+
     const char *hostname = inet_common_get_hostname();
     const char *instance = config_get()->mdns_instance;
 
