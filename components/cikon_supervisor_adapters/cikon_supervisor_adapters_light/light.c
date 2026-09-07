@@ -1,6 +1,3 @@
-#include <ctype.h>
-#include <math.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -8,6 +5,8 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "soc/gpio_num.h"
+// IWYU pragma: keep - SOC_RMT_SUPPORT_DMA is used in an #if, which IWYU can't see; dropping
+// this header would silently take every strip down the SPI path.
 #include "soc/soc_caps.h"
 
 #if CONFIG_LIGHT_PERSIST_STATE
@@ -33,7 +32,6 @@
 #endif
 
 #define TAG "cikon:adapter:light"
-#define LIGHT_GAMMA 2.2f
 #define LIGHT_KELVIN_MIN 2200
 #define LIGHT_KELVIN_MAX 7000
 
@@ -58,357 +56,6 @@ static uint32_t light_config_fingerprint_cached;
 
 light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 static bool light_initialized = false;
-static uint8_t next_ledc_channel = 0;
-static uint8_t gamma_lut[101];
-static uint8_t gamma_lut_rgb[256]; // same curve, indexed by raw 0-255 color byte
-
-static void light_gamma_init(void) {
-    for (int i = 0; i <= 100; i++) {
-        uint8_t duty = (uint8_t)roundf(powf(i / 100.0f, LIGHT_GAMMA) * 255.0f);
-        // Gamma curve rounds anything below ~6% to a duty of 0 (fully off), even
-        // though the user asked for a nonzero brightness - keep it just visible.
-        gamma_lut[i] = (i > 0 && duty == 0) ? 1 : duty;
-    }
-    for (int i = 0; i <= 255; i++) {
-        uint8_t out = (uint8_t)roundf(powf(i / 255.0f, LIGHT_GAMMA) * 255.0f);
-        gamma_lut_rgb[i] = (i > 0 && out == 0) ? 1 : out;
-    }
-}
-
-void light_hsv_to_rgb(uint16_t hue, uint8_t saturation, uint8_t value, uint8_t *red, uint8_t *green,
-                      uint8_t *blue) {
-
-    float saturation_frac = saturation / 100.0f;
-    float value_frac = value / 100.0f;
-    float chroma = value_frac * saturation_frac;
-    float second_component = chroma * (1.0f - fabsf(fmodf(hue / 60.0f, 2.0f) - 1.0f));
-    float match = value_frac - chroma;
-    float r_prime, g_prime, b_prime;
-
-    if (hue < 60) {
-        r_prime = chroma, g_prime = second_component, b_prime = 0;
-    } else if (hue < 120) {
-        r_prime = second_component, g_prime = chroma, b_prime = 0;
-    } else if (hue < 180) {
-        r_prime = 0, g_prime = chroma, b_prime = second_component;
-    } else if (hue < 240) {
-        r_prime = 0, g_prime = second_component, b_prime = chroma;
-    } else if (hue < 300) {
-        r_prime = second_component, g_prime = 0, b_prime = chroma;
-    } else {
-        r_prime = chroma, g_prime = 0, b_prime = second_component;
-    }
-
-    *red = (uint8_t)roundf((r_prime + match) * 255.0f);
-    *green = (uint8_t)roundf((g_prime + match) * 255.0f);
-    *blue = (uint8_t)roundf((b_prime + match) * 255.0f);
-}
-
-// Maps a channel role bitmask to its capabilities. Only combinations expressible as "one
-// token per role" are supported - RGBCC/RGBWW (two channels of the same white) would need a
-// duplicate-role token, which the config syntax doesn't have.
-static bool light_shape_from_mask(uint8_t mask, bool *has_color, bool *has_white, bool *has_cct) {
-    static const struct {
-        uint8_t mask;
-        bool has_color, has_white, has_cct;
-    } table[] = {
-        {(1u << CH_COLD_WHITE), false, true, false},
-        {(1u << CH_WARM_WHITE), false, true, false},
-        {(1u << CH_COLD_WHITE) | (1u << CH_WARM_WHITE), false, true, true},
-        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE), true, false, false},
-        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE) | (1u << CH_COLD_WHITE), true, true,
-         false},
-        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE) | (1u << CH_WARM_WHITE), true, true,
-         false},
-        {(1u << CH_RED) | (1u << CH_GREEN) | (1u << CH_BLUE) | (1u << CH_COLD_WHITE) |
-             (1u << CH_WARM_WHITE),
-         true, true, true},
-        {(1u << CH_SWITCH), false, false, false},
-#ifdef LIGHT_HAS_ADDRESSABLE
-        // has_white here is a placeholder - light_parse_list() overrides it per-light from
-        // the channel's actual format suffix (grb vs grbw/rgbw), since that's a per-token
-        // attribute the role bitmask alone can't express.
-        {(1u << CH_ADDRESSABLE), true, false, false},
-#endif
-    };
-
-    for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
-        if (table[i].mask == mask) {
-            *has_color = table[i].has_color;
-            *has_white = table[i].has_white;
-            *has_cct = table[i].has_cct;
-            return true;
-        }
-    }
-    return false;
-}
-
-// Splits the '+'-joined channel tokens of a single light by hand-scanning for '+' (not
-// strtok - this is called from inside light_parse_list()'s own strtok(str, ",") loop, and a
-// nested strtok() would clobber the outer one's state).
-static bool light_parse_channels(char *channels_str, light_channel_t *out_channels,
-                                 uint8_t *out_channel_count) {
-    uint8_t channel_count = 0;
-    uint8_t role_mask = 0;
-    char *cursor = channels_str;
-
-    while (cursor && *cursor && channel_count < LIGHT_MAX_CHANNELS) {
-        char *separator = strchr(cursor, '+');
-        if (separator) {
-            *separator = '\0';
-        }
-
-        light_channel_role_t role;
-        switch (toupper((unsigned char)cursor[0])) {
-        case 'R':
-            role = CH_RED;
-            break;
-        case 'G':
-            role = CH_GREEN;
-            break;
-        case 'B':
-            role = CH_BLUE;
-            break;
-        case 'C':
-            role = CH_COLD_WHITE;
-            break;
-        case 'W':
-            role = CH_WARM_WHITE;
-            break;
-        case 'S':
-            role = CH_SWITCH;
-            break;
-#ifdef LIGHT_HAS_ADDRESSABLE
-        case 'N':
-            role = CH_ADDRESSABLE;
-            break;
-#endif
-        default:
-            ESP_LOGW(TAG, "Unknown channel role '%c' in '%s'", cursor[0], channels_str);
-            return false;
-        }
-
-        if (role_mask & (1u << role)) {
-            ESP_LOGW(TAG, "Duplicate channel role in '%s'", channels_str);
-            return false;
-        }
-
-        char *digits_end = cursor + 1;
-        while (isdigit((unsigned char)*digits_end)) {
-            digits_end++;
-        }
-
-        int gpio = atoi(cursor + 1);
-        if (gpio < 0 || gpio >= SOC_GPIO_PIN_COUNT) {
-            ESP_LOGW(TAG, "Invalid GPIO %d in '%s'", gpio, channels_str);
-            return false;
-        }
-
-        bool active_level = true; // default active-high; only meaningful for role CH_SWITCH
-        if (role == CH_SWITCH) {
-            char suffix = (char)toupper((unsigned char)*digits_end);
-            if (suffix == 'L') {
-                active_level = false;
-            } else if (suffix != '\0' && suffix != 'H') {
-                ESP_LOGW(TAG,
-                         "Invalid active-level suffix '%c' for S channel in '%s' (expected "
-                         "'H' or 'L')",
-                         *digits_end, channels_str);
-                return false;
-            }
-        }
-
-#ifdef LIGHT_HAS_ADDRESSABLE
-        uint16_t led_count = 0;
-        led_color_component_format_t led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
-        bool has_white_channel = false;
-        if (role == CH_ADDRESSABLE) {
-            if (toupper((unsigned char)*digits_end) != 'X') {
-                ESP_LOGW(TAG, "Addressable channel '%s' missing 'x<led count>' (e.g. N4x30)",
-                         channels_str);
-                return false;
-            }
-            char *count_str = digits_end + 1;
-            char *count_end = count_str;
-            while (isdigit((unsigned char)*count_end)) {
-                count_end++;
-            }
-            if (count_end == count_str) {
-                ESP_LOGW(TAG, "Addressable channel '%s' has invalid LED count", channels_str);
-                return false;
-            }
-            led_count = (uint16_t)atoi(count_str);
-            if (led_count == 0) {
-                ESP_LOGW(TAG, "Addressable channel '%s' has zero LED count", channels_str);
-                return false;
-            }
-
-            // Trailing letters after the count = led_strip color component format name
-            // (grb/rgb/grbw/rgbw) - different WS2812 batches/clones use different channel
-            // order, and some strips (e.g. SK6812) have a 4th, separate white channel.
-            char format_buf[8] = {0};
-            size_t format_len = 0;
-            for (char *p = count_end; *p && format_len < sizeof(format_buf) - 1; p++) {
-                format_buf[format_len++] = (char)tolower((unsigned char)*p);
-            }
-
-            if (format_len == 0 || strcmp(format_buf, "grb") == 0) {
-                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB;
-            } else if (strcmp(format_buf, "rgb") == 0) {
-                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_RGB;
-            } else if (strcmp(format_buf, "grbw") == 0) {
-                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_GRBW;
-                has_white_channel = true;
-            } else if (strcmp(format_buf, "rgbw") == 0) {
-                led_color_format = LED_STRIP_COLOR_COMPONENT_FMT_RGBW;
-                has_white_channel = true;
-            } else {
-                ESP_LOGW(TAG, "Addressable channel '%s' has unknown color format '%s'",
-                         channels_str, format_buf);
-                return false;
-            }
-        }
-#endif
-
-        role_mask |= (1u << role);
-        out_channels[channel_count].gpio = (gpio_num_t)gpio;
-        out_channels[channel_count].role = role;
-        out_channels[channel_count].active_level = active_level;
-#ifdef LIGHT_HAS_ADDRESSABLE
-        out_channels[channel_count].led_count = led_count;
-        out_channels[channel_count].led_color_format = led_color_format;
-        out_channels[channel_count].has_white_channel = has_white_channel;
-#endif
-        channel_count++;
-
-        cursor = separator ? separator + 1 : NULL;
-    }
-
-    *out_channel_count = channel_count;
-    return channel_count > 0;
-}
-
-static void light_parse_list(void) {
-
-    const char *list_str = CONFIG_LIGHT_GPIO_LIST;
-    char *str = strdup(list_str);
-    char *token = strtok(str, ",");
-    uint8_t index = 0;
-
-    for (int i = 0; i <= CONFIG_LIGHT_MAX_COUNT; i++) {
-        lights[i].channel_count = 0;
-    }
-
-    while (token != NULL && index < CONFIG_LIGHT_MAX_COUNT) {
-        while (*token == ' ') {
-            token++;
-        }
-
-        char *colon = strchr(token, ':');
-        const char *name = NULL;
-        if (colon) {
-            *colon = '\0';
-            name = colon + 1;
-        }
-
-        light_config_t *light = &lights[index];
-        light_channel_t parsed[LIGHT_MAX_CHANNELS];
-        uint8_t parsed_count = 0;
-        uint8_t role_mask = 0;
-
-        if (!light_parse_channels(token, parsed, &parsed_count)) {
-            ESP_LOGE(TAG, "Skipping light with invalid channel list '%s'", token);
-            token = strtok(NULL, ",");
-            continue;
-        }
-
-        for (uint8_t c = 0; c < parsed_count; c++) {
-            role_mask |= (1u << parsed[c].role);
-        }
-
-        bool is_switch = (role_mask == (1u << CH_SWITCH));
-#ifdef LIGHT_HAS_ADDRESSABLE
-        bool is_addressable = (role_mask == (1u << CH_ADDRESSABLE));
-#endif
-
-        if (!light_shape_from_mask(role_mask, &light->has_color, &light->has_white,
-                                   &light->has_cct)) {
-            ESP_LOGE(TAG, "Skipping light '%s': unsupported channel combination", token);
-            token = strtok(NULL, ",");
-            continue;
-        }
-        light->is_switch = is_switch;
-#ifdef LIGHT_HAS_ADDRESSABLE
-        light->is_addressable = is_addressable;
-        // has_white can't be expressed by role_mask alone for CH_ADDRESSABLE (single role bit
-        // covers both grb and grbw tokens) - override from the actual parsed format suffix.
-        if (is_addressable) {
-            light->has_white = parsed[0].has_white_channel;
-        }
-#endif
-
-        // default values
-        light->val = 50;
-        light->sat = 100;
-        light->hue = 0;
-        light->cct = 50;
-        light->color_mode = light->has_color && !light->has_white;
-#if LIGHT_EFFECTS_BUILD
-        // WLED's own DEFAULT_SPEED/DEFAULT_INTENSITY are 128/255 (~50%) - same proportion here.
-        light->effect_speed = 50;
-        light->effect_intensity = 50;
-        // val2=0 (not just sat2=0) is required for a true default-black second color - see
-        // light_internal.h.
-        light->hue2 = 0;
-        light->sat2 = 0;
-        light->val2 = 0;
-#endif
-
-#ifdef LIGHT_HAS_ADDRESSABLE
-        bool skip_ledc_alloc = is_switch || is_addressable;
-#else
-        bool skip_ledc_alloc = is_switch;
-#endif
-        if (!skip_ledc_alloc && next_ledc_channel + parsed_count > SOC_LEDC_CHANNEL_NUM) {
-            ESP_LOGE(TAG, "Skipping light '%s': not enough LEDC channels left", token);
-            token = strtok(NULL, ",");
-            continue;
-        }
-
-        memcpy(light->channels, parsed, sizeof(parsed));
-        light->channel_count = parsed_count;
-        for (uint8_t c = 0; c < parsed_count; c++) {
-            light->channels[c].ledc_ch =
-                skip_ledc_alloc ? (ledc_channel_t)0 : (ledc_channel_t)next_ledc_channel++;
-        }
-
-        if (name && strlen(name) > 0) {
-            strncpy(light->name, name, sizeof(light->name) - 1);
-        } else {
-            snprintf(light->name, sizeof(light->name), "light%u", index);
-        }
-        light->name[sizeof(light->name) - 1] = '\0';
-
-        char *sanitized_name = sanitize(light->name);
-        strncpy(light->name, sanitized_name, sizeof(light->name) - 1);
-        light->name[sizeof(light->name) - 1] = '\0';
-        free(sanitized_name);
-
-        ESP_LOGI(TAG, "Configured light %d '%s' (%d channel(s), color=%d white=%d cct=%d)", index,
-                 light->name, light->channel_count, light->has_color, light->has_white,
-                 light->has_cct);
-
-        index++;
-        token = strtok(NULL, ",");
-    }
-
-    if (token != NULL) {
-        ESP_LOGE(TAG, "Too many lights configured, max is %d, remaining entries were ignored",
-                 CONFIG_LIGHT_MAX_COUNT);
-    }
-
-    free(str);
-}
 
 static bool light_has_role(light_config_t *light, light_channel_role_t role) {
     for (uint8_t i = 0; i < light->channel_count; i++) {
@@ -435,68 +82,63 @@ static int8_t light_find_by_name(const char *name) {
 }
 
 #ifdef LIGHT_HAS_ADDRESSABLE
-// Dispatches to the has_white-aware led_strip call for one pixel - the unit light_addressable_fill
-// loops over, and shared with light_effects.c so per-pixel effects don't each duplicate this
-// branch. w is ignored when has_white is false. Non-static: shared with light_effects.c.
-void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white, uint8_t r,
-                                 uint8_t g, uint8_t b, uint8_t w) {
-    r = gamma_lut_rgb[r];
-    g = gamma_lut_rgb[g];
-    b = gamma_lut_rgb[b];
+// Pushes one finished color - gamma-corrected and dimmed already - into the strip buffer,
+// dispatching to the has_white-aware led_strip call. w is ignored when has_white is false.
+static void light_strip_write(led_strip_handle_t handle, uint16_t i, bool has_white,
+                              light_rgbcw_t levels) {
     if (has_white) {
-        led_strip_set_pixel_rgbw(handle, i, r, g, b, w);
+        led_strip_set_pixel_rgbw(handle, i, levels.r, levels.g, levels.b, levels.w);
     } else {
-        led_strip_set_pixel(handle, i, r, g, b);
+        led_strip_set_pixel(handle, i, levels.r, levels.g, levels.b);
     }
 }
 
-// led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw.
-void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white, uint8_t r,
-                            uint8_t g, uint8_t b, uint8_t w) {
+// Sets one pixel from a raw (full-output, pre-gamma) color: the output stage runs here, so
+// effects can work in plain sRGB and never think about gamma or the brightness slider.
+// Non-static: shared with light_effects.c.
+void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white,
+                                 light_rgbcw_t color, uint8_t brightness) {
+    light_strip_write(handle, i, has_white, light_color_to_levels(color, brightness));
+}
+
+// led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw. The
+// output stage runs once here rather than per pixel, since every pixel gets the same color.
+void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white,
+                            light_rgbcw_t color, uint8_t brightness) {
+    light_rgbcw_t levels = light_color_to_levels(color, brightness);
     for (uint16_t i = 0; i < count; i++) {
-        light_addressable_set_pixel(handle, i, has_white, r, g, b, w);
+        light_strip_write(handle, i, has_white, levels);
     }
 }
 #endif
 
-// Non-static: shared with light_effects.c, which needs the same on/color_mode/white/cct ->
-// r,g,b,c,w mapping to render a solid (effect == NONE) addressable light.
-void light_compute_rgbcw(light_config_t *light, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *c,
-                         uint8_t *w) {
-    *r = *g = *b = *c = *w = 0;
+// The light's color at full output - plain sRGB, before gamma and before the brightness slider,
+// both of which light_color_to_levels() applies where the value meets the hardware. Non-static:
+// light_effects.c renders the solid (effect == NONE) case from this same source of truth.
+light_rgbcw_t light_compute_color(light_config_t *light) {
+    light_rgbcw_t color = {0};
 
     if (!light->on) {
-        return;
+        return color;
     }
 
     if (light->color_mode && light->has_color) {
-        light_hsv_to_rgb(light->hue, light->sat, light->val, r, g, b);
+        light_color_hsv_to_rgb(light->hue, light->sat, 100, &color.r, &color.g, &color.b);
     } else if (light->has_white) {
         if (light->has_cct) {
-            *c = gamma_lut[(light->val * light->cct) / 100];
-            *w = gamma_lut[(light->val * (100 - light->cct)) / 100];
-            // Splitting val between two channels before the gamma lookup can
-            // round both shares down to 0 at low brightness (e.g. val=1,
-            // cct=50: 50/100 truncates to 0 twice), even though val > 0 -
-            // keep the dominant channel of the mix at least barely lit.
-            if (light->val > 0 && *c == 0 && *w == 0) {
-                if (light->cct >= 50) {
-                    *c = 1;
-                } else {
-                    *w = 1;
-                }
-            }
+            // cct is the cool share, 0-100: splits full output between the two white channels.
+            color.c = (uint8_t)(255 * light->cct / 100);
+            color.w = (uint8_t)(255 - color.c);
         } else {
-            uint8_t value = gamma_lut[light->val];
-            *c = value;
-            *w = value;
+            color.c = color.w = 255;
         }
     }
+    return color;
 }
 
-static void light_drive_hardware(light_config_t *light) {
-    uint8_t r, g, b, c, w;
-    light_compute_rgbcw(light, &r, &g, &b, &c, &w);
+static void light_write_channels(light_config_t *light) {
+    light_rgbcw_t color = light_compute_color(light);
+    light_rgbcw_t levels = light_color_to_levels(color, light->val);
 
     for (uint8_t i = 0; i < light->channel_count; i++) {
         if (light->channels[i].role == CH_SWITCH) {
@@ -515,8 +157,10 @@ static void light_drive_hardware(light_config_t *light) {
             // covers the very first state before it's ever notified.
 #else
             if (light->addressable_handle) {
+                // The raw color and the level, not `levels` - the strip path runs the output
+                // stage itself, once, inside the fill.
                 light_addressable_fill(light->addressable_handle, light->channels[i].led_count,
-                                       light->channels[i].has_white_channel, r, g, b, w);
+                                       light->channels[i].has_white_channel, color, light->val);
                 led_strip_refresh(light->addressable_handle);
             }
 #endif
@@ -524,22 +168,23 @@ static void light_drive_hardware(light_config_t *light) {
         }
 #endif
 
+        // `levels` is finished: gamma-corrected and dimmed, ready to be an 8-bit LEDC duty.
         uint8_t value = 0;
         switch (light->channels[i].role) {
         case CH_RED:
-            value = gamma_lut_rgb[r];
+            value = levels.r;
             break;
         case CH_GREEN:
-            value = gamma_lut_rgb[g];
+            value = levels.g;
             break;
         case CH_BLUE:
-            value = gamma_lut_rgb[b];
+            value = levels.b;
             break;
         case CH_COLD_WHITE:
-            value = c;
+            value = levels.c;
             break;
         case CH_WARM_WHITE:
-            value = w;
+            value = levels.w;
             break;
         default:
             break;
@@ -655,7 +300,7 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
 
     cJSON_Delete(root);
 
-    light_drive_hardware(light);
+    light_write_channels(light);
 #if LIGHT_EFFECTS_BUILD
     if (light->is_addressable) {
         light_effects_notify();
@@ -796,8 +441,8 @@ static esp_err_t light_adapter_init(void) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    light_gamma_init();
-    light_parse_list();
+    light_color_init();
+    light_config_parse();
 
 #if CONFIG_LIGHT_PERSIST_STATE
     light_config_fingerprint_cached = light_config_fingerprint();
@@ -891,7 +536,7 @@ static esp_err_t light_adapter_init(void) {
             }
         }
 
-        light_drive_hardware(light);
+        light_write_channels(light);
 
         if ((size_t)i >= trampoline_count) {
             ESP_LOGE(TAG,
@@ -965,7 +610,7 @@ void light_set_state(const char *name, bool on) {
         return;
     }
     lights[idx].on = on;
-    light_drive_hardware(&lights[idx]);
+    light_write_channels(&lights[idx]);
 #if LIGHT_EFFECTS_BUILD
     if (lights[idx].is_addressable) {
         light_effects_notify();
@@ -1014,10 +659,15 @@ static void tele_light(const char *tele_id, cJSON *json_root) {
         if (light->has_color) {
             uint8_t r, g, b;
             if (light->color_mode) {
-                light_hsv_to_rgb(light->hue, light->sat, light->val, &r, &g, &b);
+                // At full value, not scaled by "v" - brightness is reported separately (and HA
+                // reads it from there), so folding it in here only costs precision. Scaled, a
+                // saturated color quantizes to something with the wrong hue near the bottom of
+                // the slider - FF6E54 at v=1 lands on (3,1,1), which reads back as pure red -
+                // and HA would then show, and remember, that wrong color.
+                light_color_hsv_to_rgb(light->hue, light->sat, 100, &r, &g, &b);
             } else {
                 // Not RGBW/RGBCW's actual output (that's computed separately in
-                // light_compute_rgbcw) - just an approximate warm<->cool tint from cct, so
+                // light_compute_color) - just an approximate warm<->cool tint from cct, so
                 // HA's MQTT "template" schema (no color_mode field, unlike "json" schema)
                 // doesn't keep painting its color-derived UI (e.g. the brightness slider)
                 // with the stale last color while white mode is active. Harmless without HA
@@ -1041,14 +691,11 @@ static void tele_light(const char *tele_id, cJSON *json_root) {
         if (has_c || has_w) {
             uint8_t c_val = 0, w_val = 0;
             if (!light->color_mode || !light->has_color) {
-                if (has_c && has_w) {
-                    c_val = gamma_lut[(light->val * light->cct) / 100];
-                    w_val = gamma_lut[(light->val * (100 - light->cct)) / 100];
-                } else {
-                    uint8_t value = gamma_lut[light->val];
-                    c_val = value;
-                    w_val = value;
-                }
+                // Logical (pre-gamma) levels, same convention as the r/g/b reported above: the
+                // cold/warm split at full output, since "v" carries the level on its own.
+                light_rgbcw_t color = light_compute_color(light);
+                c_val = color.c;
+                w_val = color.w;
             }
             if (has_c) {
                 cJSON_AddNumberToObject(obj, "c", c_val);

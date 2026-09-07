@@ -108,10 +108,9 @@ typedef void (*light_effect_fn_t)(light_config_t *light, uint32_t now_ms);
 static void effect_solid(light_config_t *light, uint32_t now_ms) {
     (void)now_ms;
 
-    uint8_t r, g, b, c, w;
-    light_compute_rgbcw(light, &r, &g, &b, &c, &w);
     light_addressable_fill(light->addressable_handle, light->channels[0].led_count,
-                           light->channels[0].has_white_channel, r, g, b, w);
+                           light->channels[0].has_white_channel, light_compute_color(light),
+                           light->val);
 }
 
 // Square-wave brightness (WLED mode_blink_rainbow), driven off an absolute timestamp so
@@ -122,11 +121,13 @@ static void effect_blink(light_config_t *light, uint32_t now_ms) {
     uint32_t cycle_ms = 200 + (uint32_t)(100 - light->effect_speed) * 18;
     uint8_t level = ((now_ms % cycle_ms) < cycle_ms / 2) ? 100 : 0;
     uint16_t hue = (uint16_t)((now_ms / 20) % 360);
-    uint8_t r, g, b;
+    light_rgbcw_t color = {0};
 
-    light_hsv_to_rgb(hue, 100, (uint8_t)((light->val * level) / 100), &r, &g, &b);
+    // Square wave: the light's level while "on", fully dark otherwise.
+    light_color_hsv_to_rgb(hue, 100, 100, &color.r, &color.g, &color.b);
     light_addressable_fill(light->addressable_handle, light->channels[0].led_count,
-                           light->channels[0].has_white_channel, r, g, b, 0);
+                           light->channels[0].has_white_channel, color,
+                           (uint8_t)((light->val * level) / 100));
 }
 
 // Ported from WLED's mode_breath: eased pulse in the first quarter of the cycle, resting at a
@@ -144,14 +145,16 @@ static void effect_breathe(light_config_t *light, uint32_t now_ms) {
     }
 
     uint8_t lum = 30 + (uint8_t)(shape * 225.0f); // 30..255, never fully black
-    uint8_t br, bg, bb;
-    light_hsv_to_rgb(light->hue, light->sat, light->val, &br, &bg, &bb);
+    light_rgbcw_t color = {0};
+    light_color_hsv_to_rgb(light->hue, light->sat, 100, &color.r, &color.g, &color.b);
 
-    uint8_t r = (uint8_t)(((uint16_t)br * lum) / 255);
-    uint8_t g = (uint8_t)(((uint16_t)bg * lum) / 255);
-    uint8_t b = (uint8_t)(((uint16_t)bb * lum) / 255);
+    // The breath envelope shapes the color itself, in plain sRGB (so it keeps its visible
+    // floor); the light's own level is applied on top by the fill's output stage.
+    color.r = (uint8_t)(((uint16_t)color.r * lum) / 255);
+    color.g = (uint8_t)(((uint16_t)color.g * lum) / 255);
+    color.b = (uint8_t)(((uint16_t)color.b * lum) / 255);
     light_addressable_fill(light->addressable_handle, light->channels[0].led_count,
-                           light->channels[0].has_white_channel, r, g, b, 0);
+                           light->channels[0].has_white_channel, color, light->val);
 }
 
 // Ported from WLED's mode_rainbow: the whole strip cycles through one hue over time (not a
@@ -163,11 +166,11 @@ static void effect_rainbow(light_config_t *light, uint32_t now_ms) {
     uint16_t wled_speed = (uint16_t)light->effect_speed * 255 / 100;
     uint32_t counter = (now_ms * ((wled_speed >> 2) + 2)) & 0xFFFF;
     uint16_t hue = (uint16_t)((counter >> 8) * 360 / 256);
-    uint8_t r, g, b;
+    light_rgbcw_t color = {0};
 
-    light_hsv_to_rgb(hue, 100, light->val, &r, &g, &b);
+    light_color_hsv_to_rgb(hue, 100, 100, &color.r, &color.g, &color.b);
     light_addressable_fill(light->addressable_handle, light->channels[0].led_count,
-                           light->channels[0].has_white_channel, r, g, b, 0);
+                           light->channels[0].has_white_channel, color, light->val);
 }
 
 // 8-bit sine: input 0-255 is one full cycle, output 0-255 centered on 128 (WLED/FastLED sin8).
@@ -220,34 +223,45 @@ static void heat_color(uint8_t temperature, uint8_t *r, uint8_t *g, uint8_t *b) 
 
 // Rescales the 0-100 effect_speed/effect_intensity sliders to WLED's native 0-255 range, so
 // ported WLED timing constants (e.g. "(speed>>2)+2") feel the same across the full slider.
-static uint16_t wled_scale(uint8_t value_0_100) { return (uint16_t)value_0_100 * 255 / 100; }
+static uint16_t light_effects_wled_scale(uint8_t value_0_100) {
+    return (uint16_t)value_0_100 * 255 / 100;
+}
 
 // Linear interpolation from `a` (t=0) to `b` (t=255), per 8-bit channel.
 static uint8_t lerp8(uint8_t a, uint8_t b, uint8_t t) {
     return (uint8_t)(a + (((int16_t)b - a) * t) / 255);
 }
 
-// Renders fx_state.buf (0-255 per pixel: 0 = color2, 255 = main color) as a blend of the two.
-// val2 is scaled as a percentage of val, not absolute, so dimming the light dims color2 with
-// it (see light_internal.h for why hue2/sat2/val2 aren't inherently "background").
-static void render_brightness_background(light_config_t *light) {
+// Renders fx_state.buf as a two-color blend: per pixel, 0 picks color2 and 255 the main color.
+// Both colors, and the blend between them, stay in plain sRGB at full output; the light's own
+// level reaches them once, per pixel, in the output stage. val2 is what separates the two
+// levels, and it is a share of the main color rather than an absolute level, so dimming the
+// light dims color2 with it (see light_internal.h for why hue2/sat2/val2 aren't inherently
+// "background").
+static void light_effects_render_blend(light_config_t *light) {
     uint16_t led_count =
         light->channels[0].led_count; // addressable lights have exactly one channel
     bool has_white = light->channels[0].has_white_channel;
     const uint8_t *buf = light->fx_state.buf;
     uint16_t buf_led_count =
         led_count > LIGHT_EFFECTS_MAX_LEDS ? LIGHT_EFFECTS_MAX_LEDS : led_count;
+
     uint8_t r1, g1, b1;
-    light_hsv_to_rgb(light->hue, light->sat, light->val, &r1, &g1, &b1);
+    light_color_hsv_to_rgb(light->hue, light->sat, 100, &r1, &g1, &b1);
+
+    // val2 is baked into color2 as an sRGB level, which is exactly what it means: color2 sits
+    // at that fraction of the main color, and the light's level then scales both together.
     uint8_t r2, g2, b2;
-    uint8_t val2_scaled = (uint8_t)(((uint16_t)light->val2 * light->val) / 100);
-    light_hsv_to_rgb(light->hue2, light->sat2, val2_scaled, &r2, &g2, &b2);
+    light_color_hsv_to_rgb(light->hue2, light->sat2, light->val2, &r2, &g2, &b2);
+
     for (uint16_t i = 0; i < led_count; i++) {
         uint8_t level = i < buf_led_count ? buf[i] : 0;
-        uint8_t r = lerp8(r2, r1, level);
-        uint8_t g = lerp8(g2, g1, level);
-        uint8_t b = lerp8(b2, b1, level);
-        light_addressable_set_pixel(light->addressable_handle, i, has_white, r, g, b, 0);
+        light_rgbcw_t color = {
+            .r = lerp8(r2, r1, level),
+            .g = lerp8(g2, g1, level),
+            .b = lerp8(b2, b1, level),
+        };
+        light_addressable_set_pixel(light->addressable_handle, i, has_white, color, light->val);
     }
 }
 
@@ -260,7 +274,7 @@ static void effect_washing_machine(light_config_t *light, uint32_t now_ms) {
     uint16_t led_count = light->channels[0].led_count;
     bool has_white = light->channels[0].has_white_channel;
     int8_t speed = tristate_square8((uint8_t)((now_ms >> 7) & 0xFF), 90, 15);
-    uint16_t wled_speed = wled_scale(light->effect_speed);
+    uint16_t wled_speed = light_effects_wled_scale(light->effect_speed);
     int32_t delta = ((int32_t)speed * 2048) / (int32_t)(512 - wled_speed);
     light->fx_state.step += (uint32_t)delta;
 
@@ -269,9 +283,9 @@ static void effect_washing_machine(light_config_t *light, uint32_t now_ms) {
     for (uint16_t i = 0; i < led_count; i++) {
         uint8_t phase = (uint8_t)((density * 255u * i / led_count) + (light->fx_state.step >> 7));
         uint8_t col = sin8(phase);
-        uint8_t r, g, b;
-        light_hsv_to_rgb((uint16_t)(col * 360 / 255), 100, light->val, &r, &g, &b);
-        light_addressable_set_pixel(light->addressable_handle, i, has_white, r, g, b, 0);
+        light_rgbcw_t color = {0};
+        light_color_hsv_to_rgb((uint16_t)(col * 360 / 255), 100, 100, &color.r, &color.g, &color.b);
+        light_addressable_set_pixel(light->addressable_handle, i, has_white, color, light->val);
     }
 }
 
@@ -285,10 +299,10 @@ static void effect_android(light_config_t *light, uint32_t now_ms) {
     bool shrinking = st->aux1 & 0x01;
 
     if ((int32_t)(now_ms - st->step) >= 0) {
-        uint16_t wled_speed = wled_scale(light->effect_speed);
+        uint16_t wled_speed = light_effects_wled_scale(light->effect_speed);
         st->step = now_ms + 3 + ((8u * (uint32_t)(255 - wled_speed)) / led_count);
 
-        uint16_t wled_intensity = wled_scale(light->effect_intensity);
+        uint16_t wled_intensity = light_effects_wled_scale(light->effect_intensity);
         uint16_t max_size = (uint16_t)((uint32_t)wled_intensity * led_count / 255);
         if (size > max_size) {
             shrinking = true;
@@ -315,7 +329,7 @@ static void effect_android(light_config_t *light, uint32_t now_ms) {
         }
     }
 
-    // Writes lit/unlit state as a 0/255 buffer so render_brightness_background can draw it.
+    // Writes lit/unlit state as a 0/255 buffer so light_effects_render_blend can draw it.
     uint16_t buf_led_count =
         led_count > LIGHT_EFFECTS_MAX_LEDS ? LIGHT_EFFECTS_MAX_LEDS : led_count;
     uint16_t start = st->aux0;
@@ -324,7 +338,7 @@ static void effect_android(light_config_t *light, uint32_t now_ms) {
         bool lit = (start < end) ? (i >= start && i < end) : (i >= start || i < end);
         st->buf[i] = lit ? 255 : 0;
     }
-    render_brightness_background(light);
+    light_effects_render_blend(light);
 }
 
 // "Boost" (WLED SEGMENT.custom3) isn't part of the official speed/intensity API (see
@@ -347,7 +361,7 @@ static void effect_fire_2012(light_config_t *light, uint32_t now_ms) {
 
     uint32_t it = now_ms >> 5;
     if (it != light->fx_state.step) {
-        uint16_t wled_speed = wled_scale(light->effect_speed);
+        uint16_t wled_speed = light_effects_wled_scale(light->effect_speed);
         unsigned ignition = buf_led_count / 10 > 3 ? buf_led_count / 10 : 3;
 
         // Step 1: cool down every cell.
@@ -365,7 +379,7 @@ static void effect_fire_2012(light_config_t *light, uint32_t now_ms) {
         }
 
         // Step 3: random sparks near the base.
-        uint16_t wled_intensity = wled_scale(light->effect_intensity);
+        uint16_t wled_intensity = light_effects_wled_scale(light->effect_intensity);
         if ((esp_random() % 256) <= wled_intensity) {
             unsigned y = esp_random() % ignition;
             uint8_t boost = (uint8_t)((17 + FIRE_BOOST) * (ignition - y / 2) / ignition);
@@ -378,19 +392,14 @@ static void effect_fire_2012(light_config_t *light, uint32_t now_ms) {
         light->fx_state.step = it;
     }
 
-    // Step 4: heat -> color. heat_color() itself has no concept of brightness, so scale by
-    // light->val afterwards - otherwise the light's brightness slider would do nothing here,
-    // unlike every other effect (they all route through light_hsv_to_rgb/light_compute_rgbcw,
-    // which do apply val).
+    // Step 4: heat -> color. The light's brightness is applied per pixel by
+    // light_addressable_set_pixel, same as every other effect.
     for (uint16_t i = 0; i < led_count; i++) {
-        uint8_t r = 0, g = 0, b = 0;
+        light_rgbcw_t color = {0};
         if (i < buf_led_count) {
-            heat_color(heat[i] > 240 ? 240 : heat[i], &r, &g, &b);
-            r = (uint8_t)(((uint16_t)r * light->val) / 100);
-            g = (uint8_t)(((uint16_t)g * light->val) / 100);
-            b = (uint8_t)(((uint16_t)b * light->val) / 100);
+            heat_color(heat[i] > 240 ? 240 : heat[i], &color.r, &color.g, &color.b);
         }
-        light_addressable_set_pixel(light->addressable_handle, i, has_white, r, g, b, 0);
+        light_addressable_set_pixel(light->addressable_handle, i, has_white, color, light->val);
     }
 }
 
@@ -410,12 +419,12 @@ static void effect_twinkle(light_config_t *light, uint32_t now_ms) {
         buf[i] = qsub8(buf[i], fade_amount);
     }
 
-    uint8_t spawn_chance = (uint8_t)wled_scale(light->effect_intensity);
+    uint8_t spawn_chance = (uint8_t)light_effects_wled_scale(light->effect_intensity);
     if ((esp_random() % 256) < spawn_chance) {
         buf[esp_random() % buf_led_count] = 255;
     }
 
-    render_brightness_background(light);
+    light_effects_render_blend(light);
 }
 
 // Inspired by WLED's mode_meteor (FX.cpp:2378-2441), classic (non-"smooth") variant - skips
@@ -430,7 +439,7 @@ static void effect_meteor(light_config_t *light, uint32_t now_ms) {
     uint16_t buf_led_count =
         led_count > LIGHT_EFFECTS_MAX_LEDS ? LIGHT_EFFECTS_MAX_LEDS : led_count;
 
-    uint16_t wled_speed = wled_scale(light->effect_speed);
+    uint16_t wled_speed = light_effects_wled_scale(light->effect_speed);
     st->step += wled_speed + 1;
     uint16_t head = (uint16_t)(((uint32_t)st->step * buf_led_count) >> 16);
 
@@ -447,7 +456,7 @@ static void effect_meteor(light_config_t *light, uint32_t now_ms) {
         trail[(head + j) % buf_led_count] = 255;
     }
 
-    render_brightness_background(light);
+    light_effects_render_blend(light);
 }
 
 // Single source of truth per effect: name (for the cmnd "effect" field) + render function,
@@ -499,7 +508,8 @@ static void light_effects_render(light_config_t *light, uint32_t now_ms) {
     bool has_white = ch->has_white_channel;
 
     if (!light->on) {
-        light_addressable_fill(light->addressable_handle, led_count, has_white, 0, 0, 0, 0);
+        light_addressable_fill(light->addressable_handle, led_count, has_white, (light_rgbcw_t){0},
+                               0);
         led_strip_refresh(light->addressable_handle);
         return;
     }

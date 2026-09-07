@@ -1,17 +1,21 @@
 #pragma once
 
-// Private, component-internal header shared between light.c and light_effects.c. Not
-// installed under include/ - light_adapter.h remains the only public surface of this
-// component. Splitting the struct definitions out here (rather than making light_effects.c
-// a copy) lets both files treat lights[] as one shared piece of state without a
-// getter/setter layer - they're still one logical adapter, just split across two files by
-// concern (config/cmnd/NVS vs. animation timing).
+// Private, component-internal header: the light's own state (light_config_t, lights[]) plus the
+// handful of functions the component's .c files share. Not installed under include/ -
+// light_adapter.h remains the only public surface.
+//
+// Holding the state here, rather than behind a getter/setter layer, lets light.c,
+// light_config.c and light_effects.c all treat lights[] as one shared thing - they are one
+// logical adapter, split by concern rather than by ownership. Pure color math lives in
+// light_color.h instead, which stays free of ESP-IDF headers so it can be compiled and checked
+// on a host.
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "driver/gpio.h" // IWYU pragma: keep - gpio_num_t used in light_channel_t
 #include "driver/ledc.h" // IWYU pragma: keep - ledc_channel_t used in light_channel_t
+#include "light_color.h"
 
 #ifdef LIGHT_HAS_ADDRESSABLE
 #include "led_strip.h" // IWYU pragma: keep - led_strip_handle_t/led_color_component_format_t used below
@@ -100,23 +104,25 @@ typedef struct {
 
 extern light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 
-// Shared color math, defined in light.c (kept there since gamma_lut, used by the
-// white/CCT branch, is private to that file).
-void light_hsv_to_rgb(uint16_t hue, uint8_t saturation, uint8_t value, uint8_t *red, uint8_t *green,
-                      uint8_t *blue);
-void light_compute_rgbcw(light_config_t *light, uint8_t *r, uint8_t *g, uint8_t *b, uint8_t *c,
-                         uint8_t *w);
+// Fills lights[] from CONFIG_LIGHT_GPIO_LIST. Defined in light_config.c, called once at init.
+void light_config_parse(void);
+
+// The light's on/color_mode/white/cct state as one raw color, at full output and before gamma
+// - what light_color.h calls the input to the output stage. Defined in light.c, shared so
+// light_effects.c renders the solid (effect == NONE) case from the same source of truth.
+light_rgbcw_t light_compute_color(light_config_t *light);
 
 #ifdef LIGHT_HAS_ADDRESSABLE
-// Sets one pixel, dispatching to the has_white-aware led_strip call. Defined in light.c,
-// shared so per-pixel effects in light_effects.c don't duplicate the has_white branch. w is
-// ignored when has_white is false.
-void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white, uint8_t r,
-                                 uint8_t g, uint8_t b, uint8_t w);
+// Sets one pixel from a raw (full-output, pre-gamma) color, dispatching to the has_white-aware
+// led_strip call. Defined in light.c, shared so per-pixel effects in light_effects.c neither
+// duplicate the has_white branch nor have to think about gamma or the brightness slider -
+// light_color_to_levels() runs inside. color.w is ignored when has_white is false.
+void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white,
+                                 light_rgbcw_t color, uint8_t brightness);
 
 // led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw.
-// Defined in light.c, shared with light_effects.c so both use the same fill loop. w is
+// Defined in light.c, shared with light_effects.c so both use the same fill loop. color.w is
 // ignored when has_white is false.
-void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white, uint8_t r,
-                            uint8_t g, uint8_t b, uint8_t w);
+void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white,
+                            light_rgbcw_t color, uint8_t brightness);
 #endif

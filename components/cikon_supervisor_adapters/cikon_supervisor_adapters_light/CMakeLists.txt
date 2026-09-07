@@ -29,7 +29,7 @@ endforeach()
 # Only compiled in when the device both has a role-N channel (LIGHT_HAS_ADDRESSABLE, above)
 # and the user hasn't opted out (CONFIG_LIGHT_ENABLE_EFFECTS). A device with no addressable
 # strip never pays for this regardless of the Kconfig setting.
-set(LIGHT_SRCS "light.c")
+set(LIGHT_SRCS "light.c" "light_color.c" "light_config.c")
 if(CONFIG_LIGHT_ENABLE_EFFECTS AND LIGHT_HAS_ADDRESSABLE)
     list(APPEND LIGHT_SRCS "light_effects.c")
 endif()
@@ -39,6 +39,8 @@ idf_component_register(
         ${LIGHT_SRCS}
     INCLUDE_DIRS
         "include"
+    PRIV_INCLUDE_DIRS
+        "private_include"
     PRIV_REQUIRES
         esp_driver_ledc
         esp_driver_gpio
