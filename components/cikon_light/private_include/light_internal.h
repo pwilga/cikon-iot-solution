@@ -107,6 +107,13 @@ extern light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 // Fills lights[] from CONFIG_LIGHT_GPIO_LIST. Defined in light_config.c, called once at init.
 void light_config_parse(void);
 
+// The effect catalogue. Defined in light.c and answerable in every build - light_effects.c,
+// which holds the rows, is compiled only when the effects engine is enabled. Count is 0 and
+// name is NULL in builds without it.
+size_t light_effect_count(void);
+const char *light_effect_name(size_t effect);
+int8_t light_effect_index(const char *name);
+
 // The light's on/color_mode/white/cct state as one raw color, at full output and before gamma
 // - what light_color.h calls the input to the output stage. Defined in light.c, shared so
 // light_effects.c renders the solid (effect == NONE) case from the same source of truth.

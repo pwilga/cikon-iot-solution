@@ -1,4 +1,4 @@
-menu "Cikon IoT Supervisor Light Adapter"
+menu "Cikon IoT Light Driver"
 
     config LIGHT_MAX_COUNT
         int "Maximum number of lights"
@@ -103,6 +103,18 @@ menu "Cikon IoT Supervisor Light Adapter"
             channel is also configured in LIGHT_GPIO_LIST.
 
     if LIGHT_ENABLE_EFFECTS
+
+        config LIGHT_EFFECTS_TASK_PRIORITY
+            int "Addressable effects task priority"
+            default 4
+            range 0 24
+            help
+                Priority of the FreeRTOS task rendering addressable-strip
+                animations. Keep it just below the supervisor task
+                (CONFIG_SUPERVISOR_TASK_PRIORITY, default 5) so telemetry and
+                command dispatch stay responsive while an effect runs. The
+                default of 4 is the value this task ran at when it derived its
+                priority from the supervisor's directly.
 
         config LIGHT_EFFECTS_FPS
             int "Addressable effects animation frame rate"

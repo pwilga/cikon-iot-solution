@@ -1,0 +1,15 @@
+name: cikon_light
+version: "1.0.0"
+description: "Light driver - HSV/CCT color control for analog LED strips via LEDC PWM, and addressable (WS2812/SK6812) strips with animation effects"
+license: MIT
+url: https://github.com/pwilga/cikon-iot-solution
+maintainers:
+  - "Piotr Wilga <pwilga@gmail.com>"
+
+dependencies:
+  idf: ">=6.0"
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
+  espressif/cjson: "*"
+  espressif/led_strip: "*"

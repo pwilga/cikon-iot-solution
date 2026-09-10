@@ -3,8 +3,10 @@
 // Private, component-internal header - only light.c includes this (guarded by
 // LIGHT_EFFECTS_BUILD, see CMakeLists.txt). Not installed under include/.
 
-#include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
+
+#include "light_internal.h" // light_config_t, in the render function signature below
 
 typedef enum {
     LIGHT_EFFECT_NONE = 0, // "solid" - today's static fill, no animation
@@ -18,14 +20,17 @@ typedef enum {
     LIGHT_EFFECT_METEOR,
 } light_effect_t;
 
-// Case-insensitive name -> enum lookup for the cmnd "effect" field (e.g. "rainbow").
-// Returns false (and leaves *out untouched) if name doesn't match any known effect.
-bool light_effect_from_name(const char *name, light_effect_t *out);
+// The effect registry: one row per effect, indexed by light_effect_t. Exposed as data rather
+// than behind accessors because light.c has to answer "which effects exist" in every build,
+// including the ones where this file is not compiled at all - so the questions are answered
+// there, guarded by LIGHT_EFFECTS_BUILD, and this file only supplies the rows.
+typedef struct {
+    const char *name; // as it travels over MQTT, and as the cmnd "effect" field accepts it
+    void (*fn)(light_config_t *light, uint32_t now_ms);
+} light_effect_entry_t;
 
-// Number of known effects, and name lookup by id - used to build HA's effect_list and to
-// publish the current effect's name in telemetry.
-size_t light_effect_count(void);
-const char *light_effect_name(light_effect_t effect);
+extern const light_effect_entry_t light_effect_table[];
+extern const size_t light_effect_table_size;
 
 // Creates the effects task if >=1 configured light is addressable; no-op otherwise. Must be
 // called once, after light_adapter_init() has finished setting up all addressable_handle

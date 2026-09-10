@@ -13,15 +13,8 @@
 #include "nvs.h"
 #endif
 
-#include "cJSON.h"
-
-#include "cmnd.h"
-#include "json_parser.h"
-#include "light_adapter.h"
+#include "light.h"
 #include "light_internal.h"
-#include "metadata.h"
-#include "supervisor.h"
-#include "tele.h"
 
 #ifdef LIGHT_HAS_ADDRESSABLE
 #include "led_strip.h"
@@ -31,13 +24,12 @@
 #include "light_effects.h"
 #endif
 
-#define TAG "cikon:adapter:light"
-#define LIGHT_KELVIN_MIN 2200
-#define LIGHT_KELVIN_MAX 7000
+#define TAG "cikon:light"
 
 #if CONFIG_LIGHT_PERSIST_STATE
 // "on" is persisted but only conditionally restored (light_should_restore_on) - see
-// light_restore_state.
+// light_restore_state. Effect settings (effect, speed, intensity, hue2/sat2/val2) are not
+// persisted at all, so a strip comes back on "solid" after a reboot.
 typedef struct __attribute__((packed)) {
     uint8_t on;
     uint8_t color_mode;
@@ -54,6 +46,7 @@ static bool state_dirty = false;
 static uint32_t light_config_fingerprint_cached;
 #endif
 
+
 light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 static bool light_initialized = false;
 
@@ -66,7 +59,42 @@ static bool light_has_role(light_config_t *light, light_channel_role_t role) {
     return false;
 }
 
-static int8_t light_find_by_name(const char *name) {
+// The effect catalogue lives here, not in light_effects.c: that file is compiled only when the
+// effects engine is enabled, and HA discovery asks these questions in every build.
+size_t light_effect_count(void) {
+#if LIGHT_EFFECTS_BUILD
+    return light_effect_table_size;
+#else
+    return 0;
+#endif
+}
+
+const char *light_effect_name(size_t effect) {
+#if LIGHT_EFFECTS_BUILD
+    return effect < light_effect_table_size ? light_effect_table[effect].name : NULL;
+#else
+    (void)effect;
+    return NULL;
+#endif
+}
+
+// Case-insensitive lookup for the cmnd "effect" field; -1 when the name matches nothing.
+int8_t light_effect_index(const char *name) {
+#if LIGHT_EFFECTS_BUILD
+    if (name) {
+        for (size_t i = 0; i < light_effect_table_size; i++) {
+            if (strcasecmp(name, light_effect_table[i].name) == 0) {
+                return (int8_t)i;
+            }
+        }
+    }
+#else
+    (void)name;
+#endif
+    return -1;
+}
+
+int8_t light_index_by_name(const char *name) {
     if (!name) {
         return -1;
     }
@@ -200,6 +228,87 @@ static void light_write_channels(light_config_t *light) {
     }
 }
 
+size_t light_count(void) {
+    size_t count = 0;
+    while (count < CONFIG_LIGHT_MAX_COUNT && lights[count].channel_count != 0) {
+        count++;
+    }
+    return count;
+}
+
+// The one bounds check behind every index-taking entry point below.
+static light_config_t *light_by_index(size_t index) {
+    return index < light_count() ? &lights[index] : NULL;
+}
+
+const char *light_name(size_t index) {
+    light_config_t *light = light_by_index(index);
+    return light ? light->name : NULL;
+}
+
+bool light_get_caps(size_t index, light_caps_t *caps) {
+    light_config_t *light = light_by_index(index);
+    if (!light || !caps) {
+        return false;
+    }
+
+    *caps = (light_caps_t){
+        .is_switch = light->is_switch,
+        .has_color = light->has_color,
+        .has_cct = light->has_cct,
+        .has_cold_white = light_has_role(light, CH_COLD_WHITE),
+        .has_warm_white = light_has_role(light, CH_WARM_WHITE),
+#ifdef LIGHT_HAS_ADDRESSABLE
+        .has_effects = light->is_addressable && light_effect_count() > 0,
+#else
+        .has_effects = false,
+#endif
+    };
+    return true;
+}
+
+bool light_get_state(size_t index, light_state_t *state) {
+    light_config_t *light = light_by_index(index);
+    if (!light || !state) {
+        return false;
+    }
+
+    *state = (light_state_t){
+        .on = light->on,
+        .brightness = light->val,
+        .cct = light->cct,
+    };
+
+#ifdef LIGHT_HAS_ADDRESSABLE
+    if (light->is_addressable && light_effect_count() > 0) {
+        state->effect = light_effect_name(light->effect);
+    }
+#endif
+
+    if (light->has_color) {
+        if (light->color_mode) {
+            light_color_hsv_to_rgb(light->hue, light->sat, 100, &state->color.r, &state->color.g,
+                                   &state->color.b);
+        } else {
+            // Not the RGBW/RGBCW output - an approximate warm<->cool tint from cct, so a
+            // color-derived UI (HA's "template" schema carries no color_mode) stops painting
+            // itself with the stale last color while white mode is active.
+            uint16_t pct = light->has_cct ? light->cct : 50;
+            state->color.r = (uint8_t)((255 * (100 - pct) + 220 * pct) / 100);
+            state->color.g = (uint8_t)((180 * (100 - pct) + 230 * pct) / 100);
+            state->color.b = (uint8_t)((107 * (100 - pct) + 255 * pct) / 100);
+        }
+    }
+
+    if (!light->color_mode || !light->has_color) {
+        light_rgbcw_t full = light_compute_color(light);
+        state->color.c = full.c;
+        state->color.w = full.w;
+    }
+
+    return true;
+}
+
 // Clamps to [min_val, max_val]. The main light's brightness (v) calls this with min_val=1:
 // "on" true with every channel at 0 is an ambiguous state a slider dragged to the bottom can
 // trigger, so it's floored just above off. Everything else (effect_speed/effect_intensity/
@@ -214,91 +323,75 @@ static uint8_t light_clamp_range(int value, uint8_t min_val, uint8_t max_val) {
     return (uint8_t)value;
 }
 
-static void light_apply(light_config_t *light, const char *args_json_str) {
-    cJSON *root = cJSON_Parse(args_json_str);
-    if (!root) {
-        ESP_LOGW(TAG, "Failed to parse JSON: %s", args_json_str);
-        return;
+esp_err_t light_apply_change(size_t index, const light_state_change_t *change) {
+    light_config_t *light = light_by_index(index);
+    if (!light) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    if (!change) {
+        return ESP_ERR_INVALID_ARG;
     }
 
-    if (cJSON_IsObject(root)) {
-        cJSON *h = cJSON_GetObjectItem(root, "h");
-        cJSON *s = cJSON_GetObjectItem(root, "s");
-        cJSON *v = cJSON_GetObjectItem(root, "v");
-        cJSON *cct = cJSON_GetObjectItem(root, "cct");
-        cJSON *on = cJSON_GetObjectItem(root, "on");
+    const uint32_t fields = change->fields;
+    // cct only means anything on a light that has a white channel to aim it at.
+    const bool cct_wins = (fields & LIGHT_FIELD_CCT) && light->has_white;
 
-        if (cct && light->has_white) {
-            light->cct = (uint16_t)cct->valueint;
-            light->color_mode = false;
-            if (v) {
-                light->val = light_clamp_range(v->valueint, 1, 100);
-            }
-        } else if (h || s) {
-            if (h) {
-                light->hue = (uint16_t)h->valueint;
-            }
-            if (s) {
-                light->sat = (uint8_t)s->valueint;
-            }
-            if (v) {
-                light->val = light_clamp_range(v->valueint, 1, 100);
-            }
-            light->color_mode = true;
-        } else if (v) {
-            light->val = light_clamp_range(v->valueint, 1, 100);
+    if (cct_wins) {
+        light->cct = change->cct;
+        light->color_mode = false;
+    } else if (fields & (LIGHT_FIELD_HUE | LIGHT_FIELD_SATURATION)) {
+        if (fields & LIGHT_FIELD_HUE) {
+            light->hue = change->hue;
         }
+        if (fields & LIGHT_FIELD_SATURATION) {
+            light->sat = change->saturation;
+        }
+        light->color_mode = true;
+    }
 
-        if (on) {
-            light->on = cJSON_IsTrue(on);
-        } else if (h || s || v || (cct && light->has_white)) {
-            light->on = true;
-        }
+    if (fields & LIGHT_FIELD_BRIGHTNESS) {
+        light->val = light_clamp_range(change->brightness, 1, 100);
+    }
+
+    if (fields & LIGHT_FIELD_ON) {
+        light->on = change->on;
+    } else if (cct_wins || (fields & (LIGHT_FIELD_HUE | LIGHT_FIELD_SATURATION |
+                                      LIGHT_FIELD_BRIGHTNESS))) {
+        light->on = true;
+    }
 
 #if LIGHT_EFFECTS_BUILD
-        if (light->is_addressable) {
-            cJSON *effect = cJSON_GetObjectItem(root, "effect");
-            cJSON *speed = cJSON_GetObjectItem(root, "speed");
-            cJSON *intensity = cJSON_GetObjectItem(root, "intensity");
-            cJSON *h2 = cJSON_GetObjectItem(root, "h2");
-            cJSON *s2 = cJSON_GetObjectItem(root, "s2");
-            cJSON *v2 = cJSON_GetObjectItem(root, "v2");
-            if (effect && cJSON_IsString(effect)) {
-                light_effect_t new_effect;
-                if (light_effect_from_name(effect->valuestring, &new_effect)) {
-                    if ((uint8_t)new_effect != light->effect) {
-                        // Prevents stale state (e.g. android's bar position, fire's heat
-                        // array) from leaking into whichever effect gets picked next.
-                        memset(&light->fx_state, 0, sizeof(light->fx_state));
-                    }
-                    light->effect = (uint8_t)new_effect;
-                } else {
-                    ESP_LOGW(TAG, "Unknown effect '%s'", effect->valuestring);
+    if (light->is_addressable) {
+        if ((fields & LIGHT_FIELD_EFFECT) && change->effect) {
+            int8_t new_effect = light_effect_index(change->effect);
+            if (new_effect >= 0) {
+                if ((uint8_t)new_effect != light->effect) {
+                    // Prevents stale state (e.g. android's bar position, fire's heat array)
+                    // from leaking into whichever effect gets picked next.
+                    memset(&light->fx_state, 0, sizeof(light->fx_state));
                 }
-            }
-            if (speed) {
-                light->effect_speed = light_clamp_range(speed->valueint, 0, 100);
-            }
-            if (intensity) {
-                light->effect_intensity = light_clamp_range(intensity->valueint, 0, 100);
-            }
-            if (h2) {
-                light->hue2 = (uint16_t)h2->valueint;
-            }
-            if (s2) {
-                light->sat2 = (uint8_t)s2->valueint;
-            }
-            if (v2) {
-                light->val2 = light_clamp_range(v2->valueint, 0, 100);
+                light->effect = (uint8_t)new_effect;
+            } else {
+                ESP_LOGW(TAG, "Unknown effect '%s'", change->effect);
             }
         }
-#endif
-    } else {
-        logic_state_t state = json_str_as_logic_state(args_json_str);
-        light->on = (state == STATE_TOGGLE) ? !light->on : (state == STATE_ON);
+        if (fields & LIGHT_FIELD_EFFECT_SPEED) {
+            light->effect_speed = light_clamp_range(change->effect_speed, 0, 100);
+        }
+        if (fields & LIGHT_FIELD_EFFECT_INTENSITY) {
+            light->effect_intensity = light_clamp_range(change->effect_intensity, 0, 100);
+        }
+        if (fields & LIGHT_FIELD_HUE2) {
+            light->hue2 = change->hue2;
+        }
+        if (fields & LIGHT_FIELD_SATURATION2) {
+            light->sat2 = change->saturation2;
+        }
+        if (fields & LIGHT_FIELD_BRIGHTNESS2) {
+            light->val2 = light_clamp_range(change->brightness2, 0, 100);
+        }
     }
-
-    cJSON_Delete(root);
+#endif
 
     light_write_channels(light);
 #if LIGHT_EFFECTS_BUILD
@@ -309,26 +402,23 @@ static void light_apply(light_config_t *light, const char *args_json_str) {
 #if CONFIG_LIGHT_PERSIST_STATE
     state_dirty = true;
 #endif
+    return ESP_OK;
 }
 
-// One cmnd is registered per configured light, each pointing at its own trampoline below -
-// command_handler_t carries no context, so a single shared handler can't tell which light it
-// was called for. LIGHT_CMND_LIST (injected by CMakeLists.txt, sized to match
-// LIGHT_GPIO_LIST) generates exactly as many trampolines as there are configured lights.
-#ifndef LIGHT_CMND_LIST
-#define LIGHT_CMND_LIST // Fallback if CMake didn't inject
-#endif
+esp_err_t light_set_on(size_t index, bool on) {
+    light_state_change_t change = {.fields = LIGHT_FIELD_ON, .on = on};
+    return light_apply_change(index, &change);
+}
 
-#define X(n)                                                                                       \
-    static void light_cmnd_##n(const char *args_json_str) {                                        \
-        light_apply(&lights[n], args_json_str);                                                    \
+esp_err_t light_toggle(size_t index) {
+    light_config_t *light = light_by_index(index);
+    if (!light) {
+        return ESP_ERR_NOT_FOUND;
     }
-LIGHT_CMND_LIST
-#undef X
+    return light_set_on(index, !light->on);
+}
 
-#define X(n) light_cmnd_##n,
-static const command_handler_t light_cmnd_trampolines[] = {LIGHT_CMND_LIST};
-#undef X
+
 
 #if CONFIG_LIGHT_PERSIST_STATE
 // Local hash (FNV-1a) - CONFIG_LIGHT_GPIO_LIST is a fixed string at build time, so this only
@@ -350,7 +440,11 @@ static uint32_t light_config_fingerprint(void) {
 // on/off state itself.
 static bool light_should_restore_on(void) { return esp_reset_reason() == ESP_RST_SW; }
 
-static void light_save_state(void) {
+void light_save_state(void) {
+    if (!state_dirty) {
+        return;
+    }
+
     light_persist_entry_t current[CONFIG_LIGHT_MAX_COUNT] = {0};
     for (int i = 0; lights[i].channel_count != 0; i++) {
         current[i].on = lights[i].on;
@@ -422,20 +516,14 @@ static void light_restore_state(void) {
     nvs_close(handle);
 }
 
+#else
+
+void light_save_state(void) {}
+
 #endif
 
-static void light_adapter_on_interval(supervisor_interval_stage_t stage) {
-#if CONFIG_LIGHT_PERSIST_STATE
-    if (stage == SUPERVISOR_INTERVAL_10S && state_dirty) {
-        light_save_state();
-    }
-#endif
-    (void)stage;
-}
 
-static esp_err_t light_adapter_init(void) {
-
-    ESP_LOGI(TAG, "Initializing light adapter");
+esp_err_t light_init(void) {
 
     if (light_initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -463,8 +551,6 @@ static esp_err_t light_adapter_init(void) {
 #if CONFIG_LIGHT_ENABLE_FADE
     ledc_fade_func_install(0);
 #endif
-
-    size_t trampoline_count = sizeof(light_cmnd_trampolines) / sizeof(light_cmnd_trampolines[0]);
 
     for (int i = 0; lights[i].channel_count != 0; i++) {
         light_config_t *light = &lights[i];
@@ -537,27 +623,6 @@ static esp_err_t light_adapter_init(void) {
         }
 
         light_write_channels(light);
-
-        if ((size_t)i >= trampoline_count) {
-            ESP_LOGE(TAG,
-                     "No cmnd trampoline for light '%s' (index %d) - CMake/runtime light "
-                     "count mismatch",
-                     light->name, i);
-            break;
-        }
-        const char *description;
-        if (light->is_switch) {
-            description = "Set switch state (on/off/toggle)";
-        } else if (light->has_color && light->has_cct) {
-            description = "Set light color/CCT/brightness/state ({h,s,v,cct,on} or on/off/toggle)";
-        } else if (light->has_color) {
-            description = "Set light color/brightness/state ({h,s,v,on} or on/off/toggle)";
-        } else if (light->has_cct) {
-            description = "Set light CCT/brightness/state ({cct,v,on} or on/off/toggle)";
-        } else {
-            description = "Set light brightness/state ({v,on} or on/off/toggle)";
-        }
-        cmnd_register(light->name, description, light_cmnd_trampolines[i]);
     }
 
 #if LIGHT_EFFECTS_BUILD
@@ -566,11 +631,11 @@ static esp_err_t light_adapter_init(void) {
 #endif
 
     light_initialized = true;
-    ESP_LOGI(TAG, "Light adapter initialized");
     return ESP_OK;
 }
 
-static esp_err_t light_adapter_shutdown(void) {
+
+esp_err_t light_shutdown(void) {
     if (!light_initialized) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -586,7 +651,6 @@ static esp_err_t light_adapter_shutdown(void) {
 #endif
 
     for (int i = 0; lights[i].channel_count != 0; i++) {
-        cmnd_unregister(lights[i].name);
 #ifdef LIGHT_HAS_ADDRESSABLE
         if (lights[i].is_addressable && lights[i].addressable_handle) {
             led_strip_del(lights[i].addressable_handle);
@@ -599,208 +663,5 @@ static esp_err_t light_adapter_shutdown(void) {
     ledc_fade_func_uninstall();
 #endif
     light_initialized = false;
-    ESP_LOGI(TAG, "Light adapter shutdown");
     return ESP_OK;
 }
-
-void light_set_state(const char *name, bool on) {
-    int8_t idx = light_find_by_name(name);
-    if (idx < 0) {
-        ESP_LOGW(TAG, "Light '%s' not found", name ? name : "(null)");
-        return;
-    }
-    lights[idx].on = on;
-    light_write_channels(&lights[idx]);
-#if LIGHT_EFFECTS_BUILD
-    if (lights[idx].is_addressable) {
-        light_effects_notify();
-    }
-#endif
-#if CONFIG_LIGHT_PERSIST_STATE
-    state_dirty = true;
-#endif
-}
-
-bool light_get_state(const char *name) {
-    int8_t idx = light_find_by_name(name);
-    if (idx < 0) {
-        return false;
-    }
-    return lights[idx].on;
-}
-
-static void tele_light(const char *tele_id, cJSON *json_root) {
-    (void)tele_id;
-
-    // "lights" lists the names of the flat per-light objects below, so a UI polling /tele
-    // can tell which top-level keys are lights without the state itself being nested.
-    cJSON *names = cJSON_CreateArray();
-
-    for (int i = 0; lights[i].channel_count != 0; i++) {
-        light_config_t *light = &lights[i];
-        cJSON *obj = cJSON_CreateObject();
-
-        cJSON_AddBoolToObject(obj, "on", light->on);
-        if (!light->is_switch) {
-            cJSON_AddNumberToObject(obj, "v", light->val);
-        }
-
-#if LIGHT_EFFECTS_BUILD
-        if (light->is_addressable) {
-            cJSON_AddStringToObject(obj, "effect",
-                                    light_effect_name((light_effect_t)light->effect));
-        }
-#endif
-
-        if (light->has_cct) {
-            cJSON_AddNumberToObject(obj, "cct", light->cct);
-        }
-
-        if (light->has_color) {
-            uint8_t r, g, b;
-            if (light->color_mode) {
-                // At full value, not scaled by "v" - brightness is reported separately (and HA
-                // reads it from there), so folding it in here only costs precision. Scaled, a
-                // saturated color quantizes to something with the wrong hue near the bottom of
-                // the slider - FF6E54 at v=1 lands on (3,1,1), which reads back as pure red -
-                // and HA would then show, and remember, that wrong color.
-                light_color_hsv_to_rgb(light->hue, light->sat, 100, &r, &g, &b);
-            } else {
-                // Not RGBW/RGBCW's actual output (that's computed separately in
-                // light_compute_color) - just an approximate warm<->cool tint from cct, so
-                // HA's MQTT "template" schema (no color_mode field, unlike "json" schema)
-                // doesn't keep painting its color-derived UI (e.g. the brightness slider)
-                // with the stale last color while white mode is active. Harmless without HA
-                // too - tele publishes unconditionally, this is just an unread field then.
-                uint16_t pct = light->has_cct ? light->cct : 50;
-                r = (uint8_t)((255 * (100 - pct) + 220 * pct) / 100);
-                g = (uint8_t)((180 * (100 - pct) + 230 * pct) / 100);
-                b = (uint8_t)((107 * (100 - pct) + 255 * pct) / 100);
-            }
-            cJSON_AddNumberToObject(obj, "r", r);
-            cJSON_AddNumberToObject(obj, "g", g);
-            cJSON_AddNumberToObject(obj, "b", b);
-        }
-
-        // Raw per-channel values (alongside cct/r/g/b above, not instead of - HA's
-        // color_temp_template still reads cct) so a simple UI can render one control per
-        // physical channel just by checking which keys are present, with no capability
-        // flags to interpret: has "c" -> cold-white button, has "w" -> warm-white button.
-        bool has_c = light_has_role(light, CH_COLD_WHITE);
-        bool has_w = light_has_role(light, CH_WARM_WHITE);
-        if (has_c || has_w) {
-            uint8_t c_val = 0, w_val = 0;
-            if (!light->color_mode || !light->has_color) {
-                // Logical (pre-gamma) levels, same convention as the r/g/b reported above: the
-                // cold/warm split at full output, since "v" carries the level on its own.
-                light_rgbcw_t color = light_compute_color(light);
-                c_val = color.c;
-                w_val = color.w;
-            }
-            if (has_c) {
-                cJSON_AddNumberToObject(obj, "c", c_val);
-            }
-            if (has_w) {
-                cJSON_AddNumberToObject(obj, "w", w_val);
-            }
-        }
-
-        cJSON_AddItemToObject(json_root, light->name, obj);
-        cJSON_AddItemToArray(names, cJSON_CreateString(light->name));
-    }
-
-    cJSON_AddItemToObject(json_root, "lights", names);
-}
-
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-#ifndef HA_ENTITY_LIST
-#define HA_ENTITY_LIST // Fallback if CMake didn't inject
-#endif
-
-static void light_ha_build(cJSON *payload, const char *sanitized_name) {
-    int8_t idx = light_find_by_name(sanitized_name);
-    char cmd_buf[400];
-    char buf[192];
-
-    cJSON_AddStringToObject(payload, "schema", "template");
-
-    snprintf(cmd_buf, sizeof(cmd_buf),
-             "{\"%s\":{ "
-             "{%% if hue is defined %%}\"h\":{{ hue }},{%% endif %%}"
-             "{%% if sat is defined %%}\"s\":{{ sat }},{%% endif %%}"
-             "{%% if brightness is defined %%}\"v\":{{ (brightness / 255 * 100) | round }},{%% "
-             "endif %%}"
-             "{%% if color_temp is defined %%}\"cct\":{{ ((color_temp - %d) / (%d - %d) * 100) | "
-             "round }},{%% endif %%}"
-             "{%% if effect is defined %%}\"effect\":\"{{ effect }}\",{%% endif %%}"
-             "\"on\":true}}",
-             sanitized_name, LIGHT_KELVIN_MIN, LIGHT_KELVIN_MAX, LIGHT_KELVIN_MIN);
-
-    cJSON_AddStringToObject(payload, "command_on_template", cmd_buf);
-
-    snprintf(buf, sizeof(buf), "{\"%s\":{\"on\":false}}", sanitized_name);
-    cJSON_AddStringToObject(payload, "command_off_template", buf);
-
-    snprintf(buf, sizeof(buf), "{%% if value_json.%s.on %%}on{%% else %%}off{%% endif %%}",
-             sanitized_name);
-    cJSON_AddStringToObject(payload, "state_template", buf);
-
-    if (idx >= 0 && !lights[idx].is_switch) {
-        snprintf(buf, sizeof(buf), "{{ (value_json.%s.v / 100 * 255) | round }}", sanitized_name);
-        cJSON_AddStringToObject(payload, "brightness_template", buf);
-    }
-
-    if (idx >= 0 && lights[idx].has_color) {
-        snprintf(buf, sizeof(buf), "{{ value_json.%s.r }}", sanitized_name);
-        cJSON_AddStringToObject(payload, "red_template", buf);
-        snprintf(buf, sizeof(buf), "{{ value_json.%s.g }}", sanitized_name);
-        cJSON_AddStringToObject(payload, "green_template", buf);
-        snprintf(buf, sizeof(buf), "{{ value_json.%s.b }}", sanitized_name);
-        cJSON_AddStringToObject(payload, "blue_template", buf);
-    }
-
-    if (idx >= 0 && lights[idx].has_cct) {
-        cJSON_AddBoolToObject(payload, "color_temp_kelvin", true);
-        cJSON_AddNumberToObject(payload, "min_kelvin", LIGHT_KELVIN_MIN);
-        cJSON_AddNumberToObject(payload, "max_kelvin", LIGHT_KELVIN_MAX);
-        snprintf(buf, sizeof(buf), "{{ (value_json.%s.cct / 100 * (%d - %d) + %d) | round }}",
-                 sanitized_name, LIGHT_KELVIN_MAX, LIGHT_KELVIN_MIN, LIGHT_KELVIN_MIN);
-        cJSON_AddStringToObject(payload, "color_temp_template", buf);
-    }
-
-#if LIGHT_EFFECTS_BUILD
-    if (idx >= 0 && lights[idx].is_addressable) {
-        cJSON *effect_list = cJSON_CreateArray();
-        for (size_t i = 0; i < light_effect_count(); i++) {
-            cJSON_AddItemToArray(effect_list,
-                                 cJSON_CreateString(light_effect_name((light_effect_t)i)));
-        }
-        cJSON_AddItemToObject(payload, "effect_list", effect_list);
-
-        snprintf(buf, sizeof(buf), "{{ value_json.%s.effect }}", sanitized_name);
-        cJSON_AddStringToObject(payload, "effect_template", buf);
-    }
-#endif
-
-    cJSON_DeleteItemFromObject(payload, "val_tpl");
-}
-
-#define HA_ENTITY_ENTRY(light_name)                                                                \
-    {.type = HA_LIGHT, .name = light_name, .custom_builder = light_ha_build},
-
-static const ha_metadata_t light_ha_metadata = {
-    .magic = HA_METADATA_MAGIC, .entities = {HA_ENTITY_LIST{.type = HA_ENTITY_NONE}}};
-#undef HA_ENTITY_ENTRY
-#endif
-
-supervisor_platform_adapter_t light_adapter = {
-    .name = "light",
-    .init = light_adapter_init,
-    .shutdown = light_adapter_shutdown,
-    .on_interval = light_adapter_on_interval,
-    .tele_group = (const tele_entry_t[]){{"light", tele_light}, {NULL, NULL}},
-    .cmnd_group = NULL, // registered dynamically per light in light_adapter_init
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-    .metadata = &light_ha_metadata,
-#endif
-};

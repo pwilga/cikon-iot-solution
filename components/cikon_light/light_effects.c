@@ -77,7 +77,7 @@ void light_effects_task_start(void) {
     }
 
     xTaskCreate(light_effects_task, "light_fx", LIGHT_EFFECTS_STACK_SIZE, NULL,
-                CONFIG_SUPERVISOR_TASK_PRIORITY > 0 ? CONFIG_SUPERVISOR_TASK_PRIORITY - 1 : 0,
+                CONFIG_LIGHT_EFFECTS_TASK_PRIORITY,
                 &s_task_handle);
 }
 
@@ -97,12 +97,10 @@ void light_effects_notify(void) {
 }
 
 // ============================================================================================
-// Effects - add a new one here: write an effect_*() function, add one row to k_effects[]
-// below (and a value in light_effect_t, light_effects.h). Nothing above this line needs to
-// change.
+// Effects - add a new one here: write an effect_*() function, add one row to
+// light_effect_table[] below (and a value in light_effect_t, light_effects.h). Nothing above
+// this line needs to change.
 // ============================================================================================
-
-typedef void (*light_effect_fn_t)(light_config_t *light, uint32_t now_ms);
 
 // "solid" - static fill, no animation. Also the fallback for an unrecognized effect id.
 static void effect_solid(light_config_t *light, uint32_t now_ms) {
@@ -460,11 +458,8 @@ static void effect_meteor(light_config_t *light, uint32_t now_ms) {
 }
 
 // Single source of truth per effect: name (for the cmnd "effect" field) + render function,
-// indexed by light_effect_t.
-static const struct {
-    const char *name;
-    light_effect_fn_t fn;
-} k_effects[] = {
+// indexed by light_effect_t. Not static - light.c reads it to answer which effects exist.
+const light_effect_entry_t light_effect_table[] = {
     [LIGHT_EFFECT_NONE] = {"solid", effect_solid},
     [LIGHT_EFFECT_BLINK] = {"blink", effect_blink},
     [LIGHT_EFFECT_BREATHE] = {"breathe", effect_breathe},
@@ -476,27 +471,7 @@ static const struct {
     [LIGHT_EFFECT_METEOR] = {"meteor", effect_meteor},
 };
 
-bool light_effect_from_name(const char *name, light_effect_t *out) {
-    if (!name) {
-        return false;
-    }
-    for (size_t i = 0; i < sizeof(k_effects) / sizeof(k_effects[0]); i++) {
-        if (strcasecmp(name, k_effects[i].name) == 0) {
-            *out = (light_effect_t)i;
-            return true;
-        }
-    }
-    return false;
-}
-
-size_t light_effect_count(void) { return sizeof(k_effects) / sizeof(k_effects[0]); }
-
-const char *light_effect_name(light_effect_t effect) {
-    if ((size_t)effect >= sizeof(k_effects) / sizeof(k_effects[0])) {
-        return k_effects[LIGHT_EFFECT_NONE].name;
-    }
-    return k_effects[effect].name;
-}
+const size_t light_effect_table_size = sizeof(light_effect_table) / sizeof(light_effect_table[0]);
 
 static void light_effects_render(light_config_t *light, uint32_t now_ms) {
     if (!light->addressable_handle) {
@@ -515,10 +490,10 @@ static void light_effects_render(light_config_t *light, uint32_t now_ms) {
     }
 
     light_effect_t effect = (light_effect_t)light->effect;
-    if (effect >= sizeof(k_effects) / sizeof(k_effects[0]) || !k_effects[effect].fn) {
+    if (effect >= light_effect_table_size || !light_effect_table[effect].fn) {
         effect = LIGHT_EFFECT_NONE;
     }
-    k_effects[effect].fn(light, now_ms);
+    light_effect_table[effect].fn(light, now_ms);
 
     led_strip_refresh(light->addressable_handle);
 }

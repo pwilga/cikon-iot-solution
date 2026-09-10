@@ -1,6 +1,6 @@
 name: cikon_supervisor_adapters_light
 version: "1.0.0"
-description: "Supervisor light adapter - HSV/CCT color control for analog LED strips via LEDC PWM, and addressable (WS2812/SK6812) strips"
+description: "Supervisor light adapter - exposes cikon_light through cmnd, telemetry and Home Assistant discovery"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
@@ -14,5 +14,7 @@ dependencies:
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers
+  cikon_light:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_light
   espressif/cjson: "*"
-  espressif/led_strip: "*"
