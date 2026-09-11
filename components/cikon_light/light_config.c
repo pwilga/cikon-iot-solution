@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "driver/ledc.h" // IWYU pragma: keep - ledc_channel_t used when assigning channels
 #include "esp_log.h"
 #include "soc/gpio_num.h"
 #include "soc/soc_caps.h"
@@ -16,9 +15,11 @@
 
 #define TAG "cikon:adapter:light"
 
+#ifdef LIGHT_HAS_PWM
 // Next free LEDC channel, handed out as lights are parsed - only light_config_parse() reads or
 // advances it, since assigning channels is part of parsing a light.
 static uint8_t next_ledc_channel = 0;
+#endif
 
 // Maps a channel role bitmask to its capabilities. Only combinations expressible as "one
 // token per role" are supported - RGBCC/RGBWW (two channels of the same white) would need a
@@ -77,6 +78,7 @@ static bool light_config_parse_channels(char *channels_str, light_channel_t *out
 
         light_channel_role_t role;
         switch (toupper((unsigned char)cursor[0])) {
+#ifdef LIGHT_HAS_PWM
         case 'R':
             role = CH_RED;
             break;
@@ -92,6 +94,7 @@ static bool light_config_parse_channels(char *channels_str, light_channel_t *out
         case 'W':
             role = CH_WARM_WHITE;
             break;
+#endif
         case 'S':
             role = CH_SWITCH;
             break;
@@ -291,6 +294,7 @@ void light_config_parse(void) {
         light->val2 = 0;
 #endif
 
+#ifdef LIGHT_HAS_PWM
 #ifdef LIGHT_HAS_ADDRESSABLE
         bool skip_ledc_alloc = is_switch || is_addressable;
 #else
@@ -301,13 +305,16 @@ void light_config_parse(void) {
             token = strtok(NULL, ",");
             continue;
         }
+#endif
 
         memcpy(light->channels, parsed, sizeof(parsed));
         light->channel_count = parsed_count;
+#ifdef LIGHT_HAS_PWM
         for (uint8_t c = 0; c < parsed_count; c++) {
             light->channels[c].ledc_ch =
                 skip_ledc_alloc ? (ledc_channel_t)0 : (ledc_channel_t)next_ledc_channel++;
         }
+#endif
 
         if (name && strlen(name) > 0) {
             strncpy(light->name, name, sizeof(light->name) - 1);

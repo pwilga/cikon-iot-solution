@@ -2,7 +2,6 @@
 #include <string.h>
 
 #include "driver/gpio.h"
-#include "driver/ledc.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "soc/gpio_num.h"
@@ -27,6 +26,7 @@
 
 #define TAG "cikon:light"
 
+#ifdef LIGHT_HAS_PWM
 // Fewest duty bits the dimming curve still has room in - see where it is checked, in light_init.
 #define LIGHT_PWM_MIN_RESOLUTION 10
 
@@ -41,6 +41,7 @@
 // The duty resolution the LEDC timer settled on, and the width every PWM channel is scaled to.
 // Negotiated against CONFIG_LIGHT_PWM_FREQUENCY in light_init, before any channel is driven.
 static ledc_timer_bit_t pwm_resolution = LEDC_TIMER_8_BIT;
+#endif
 
 #if CONFIG_LIGHT_PERSIST_STATE
 // "on" is persisted but only conditionally restored (light_should_restore_on) - see
@@ -180,8 +181,13 @@ light_color_t light_compute_color(light_config_t *light) {
 }
 
 static void light_write_channels(light_config_t *light) {
+    // A switch-only light has nothing to compute a color for - it reads light->on directly.
+#if defined(LIGHT_HAS_PWM) || defined(LIGHT_HAS_ADDRESSABLE)
     light_color_t color = light_compute_color(light);
+#endif
+#ifdef LIGHT_HAS_PWM
     light_duty_t duty = light_color_to_duty(color, light->val, pwm_resolution);
+#endif
 
     for (uint8_t i = 0; i < light->channel_count; i++) {
         if (light->channels[i].role == CH_SWITCH) {
@@ -211,6 +217,7 @@ static void light_write_channels(light_config_t *light) {
         }
 #endif
 
+#ifdef LIGHT_HAS_PWM
         // `duty` is finished: gamma-corrected, dimmed and already scaled to pwm_resolution.
         uint32_t value = 0;
         switch (light->channels[i].role) {
@@ -239,6 +246,7 @@ static void light_write_channels(light_config_t *light) {
 #else
         ledc_set_duty(LEDC_LOW_SPEED_MODE, light->channels[i].ledc_ch, value);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, light->channels[i].ledc_ch);
+#endif
 #endif
     }
 }
@@ -549,6 +557,7 @@ esp_err_t light_init(void) {
     light_restore_state();
 #endif
 
+#ifdef LIGHT_HAS_PWM
     // The widest duty the configured frequency allows, rather than a fixed width: a timer divides
     // its source clock by the duty steps, so the two trade against each other, and 20 kHz off
     // 80 MHz affords 11 bits where 40 kHz affords 10. The clock stays LEDC_AUTO_CLK below and is
@@ -589,6 +598,7 @@ esp_err_t light_init(void) {
 
 #if CONFIG_LIGHT_ENABLE_FADE
     ledc_fade_func_install(0);
+#endif
 #endif
 
     for (int i = 0; lights[i].channel_count != 0; i++) {
@@ -649,6 +659,7 @@ esp_err_t light_init(void) {
             }
 #endif
 
+#ifdef LIGHT_HAS_PWM
             ledc_channel_config_t ch_config = {.gpio_num = light->channels[c].gpio,
                                                .speed_mode = LEDC_LOW_SPEED_MODE,
                                                .channel = light->channels[c].ledc_ch,
@@ -659,6 +670,7 @@ esp_err_t light_init(void) {
                 ESP_LOGE(TAG, "Failed to configure LEDC channel for light '%s' GPIO %d",
                          light->name, light->channels[c].gpio);
             }
+#endif
         }
 
         light_write_channels(light);
@@ -697,7 +709,7 @@ esp_err_t light_shutdown(void) {
 #endif
     }
 
-#if CONFIG_LIGHT_ENABLE_FADE
+#if defined(LIGHT_HAS_PWM) && CONFIG_LIGHT_ENABLE_FADE
     ledc_fade_func_uninstall();
 #endif
     light_initialized = false;

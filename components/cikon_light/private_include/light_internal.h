@@ -14,8 +14,11 @@
 #include <stdint.h>
 
 #include "driver/gpio.h" // IWYU pragma: keep - gpio_num_t used in light_channel_t
-#include "driver/ledc.h" // IWYU pragma: keep - ledc_channel_t used in light_channel_t
 #include "light_color.h"
+
+#ifdef LIGHT_HAS_PWM
+#include "driver/ledc.h" // IWYU pragma: keep - ledc_channel_t used in light_channel_t
+#endif
 
 #ifdef LIGHT_HAS_ADDRESSABLE
 #include "led_strip.h" // IWYU pragma: keep - led_strip_handle_t/led_color_component_format_t used below
@@ -37,8 +40,10 @@ typedef enum {
 typedef struct {
     gpio_num_t gpio;
     light_channel_role_t role;
+    bool active_level; // physical level meaning "on"; only meaningful when role == CH_SWITCH
+#ifdef LIGHT_HAS_PWM
     ledc_channel_t ledc_ch; // unused when role == CH_SWITCH or CH_ADDRESSABLE
-    bool active_level;      // physical level meaning "on"; only meaningful when role == CH_SWITCH
+#endif
 #ifdef LIGHT_HAS_ADDRESSABLE
     uint16_t led_count;                            // only meaningful when role == CH_ADDRESSABLE
     led_color_component_format_t led_color_format; // only meaningful when role == CH_ADDRESSABLE
