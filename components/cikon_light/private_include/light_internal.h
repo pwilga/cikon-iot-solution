@@ -117,19 +117,19 @@ int8_t light_effect_index(const char *name);
 // The light's on/color_mode/white/cct state as one raw color, at full output and before gamma
 // - what light_color.h calls the input to the output stage. Defined in light.c, shared so
 // light_effects.c renders the solid (effect == NONE) case from the same source of truth.
-light_rgbcw_t light_compute_color(light_config_t *light);
+light_color_t light_compute_color(light_config_t *light);
 
 #ifdef LIGHT_HAS_ADDRESSABLE
 // Sets one pixel from a raw (full-output, pre-gamma) color, dispatching to the has_white-aware
 // led_strip call. Defined in light.c, shared so per-pixel effects in light_effects.c neither
 // duplicate the has_white branch nor have to think about gamma or the brightness slider -
-// light_color_to_levels() runs inside. color.w is ignored when has_white is false.
-void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white,
-                                 light_rgbcw_t color, uint8_t brightness);
+// light_color_to_pixel() runs inside. color.w is ignored when has_white is false.
+void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t pixel_index, bool has_white,
+                                 light_color_t color, uint8_t brightness);
 
 // led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw.
 // Defined in light.c, shared with light_effects.c so both use the same fill loop. color.w is
 // ignored when has_white is false.
 void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white,
-                            light_rgbcw_t color, uint8_t brightness);
+                            light_color_t color, uint8_t brightness);
 #endif

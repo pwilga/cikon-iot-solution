@@ -77,8 +77,7 @@ void light_effects_task_start(void) {
     }
 
     xTaskCreate(light_effects_task, "light_fx", LIGHT_EFFECTS_STACK_SIZE, NULL,
-                CONFIG_LIGHT_EFFECTS_TASK_PRIORITY,
-                &s_task_handle);
+                CONFIG_LIGHT_EFFECTS_TASK_PRIORITY, &s_task_handle);
 }
 
 void light_effects_task_stop(void) {
@@ -119,7 +118,7 @@ static void effect_blink(light_config_t *light, uint32_t now_ms) {
     uint32_t cycle_ms = 200 + (uint32_t)(100 - light->effect_speed) * 18;
     uint8_t level = ((now_ms % cycle_ms) < cycle_ms / 2) ? 100 : 0;
     uint16_t hue = (uint16_t)((now_ms / 20) % 360);
-    light_rgbcw_t color = {0};
+    light_color_t color = {0};
 
     // Square wave: the light's level while "on", fully dark otherwise.
     light_color_hsv_to_rgb(hue, 100, 100, &color.r, &color.g, &color.b);
@@ -143,7 +142,7 @@ static void effect_breathe(light_config_t *light, uint32_t now_ms) {
     }
 
     uint8_t lum = 30 + (uint8_t)(shape * 225.0f); // 30..255, never fully black
-    light_rgbcw_t color = {0};
+    light_color_t color = {0};
     light_color_hsv_to_rgb(light->hue, light->sat, 100, &color.r, &color.g, &color.b);
 
     // The breath envelope shapes the color itself, in plain sRGB (so it keeps its visible
@@ -164,7 +163,7 @@ static void effect_rainbow(light_config_t *light, uint32_t now_ms) {
     uint16_t wled_speed = (uint16_t)light->effect_speed * 255 / 100;
     uint32_t counter = (now_ms * ((wled_speed >> 2) + 2)) & 0xFFFF;
     uint16_t hue = (uint16_t)((counter >> 8) * 360 / 256);
-    light_rgbcw_t color = {0};
+    light_color_t color = {0};
 
     light_color_hsv_to_rgb(hue, 100, 100, &color.r, &color.g, &color.b);
     light_addressable_fill(light->addressable_handle, light->channels[0].led_count,
@@ -254,7 +253,7 @@ static void light_effects_render_blend(light_config_t *light) {
 
     for (uint16_t i = 0; i < led_count; i++) {
         uint8_t level = i < buf_led_count ? buf[i] : 0;
-        light_rgbcw_t color = {
+        light_color_t color = {
             .r = lerp8(r2, r1, level),
             .g = lerp8(g2, g1, level),
             .b = lerp8(b2, b1, level),
@@ -281,7 +280,7 @@ static void effect_washing_machine(light_config_t *light, uint32_t now_ms) {
     for (uint16_t i = 0; i < led_count; i++) {
         uint8_t phase = (uint8_t)((density * 255u * i / led_count) + (light->fx_state.step >> 7));
         uint8_t col = sin8(phase);
-        light_rgbcw_t color = {0};
+        light_color_t color = {0};
         light_color_hsv_to_rgb((uint16_t)(col * 360 / 255), 100, 100, &color.r, &color.g, &color.b);
         light_addressable_set_pixel(light->addressable_handle, i, has_white, color, light->val);
     }
@@ -393,7 +392,7 @@ static void effect_fire_2012(light_config_t *light, uint32_t now_ms) {
     // Step 4: heat -> color. The light's brightness is applied per pixel by
     // light_addressable_set_pixel, same as every other effect.
     for (uint16_t i = 0; i < led_count; i++) {
-        light_rgbcw_t color = {0};
+        light_color_t color = {0};
         if (i < buf_led_count) {
             heat_color(heat[i] > 240 ? 240 : heat[i], &color.r, &color.g, &color.b);
         }
@@ -483,7 +482,7 @@ static void light_effects_render(light_config_t *light, uint32_t now_ms) {
     bool has_white = ch->has_white_channel;
 
     if (!light->on) {
-        light_addressable_fill(light->addressable_handle, led_count, has_white, (light_rgbcw_t){0},
+        light_addressable_fill(light->addressable_handle, led_count, has_white, (light_color_t){0},
                                0);
         led_strip_refresh(light->addressable_handle);
         return;

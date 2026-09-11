@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <string.h>
 
 #include "driver/gpio.h"
@@ -26,6 +27,21 @@
 
 #define TAG "cikon:light"
 
+// Fewest duty bits the dimming curve still has room in - see where it is checked, in light_init.
+#define LIGHT_PWM_MIN_RESOLUTION 10
+
+// What the LEDC timer's source clock is taken to run at. Targets differ in what they offer and
+// the driver picks for itself, so this is the slower candidate, which stays true either way.
+#ifdef SOC_LEDC_SUPPORT_XTAL_CLOCK
+#define LIGHT_LEDC_SOURCE_HZ 40000000UL
+#else
+#define LIGHT_LEDC_SOURCE_HZ 80000000UL
+#endif
+
+// The duty resolution the LEDC timer settled on, and the width every PWM channel is scaled to.
+// Negotiated against CONFIG_LIGHT_PWM_FREQUENCY in light_init, before any channel is driven.
+static ledc_timer_bit_t pwm_resolution = LEDC_TIMER_8_BIT;
+
 #if CONFIG_LIGHT_PERSIST_STATE
 // "on" is persisted but only conditionally restored (light_should_restore_on) - see
 // light_restore_state. Effect settings (effect, speed, intensity, hue2/sat2/val2) are not
@@ -45,7 +61,6 @@ static light_persist_entry_t last_saved_state[CONFIG_LIGHT_MAX_COUNT];
 static bool state_dirty = false;
 static uint32_t light_config_fingerprint_cached;
 #endif
-
 
 light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 static bool light_initialized = false;
@@ -110,41 +125,41 @@ int8_t light_index_by_name(const char *name) {
 }
 
 #ifdef LIGHT_HAS_ADDRESSABLE
-// Pushes one finished color - gamma-corrected and dimmed already - into the strip buffer,
+// Pushes one finished pixel - gamma-corrected and dimmed already - into the strip buffer,
 // dispatching to the has_white-aware led_strip call. w is ignored when has_white is false.
-static void light_strip_write(led_strip_handle_t handle, uint16_t i, bool has_white,
-                              light_rgbcw_t levels) {
+static void light_strip_write(led_strip_handle_t handle, uint16_t pixel_index, bool has_white,
+                              light_pixel_t levels) {
     if (has_white) {
-        led_strip_set_pixel_rgbw(handle, i, levels.r, levels.g, levels.b, levels.w);
+        led_strip_set_pixel_rgbw(handle, pixel_index, levels.r, levels.g, levels.b, levels.w);
     } else {
-        led_strip_set_pixel(handle, i, levels.r, levels.g, levels.b);
+        led_strip_set_pixel(handle, pixel_index, levels.r, levels.g, levels.b);
     }
 }
 
 // Sets one pixel from a raw (full-output, pre-gamma) color: the output stage runs here, so
 // effects can work in plain sRGB and never think about gamma or the brightness slider.
 // Non-static: shared with light_effects.c.
-void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t i, bool has_white,
-                                 light_rgbcw_t color, uint8_t brightness) {
-    light_strip_write(handle, i, has_white, light_color_to_levels(color, brightness));
+void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t pixel_index, bool has_white,
+                                 light_color_t color, uint8_t brightness) {
+    light_strip_write(handle, pixel_index, has_white, light_color_to_pixel(color, brightness));
 }
 
 // led_strip has no "fill all pixels" of its own - only per-pixel set_pixel/set_pixel_rgbw. The
 // output stage runs once here rather than per pixel, since every pixel gets the same color.
 void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white,
-                            light_rgbcw_t color, uint8_t brightness) {
-    light_rgbcw_t levels = light_color_to_levels(color, brightness);
-    for (uint16_t i = 0; i < count; i++) {
-        light_strip_write(handle, i, has_white, levels);
+                            light_color_t color, uint8_t brightness) {
+    light_pixel_t levels = light_color_to_pixel(color, brightness);
+    for (uint16_t pixel_index = 0; pixel_index < count; pixel_index++) {
+        light_strip_write(handle, pixel_index, has_white, levels);
     }
 }
 #endif
 
 // The light's color at full output - plain sRGB, before gamma and before the brightness slider,
-// both of which light_color_to_levels() applies where the value meets the hardware. Non-static:
+// both of which light_color_to_pixel() applies where the value meets the hardware. Non-static:
 // light_effects.c renders the solid (effect == NONE) case from this same source of truth.
-light_rgbcw_t light_compute_color(light_config_t *light) {
-    light_rgbcw_t color = {0};
+light_color_t light_compute_color(light_config_t *light) {
+    light_color_t color = {0};
 
     if (!light->on) {
         return color;
@@ -165,8 +180,8 @@ light_rgbcw_t light_compute_color(light_config_t *light) {
 }
 
 static void light_write_channels(light_config_t *light) {
-    light_rgbcw_t color = light_compute_color(light);
-    light_rgbcw_t levels = light_color_to_levels(color, light->val);
+    light_color_t color = light_compute_color(light);
+    light_duty_t duty = light_color_to_duty(color, light->val, pwm_resolution);
 
     for (uint8_t i = 0; i < light->channel_count; i++) {
         if (light->channels[i].role == CH_SWITCH) {
@@ -185,8 +200,8 @@ static void light_write_channels(light_config_t *light) {
             // covers the very first state before it's ever notified.
 #else
             if (light->addressable_handle) {
-                // The raw color and the level, not `levels` - the strip path runs the output
-                // stage itself, once, inside the fill.
+                // The raw color and the slider value, not `duty` - a strip has its own output
+                // stage, which the fill runs once inside.
                 light_addressable_fill(light->addressable_handle, light->channels[i].led_count,
                                        light->channels[i].has_white_channel, color, light->val);
                 led_strip_refresh(light->addressable_handle);
@@ -196,23 +211,23 @@ static void light_write_channels(light_config_t *light) {
         }
 #endif
 
-        // `levels` is finished: gamma-corrected and dimmed, ready to be an 8-bit LEDC duty.
-        uint8_t value = 0;
+        // `duty` is finished: gamma-corrected, dimmed and already scaled to pwm_resolution.
+        uint32_t value = 0;
         switch (light->channels[i].role) {
         case CH_RED:
-            value = levels.r;
+            value = duty.r;
             break;
         case CH_GREEN:
-            value = levels.g;
+            value = duty.g;
             break;
         case CH_BLUE:
-            value = levels.b;
+            value = duty.b;
             break;
         case CH_COLD_WHITE:
-            value = levels.c;
+            value = duty.c;
             break;
         case CH_WARM_WHITE:
-            value = levels.w;
+            value = duty.w;
             break;
         default:
             break;
@@ -301,7 +316,7 @@ bool light_get_state(size_t index, light_state_t *state) {
     }
 
     if (!light->color_mode || !light->has_color) {
-        light_rgbcw_t full = light_compute_color(light);
+        light_color_t full = light_compute_color(light);
         state->color.c = full.c;
         state->color.w = full.w;
     }
@@ -355,8 +370,8 @@ esp_err_t light_apply_change(size_t index, const light_state_change_t *change) {
 
     if (fields & LIGHT_FIELD_ON) {
         light->on = change->on;
-    } else if (cct_wins || (fields & (LIGHT_FIELD_HUE | LIGHT_FIELD_SATURATION |
-                                      LIGHT_FIELD_BRIGHTNESS))) {
+    } else if (cct_wins ||
+               (fields & (LIGHT_FIELD_HUE | LIGHT_FIELD_SATURATION | LIGHT_FIELD_BRIGHTNESS))) {
         light->on = true;
     }
 
@@ -417,8 +432,6 @@ esp_err_t light_toggle(size_t index) {
     }
     return light_set_on(index, !light->on);
 }
-
-
 
 #if CONFIG_LIGHT_PERSIST_STATE
 // Local hash (FNV-1a) - CONFIG_LIGHT_GPIO_LIST is a fixed string at build time, so this only
@@ -522,7 +535,6 @@ void light_save_state(void) {}
 
 #endif
 
-
 esp_err_t light_init(void) {
 
     if (light_initialized) {
@@ -537,8 +549,33 @@ esp_err_t light_init(void) {
     light_restore_state();
 #endif
 
+    // The widest duty the configured frequency allows, rather than a fixed width: a timer divides
+    // its source clock by the duty steps, so the two trade against each other, and 20 kHz off
+    // 80 MHz affords 11 bits where 40 kHz affords 10. The clock stays LEDC_AUTO_CLK below and is
+    // assumed here at the slower of the candidates, since a resolution reachable off 40 MHz is
+    // also reachable off 80 - the same assumption WLED makes (bus_manager.cpp, CLOCK_FREQUENCY).
+    pwm_resolution =
+        ledc_find_suitable_duty_resolution(LIGHT_LEDC_SOURCE_HZ, CONFIG_LIGHT_PWM_FREQUENCY);
+    if (pwm_resolution > LIGHT_DUTY_MAX_RESOLUTION) {
+        pwm_resolution = LIGHT_DUTY_MAX_RESOLUTION;
+    }
+    if (pwm_resolution == 0) {
+        ESP_LOGE(TAG, "%" PRIu32 " Hz is not reachable from a %lu Hz clock",
+                 (uint32_t)CONFIG_LIGHT_PWM_FREQUENCY, LIGHT_LEDC_SOURCE_HZ);
+        return ESP_FAIL;
+    }
+    // The dimming curve spends the bottom of the slider on the lowest duty steps, so under ten
+    // bits a 1% setting rounds to zero and the light goes dark instead of dim. Kconfig caps the
+    // frequency at 40 kHz, which lands on ten, so this only fires if that range is widened.
+    if (pwm_resolution < LIGHT_PWM_MIN_RESOLUTION) {
+        ESP_LOGW(TAG,
+                 "%u-bit duty at %" PRIu32 " Hz: the bottom of the brightness range will "
+                 "round to off",
+                 pwm_resolution, (uint32_t)CONFIG_LIGHT_PWM_FREQUENCY);
+    }
+
     ledc_timer_config_t timer_config = {.speed_mode = LEDC_LOW_SPEED_MODE,
-                                        .duty_resolution = LEDC_TIMER_8_BIT,
+                                        .duty_resolution = pwm_resolution,
                                         .timer_num = LEDC_TIMER_0,
                                         .freq_hz = CONFIG_LIGHT_PWM_FREQUENCY,
                                         .clk_cfg = LEDC_AUTO_CLK};
@@ -547,6 +584,8 @@ esp_err_t light_init(void) {
         ESP_LOGE(TAG, "Failed to configure LEDC timer");
         return ESP_FAIL;
     }
+    ESP_LOGI(TAG, "PWM: %" PRIu32 " Hz, %u-bit duty", (uint32_t)CONFIG_LIGHT_PWM_FREQUENCY,
+             pwm_resolution);
 
 #if CONFIG_LIGHT_ENABLE_FADE
     ledc_fade_func_install(0);
@@ -633,7 +672,6 @@ esp_err_t light_init(void) {
     light_initialized = true;
     return ESP_OK;
 }
-
 
 esp_err_t light_shutdown(void) {
     if (!light_initialized) {

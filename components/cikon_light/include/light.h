@@ -78,7 +78,7 @@ typedef struct {
     //   .c/.w    - the cold/warm split at full output. Zero in color mode, and zero when off.
     //
     // The two halves treat `on` differently on purpose, and consumers are built against that.
-    light_rgbcw_t color;
+    light_color_t color;
 } light_state_t;
 
 bool light_get_state(size_t index, light_state_t *state);
