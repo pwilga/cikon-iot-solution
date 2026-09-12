@@ -1,7 +1,7 @@
 menu "Cikon IoT Light Driver"
 
     # Which lights this device drives is not configured here: it lives in the device profile, as
-    # devices/<profile>/config/cikon_light/lights.toml, and becomes a C table at build time. Pins
+    # devices/<profile>/config/cikon_light/lights.yaml, and becomes a C table at build time. Pins
     # are wiring rather than a setting, and a mistake in them should fail the build.
 
     config LIGHT_PWM_FREQUENCY

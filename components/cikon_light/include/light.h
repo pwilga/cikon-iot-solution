@@ -34,7 +34,7 @@ void light_save_state(void);
 
 // --- identity ----------------------------------------------------------------------------
 
-// Lights this firmware was built for, fixed at compile time by the device's lights.toml.
+// Lights this firmware was built for, fixed at compile time by the device's lights.yaml.
 size_t light_count(void);
 
 // Sanitized name, stable for the process lifetime, NULL past the end. This is the string a

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turns a device's lights.toml into the lights[] table the driver ships with.
+"""Turns a device's lights.yaml into the lights[] table the driver ships with.
 
 Run from cikon_light/CMakeLists.txt at configure time. Writes light_generated.h and
 light_generated.c into the component's build directory, and prints the three facts CMake needs
@@ -9,17 +9,18 @@ What it writes describes the board and nothing else: names, channels, and the ca
 channels add up to. Brightness, colour and effect settings are state, not wiring - light_init()
 gives them their starting values, and NVS overwrites those where a saved state applies.
 
-A bad lights.toml exits non-zero with a message naming the light and the field, which CMake turns
+A bad lights.yaml exits non-zero with a message naming the light and the field, which CMake turns
 into a configure error. Nothing downstream re-checks the wiring: what this writes is already a
 table of numbers.
 """
 
 import argparse
 import sys
-import tomllib
 from pathlib import Path
 
-# TOML key -> the role enumerator in light_internal.h. Channels are emitted in this order rather
+import yaml
+
+# YAML key -> the role enumerator in light_internal.h. Channels are emitted in this order rather
 # than the file's, so LEDC channels are handed out the same way however the keys are arranged.
 PWM_ROLES = {
     "red": "CH_RED",
@@ -190,17 +191,18 @@ def build_light(index, light, max_channels):
 
 def load(path, max_channels):
     try:
-        with open(path, "rb") as f:
-            doc = tomllib.load(f)
-    except tomllib.TOMLDecodeError as e:
+        with open(path, encoding="utf-8") as f:
+            entries = yaml.safe_load(f)
+    except yaml.YAMLError as e:
         raise ConfigError(str(e)) from None
 
-    for key in doc:
-        if key != "light":
-            raise ConfigError(f"unexpected top-level key {key!r}, only [[light]] is used")
-    entries = doc.get("light")
     if not entries:
-        raise ConfigError("no [[light]] entries")
+        raise ConfigError("no lights listed")
+    if not isinstance(entries, list):
+        raise ConfigError("the file is a list of lights, each entry starting with '- type:'")
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise ConfigError(f"light {index}: expected 'key: value' lines, got {entry!r}")
 
     lights = [build_light(i, entry, max_channels) for i, entry in enumerate(entries)]
 
@@ -302,25 +304,25 @@ def emit_source(lights, has_pwm, has_addressable, ledc_used, source, header):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("toml", type=Path)
+    parser.add_argument("yaml", type=Path)
     parser.add_argument("--out-header", type=Path, required=True)
     parser.add_argument("--out-source", type=Path, required=True)
     parser.add_argument("--max-channels", type=int, default=5)
     args = parser.parse_args()
 
     try:
-        lights, ledc_used = load(args.toml, args.max_channels)
+        lights, ledc_used = load(args.yaml, args.max_channels)
     except ConfigError as e:
-        print(f"{args.toml}: {e}", file=sys.stderr)
+        print(f"{args.yaml}: {e}", file=sys.stderr)
         return 1
 
     has_pwm = any(c["role"] in PWM_ROLES.values() for l in lights for c in l["channels"])
     has_addressable = any(l["is_addressable"] for l in lights)
     max_leds = max((c["leds"] for l in lights for c in l["channels"] if "leds" in c), default=0)
 
-    args.out_header.write_text(emit_header(lights, has_addressable, max_leds, args.toml.name))
+    args.out_header.write_text(emit_header(lights, has_addressable, max_leds, args.yaml.name))
     args.out_source.write_text(
-        emit_source(lights, has_pwm, has_addressable, ledc_used, args.toml.name,
+        emit_source(lights, has_pwm, has_addressable, ledc_used, args.yaml.name,
                     args.out_header.name))
 
     print(f"HAS_PWM={int(has_pwm)}")

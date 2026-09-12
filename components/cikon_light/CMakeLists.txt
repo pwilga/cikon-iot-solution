@@ -1,45 +1,46 @@
-# The lights this device drives come from a per-profile lights.toml, turned into a C table here at
+# The lights this device drives come from a per-profile lights.yaml, turned into a C table here at
 # configure time by tools/lights_gen.py. The script is also what answers the three questions this
 # file used to answer with regexes over a config string: whether any channel is PWM, whether any is
 # an addressable strip, and how long the longest strip is.
 idf_build_get_property(DEVICE_CONFIG_DIR DEVICE_CONFIG_DIR)
 if(NOT DEVICE_CONFIG_DIR)
     message(FATAL_ERROR "cikon_light: DEVICE_CONFIG_DIR is not set, so there is nowhere to look "
-                        "for lights.toml. The project root is expected to set it with "
+                        "for lights.yaml. The project root is expected to set it with "
                         "idf_build_set_property(DEVICE_CONFIG_DIR ...).")
 endif()
 
-set(LIGHT_CONFIG_TOML "${DEVICE_CONFIG_DIR}/cikon_light/lights.toml")
+set(LIGHT_CONFIG_YAML "${DEVICE_CONFIG_DIR}/cikon_light/lights.yaml")
 set(LIGHT_CONFIG_GEN "${CMAKE_CURRENT_LIST_DIR}/tools/lights_gen.py")
 
-if(NOT EXISTS "${LIGHT_CONFIG_TOML}")
+if(NOT EXISTS "${LIGHT_CONFIG_YAML}")
     message(FATAL_ERROR
-        "cikon_light: no lights.toml for this device profile.\n"
+        "cikon_light: no lights.yaml for this device profile.\n"
         "  Expected:\n"
-        "    ${LIGHT_CONFIG_TOML}\n"
+        "    ${LIGHT_CONFIG_YAML}\n"
         "\n"
         "  Every entry in that file is a GPIO this firmware will drive, so there is no safe\n"
         "  default to fall back on.\n"
         "\n"
         "    - this device does have lights: copy the template and edit it\n"
-        "        cp ${CMAKE_CURRENT_LIST_DIR}/tools/lights.toml.example \\\n"
-        "           ${LIGHT_CONFIG_TOML}\n"
+        "        cp ${CMAKE_CURRENT_LIST_DIR}/tools/lights.yaml.example \\\n"
+        "           ${LIGHT_CONFIG_YAML}\n"
         "\n"
         "    - this device has no lights: set CONFIG_ENABLE_SUPERVISOR_LIGHT=n\n")
 endif()
 
-# Re-run when either the wiring or the generator changes. Without this a changed lights.toml would
+# Re-run when either the wiring or the generator changes. Without this a changed lights.yaml would
 # build the old table, which is the one failure this whole arrangement exists to prevent.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-             "${LIGHT_CONFIG_TOML}" "${LIGHT_CONFIG_GEN}")
+             "${LIGHT_CONFIG_YAML}" "${LIGHT_CONFIG_GEN}")
 
 set(LIGHT_GENERATED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/light_generated.h")
 set(LIGHT_GENERATED_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/light_generated.c")
 
-# ESP-IDF's own interpreter, not the system one: lights_gen.py needs tomllib (3.11+).
+# ESP-IDF's own interpreter, not the system one: lights_gen.py needs PyYAML, which IDF installs
+# into that environment but which a bare system Python is unlikely to have.
 idf_build_get_property(python PYTHON)
 execute_process(
-    COMMAND "${python}" "${LIGHT_CONFIG_GEN}" "${LIGHT_CONFIG_TOML}"
+    COMMAND "${python}" "${LIGHT_CONFIG_GEN}" "${LIGHT_CONFIG_YAML}"
             --out-header "${LIGHT_GENERATED_HEADER}"
             --out-source "${LIGHT_GENERATED_SOURCE}"
     OUTPUT_VARIABLE LIGHT_GEN_OUTPUT

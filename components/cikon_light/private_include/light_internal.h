@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 // LIGHT_COUNT, and LIGHT_EFFECTS_MAX_LEDS where a strip is configured. Written by
-// tools/lights_gen.py from the device's lights.toml, which also produces the lights[] table
+// tools/lights_gen.py from the device's lights.yaml, which also produces the lights[] table
 // itself - the numbers have to arrive first, since the structs below are sized with them.
 #include "light_generated.h"
 
@@ -108,7 +108,7 @@ typedef struct {
 #endif
 } light_config_t;
 
-// Defined in the generated light_generated.c, which is where the wiring from lights.toml lands.
+// Defined in the generated light_generated.c, which is where the wiring from lights.yaml lands.
 extern light_config_t lights[LIGHT_COUNT];
 
 // The effect catalogue. Defined in light.c and answerable in every build - light_effects.c,

@@ -1,0 +1,51 @@
+# - type: pwm
+#   name: Under Cabinet
+#   warm_white: 25
+
+# - type: pwm
+#   name: Ceiling
+#   cold_white: 18
+#   warm_white: 19
+
+# - type: pwm
+#   name: Desk Lamp
+#   red: 12
+#   green: 13
+#   blue: 14
+
+# - type: pwm
+#   name: Colour Plus White
+#   red: 26
+#   green: 27
+#   blue: 32
+#   warm_white: 33
+
+# - type: pwm
+#   name: Colour Plus Cct
+#   red: 15
+#   green: 16
+#   blue: 17
+#   cold_white: 21
+#   warm_white: 22
+
+# - type: switch
+#   name: Porch
+#   gpio: 23
+
+# - type: switch
+#   name: Board Led
+#   gpio: 2
+#   active_low: true
+
+# - type: addressable
+#   name: Tree
+#   gpio: 4
+#   leds: 30
+#   model: WS2812
+
+# - type: addressable
+#   name: Shelf
+#   gpio: 5
+#   leds: 60
+#   model: SK6812
+#   format: GRBW
