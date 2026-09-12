@@ -1,59 +1,8 @@
 menu "Cikon IoT Light Driver"
 
-    config LIGHT_MAX_COUNT
-        int "Maximum number of lights"
-        default 6
-        range 1 8
-        help
-            Maximum number of logical "light" entities. Each light is one physical
-            fixture (1-5 GPIO channels: Red/Green/Blue/Cold-white/Warm-white, or a
-            single plain on/off relay/switch channel).
-
-    config LIGHT_GPIO_LIST
-        string "Light channel list (role+gpio pairs per light, comma-separated)"
-        default "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip,W27:Right Strip"
-        help
-            Comma-separated list of lights. Each light is a '+'-joined set of
-            <role><gpio> channel tokens, optionally followed by ":name".
-
-            Roles:
-              - R = red
-              - G = green
-              - B = blue
-              - C = cold-white
-              - W = warm-white
-              - S = plain on/off relay/switch (no PWM/brightness/color)
-              - N = addressable strip (WS2812/SK6812), solid color only -
-                    exclusive, cannot combine with any other role
-
-            Supported role sets (one token per role):
-              - C | W | CW                (white / CCT only)
-              - RGB | RGBC | RGBW | RGBCW (color, optionally + white)
-              - S                         (on/off only - cannot combine
-                                            with any other role)
-              - N                         (addressable strip - cannot combine
-                                            with any other role)
-
-            S active-level suffix (appended directly to the GPIO number,
-            not ':'-separated - ':' is reserved for the trailing light
-            name):
-              - S<gpio>   -> active-high (default)
-              - S<gpio>H  -> active-high (explicit)
-              - S<gpio>L  -> active-low
-
-            N<gpio>x<count>[<format>] suffix (LED count is required; color
-            format is optional, defaults to grb):
-              - N<gpio>x<count>       -> WS2812, GRB order (most common)
-              - N<gpio>x<count>rgb    -> WS2812, RGB order
-              - N<gpio>x<count>grbw   -> SK6812, GRB + separate white
-              - N<gpio>x<count>rgbw   -> SK6812, RGB + separate white
-            Even "plain" WS2812 strips vary in channel order between
-            batches/clones - grb is a starting guess to verify on the actual
-            strip (send a known color and check it comes out right), not a
-            given.
-
-            Example:
-              "R17+G21+B16+C18+W19:Color Strip,W25:Left Strip,S26L:Porch Bulb,N4x30:Tree"
+    # Which lights this device drives is not configured here: it lives in the device profile, as
+    # devices/<profile>/config/cikon_light/lights.toml, and becomes a C table at build time. Pins
+    # are wiring rather than a setting, and a mistake in them should fail the build.
 
     config LIGHT_PWM_FREQUENCY
         int "PWM frequency (Hz)"

@@ -8,6 +8,7 @@
 #include "json_parser.h"
 #include "light.h"
 #include "light_adapter.h"
+#include "light_generated.h" // LIGHT_CMND_LIST, HA_ENTITY_LIST - one entry per configured light
 #include "metadata.h"
 #include "supervisor.h"
 #include "tele.h"
@@ -21,11 +22,8 @@
 
 // One cmnd is registered per configured light, each pointing at its own trampoline below -
 // command_handler_t carries no context, so a single shared handler can't tell which light it
-// was called for. LIGHT_CMND_LIST (injected by CMakeLists.txt, sized to match
-// LIGHT_GPIO_LIST) generates exactly as many trampolines as there are configured lights.
-#ifndef LIGHT_CMND_LIST
-#define LIGHT_CMND_LIST // Fallback if CMake didn't inject
-#endif
+// was called for. LIGHT_CMND_LIST comes from light_generated.h, built from the same lights.toml
+// as the driver's own table, so the Nth trampoline is the Nth light by construction.
 
 // Decodes one cmnd payload into a change and hands it over. Two payload shapes are accepted:
 // an object naming any subset of the fields, or a bare on/off/toggle string.
@@ -144,16 +142,7 @@ static esp_err_t light_adapter_init(void) {
         return err;
     }
 
-    const size_t trampoline_count = sizeof(cmnd_light_trampolines) / sizeof(cmnd_light_trampolines[0]);
-
     for (size_t i = 0; i < light_count(); i++) {
-        if (i >= trampoline_count) {
-            ESP_LOGE(TAG,
-                     "No cmnd trampoline for light '%s' (index %zu) - CMake/runtime light "
-                     "count mismatch",
-                     light_name(i), i);
-            break;
-        }
         light_caps_t caps;
         light_get_caps(i, &caps);
         cmnd_register(light_name(i), light_adapter_cmnd_description(&caps),
@@ -229,13 +218,8 @@ static void tele_light(const char *tele_id, cJSON *json_root) {
 }
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-#ifndef HA_ENTITY_LIST
-#define HA_ENTITY_LIST // Fallback if CMake didn't inject
-#endif
 
 static void light_ha_build(cJSON *payload, const char *sanitized_name) {
-    // A light rejected by the parser still gets an entity from HA_ENTITY_LIST, which CMake
-    // generates from the config string - it just gets the generic templates only.
     int8_t idx = light_index_by_name(sanitized_name);
     light_caps_t caps = {0};
     bool found = idx >= 0 && light_get_caps((size_t)idx, &caps);

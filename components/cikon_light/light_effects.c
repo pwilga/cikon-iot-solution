@@ -23,7 +23,7 @@ static void light_effects_render(light_config_t *light, uint32_t now_ms);
 // Only lights that are on AND actively animating justify the tight frame-period wake-up;
 // everything else (off, or on but solid) only needs a render on the next notify().
 static bool light_effects_has_active_animation(void) {
-    for (int i = 0; lights[i].channel_count != 0; i++) {
+    for (int i = 0; i < LIGHT_COUNT; i++) {
         if (lights[i].is_addressable && lights[i].on && lights[i].effect != LIGHT_EFFECT_NONE) {
             return true;
         }
@@ -39,7 +39,7 @@ static void light_effects_task(void *arg) {
     // light_adapter_init() before this task existed, which were silently dropped) - without
     // this, a freshly configured strip would stay dark until the first cmnd arrives.
     now_ms = (uint32_t)(esp_timer_get_time() / 1000);
-    for (int i = 0; lights[i].channel_count != 0; i++) {
+    for (int i = 0; i < LIGHT_COUNT; i++) {
         if (lights[i].is_addressable) {
             light_effects_render(&lights[i], now_ms);
         }
@@ -52,7 +52,7 @@ static void light_effects_task(void *arg) {
         ulTaskNotifyTake(pdTRUE, timeout);
 
         now_ms = (uint32_t)(esp_timer_get_time() / 1000);
-        for (int i = 0; lights[i].channel_count != 0; i++) {
+        for (int i = 0; i < LIGHT_COUNT; i++) {
             if (lights[i].is_addressable) {
                 light_effects_render(&lights[i], now_ms);
             }
@@ -66,7 +66,7 @@ void light_effects_task_start(void) {
     }
 
     bool any_addressable = false;
-    for (int i = 0; lights[i].channel_count != 0; i++) {
+    for (int i = 0; i < LIGHT_COUNT; i++) {
         if (lights[i].is_addressable) {
             any_addressable = true;
             break;

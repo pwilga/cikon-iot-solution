@@ -58,12 +58,10 @@ typedef struct __attribute__((packed)) {
 
 #define LIGHT_NVS_NAMESPACE "light_state"
 
-static light_persist_entry_t last_saved_state[CONFIG_LIGHT_MAX_COUNT];
+static light_persist_entry_t last_saved_state[LIGHT_COUNT];
 static bool state_dirty = false;
-static uint32_t light_config_fingerprint_cached;
 #endif
 
-light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
 static bool light_initialized = false;
 
 static bool light_has_role(light_config_t *light, light_channel_role_t role) {
@@ -114,10 +112,7 @@ int8_t light_index_by_name(const char *name) {
     if (!name) {
         return -1;
     }
-    for (int i = 0; i < CONFIG_LIGHT_MAX_COUNT; i++) {
-        if (lights[i].channel_count == 0) {
-            break;
-        }
+    for (int i = 0; i < LIGHT_COUNT; i++) {
         if (strcmp(lights[i].name, name) == 0) {
             return i;
         }
@@ -181,8 +176,10 @@ light_color_t light_compute_color(light_config_t *light) {
 }
 
 static void light_write_channels(light_config_t *light) {
-    // A switch-only light has nothing to compute a color for - it reads light->on directly.
-#if defined(LIGHT_HAS_PWM) || defined(LIGHT_HAS_ADDRESSABLE)
+    // Only two paths below want a color: the PWM channels, and a strip in a build with no effects
+    // engine to render it. A relay reads light->on directly, and where the engine is compiled in
+    // it owns the strip's rendering entirely.
+#if defined(LIGHT_HAS_PWM) || (defined(LIGHT_HAS_ADDRESSABLE) && !LIGHT_EFFECTS_BUILD)
     light_color_t color = light_compute_color(light);
 #endif
 #ifdef LIGHT_HAS_PWM
@@ -251,13 +248,8 @@ static void light_write_channels(light_config_t *light) {
     }
 }
 
-size_t light_count(void) {
-    size_t count = 0;
-    while (count < CONFIG_LIGHT_MAX_COUNT && lights[count].channel_count != 0) {
-        count++;
-    }
-    return count;
-}
+// LIGHT_COUNT itself stays private to the component, so callers outside it ask here.
+size_t light_count(void) { return LIGHT_COUNT; }
 
 // The one bounds check behind every index-taking entry point below.
 static light_config_t *light_by_index(size_t index) {
@@ -442,18 +434,6 @@ esp_err_t light_toggle(size_t index) {
 }
 
 #if CONFIG_LIGHT_PERSIST_STATE
-// Local hash (FNV-1a) - CONFIG_LIGHT_GPIO_LIST is a fixed string at build time, so this only
-// needs to run once per boot; the result is cached in light_config_fingerprint_cached.
-static uint32_t light_config_fingerprint(void) {
-    const char *cursor = CONFIG_LIGHT_GPIO_LIST;
-    uint32_t hash = 2166136261u;
-    while (*cursor) {
-        hash ^= (uint8_t)(*cursor++);
-        hash *= 16777619u;
-    }
-    return hash;
-}
-
 // Only restore on/off after a restart we triggered ourselves (cmnd restart, OTA, resetconf -
 // all go through esp_safe_restart() -> esp_restart(), which reports as ESP_RST_SW on the next
 // boot). Any other reset reason (power loss, brownout, panic, watchdog) leaves lights off,
@@ -466,8 +446,8 @@ void light_save_state(void) {
         return;
     }
 
-    light_persist_entry_t current[CONFIG_LIGHT_MAX_COUNT] = {0};
-    for (int i = 0; lights[i].channel_count != 0; i++) {
+    light_persist_entry_t current[LIGHT_COUNT] = {0};
+    for (int i = 0; i < LIGHT_COUNT; i++) {
         current[i].on = lights[i].on;
         current[i].color_mode = lights[i].color_mode;
         current[i].val = lights[i].val;
@@ -506,21 +486,16 @@ static void light_restore_state(void) {
         return;
     }
 
-    uint32_t saved_fingerprint = 0;
-    esp_err_t fingerprint_err = nvs_get_u32(handle, "fingerprint", &saved_fingerprint);
-    if (fingerprint_err != ESP_OK || saved_fingerprint != light_config_fingerprint_cached) {
-        nvs_set_u32(handle, "fingerprint", light_config_fingerprint_cached);
-        nvs_commit(handle);
-        ESP_LOGI(TAG, "Light config changed or first boot, discarding saved light state");
-        nvs_close(handle);
-        return;
-    }
-
-    light_persist_entry_t saved[CONFIG_LIGHT_MAX_COUNT] = {0};
+    light_persist_entry_t saved[LIGHT_COUNT] = {0};
     size_t size = sizeof(saved);
-    if (nvs_get_blob(handle, "state", saved, &size) == ESP_OK) {
+    // The exact size, not just ESP_OK: nvs_get_blob only refuses a blob too big for the buffer,
+    // and happily returns a shorter one with the rest left zeroed. A light added since the save
+    // would then come back with val = 0 - lit according to its own state, emitting nothing. Any
+    // change to the number of lights changes this size, so the whole saved state is dropped and
+    // every light keeps the defaults set above.
+    if (nvs_get_blob(handle, "state", saved, &size) == ESP_OK && size == sizeof(saved)) {
         bool restore_on = light_should_restore_on();
-        for (int i = 0; lights[i].channel_count != 0; i++) {
+        for (int i = 0; i < LIGHT_COUNT; i++) {
             lights[i].color_mode = saved[i].color_mode;
             lights[i].val = saved[i].val;
             lights[i].sat = saved[i].sat;
@@ -550,10 +525,35 @@ esp_err_t light_init(void) {
     }
 
     light_color_init();
-    light_config_parse();
+
+    // lights[] arrives from the generated table, which describes the wiring and nothing else.
+    // What state each light starts in belongs here, and NVS overwrites it just below wherever a
+    // saved state still applies.
+    for (int i = 0; i < LIGHT_COUNT; i++) {
+        light_config_t *light = &lights[i];
+
+        light->val = 50;
+        light->sat = 100;
+        light->hue = 0;
+        light->cct = 50;
+        // Colour is the starting mode only for a light with no white channel to prefer.
+        light->color_mode = light->has_color && !light->has_white;
+#if LIGHT_EFFECTS_BUILD
+        // WLED's own DEFAULT_SPEED/DEFAULT_INTENSITY are 128/255 (~50%) - same proportion here.
+        light->effect_speed = 50;
+        light->effect_intensity = 50;
+        // val2=0 (not just sat2=0) is required for a true default-black second color - see
+        // light_internal.h.
+        light->hue2 = 0;
+        light->sat2 = 0;
+        light->val2 = 0;
+#endif
+        ESP_LOGI(TAG, "Configured light %d '%s' (%d channel(s), color=%d white=%d cct=%d)", i,
+                 light->name, light->channel_count, light->has_color, light->has_white,
+                 light->has_cct);
+    }
 
 #if CONFIG_LIGHT_PERSIST_STATE
-    light_config_fingerprint_cached = light_config_fingerprint();
     light_restore_state();
 #endif
 
@@ -601,7 +601,7 @@ esp_err_t light_init(void) {
 #endif
 #endif
 
-    for (int i = 0; lights[i].channel_count != 0; i++) {
+    for (int i = 0; i < LIGHT_COUNT; i++) {
         light_config_t *light = &lights[i];
 
         for (uint8_t c = 0; c < light->channel_count; c++) {
@@ -620,8 +620,7 @@ esp_err_t light_init(void) {
                 led_strip_config_t strip_config = {
                     .strip_gpio_num = light->channels[c].gpio,
                     .max_leds = light->channels[c].led_count,
-                    .led_model =
-                        light->channels[c].has_white_channel ? LED_MODEL_SK6812 : LED_MODEL_WS2812,
+                    .led_model = light->channels[c].led_model,
                     .color_component_format = light->channels[c].led_color_format,
                     .flags = {.invert_out = false},
                 };
@@ -700,7 +699,7 @@ esp_err_t light_shutdown(void) {
     light_save_state();
 #endif
 
-    for (int i = 0; lights[i].channel_count != 0; i++) {
+    for (int i = 0; i < LIGHT_COUNT; i++) {
 #ifdef LIGHT_HAS_ADDRESSABLE
         if (lights[i].is_addressable && lights[i].addressable_handle) {
             led_strip_del(lights[i].addressable_handle);

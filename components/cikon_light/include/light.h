@@ -34,8 +34,7 @@ void light_save_state(void);
 
 // --- identity ----------------------------------------------------------------------------
 
-// Lights that parsed successfully - can be fewer than the entries in the configuration string,
-// since malformed ones are rejected. Meaningful only after light_init().
+// Lights this firmware was built for, fixed at compile time by the device's lights.toml.
 size_t light_count(void);
 
 // Sanitized name, stable for the process lifetime, NULL past the end. This is the string a

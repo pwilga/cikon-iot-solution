@@ -1,42 +1,68 @@
-# LIGHT_HAS_ADDRESSABLE / LIGHT_HAS_PWM Detection
-# ===============================================
-# Scans LIGHT_GPIO_LIST for a role-N (addressable WS2812/SK6812 strip) channel token, so
-# the CH_ADDRESSABLE code path in light.c (and its espressif/led_strip usage) is only
-# compiled in when actually configured - devices without a strip don't pay for it. Computed
-# before idf_component_register() (below) since it decides whether light_effects.c is part
-# of SRCS.
-#
-# The R/G/B/C/W tokens get the same treatment: a device driving only a strip or only a relay
-# would otherwise still hold LEDC_TIMER_0, install the fade ISR and carry the duty math.
-string(REPLACE "," ";" LIGHT_ADDR_ITEMS "${CONFIG_LIGHT_GPIO_LIST}")
-set(LIGHT_HAS_ADDRESSABLE FALSE)
-set(LIGHT_HAS_PWM FALSE)
-# Largest "x<led count>" seen across all N-role channels - sizes the effects engine's per-pixel
-# scratch buffer (light_effect_state_t.buf) exactly, computed here rather than guessed, the
-# same way LIGHT_HAS_ADDRESSABLE itself is derived from the config string below.
-set(LIGHT_EFFECTS_MAX_LEDS 0)
-foreach(item ${LIGHT_ADDR_ITEMS})
-    string(REPLACE ":" ";" LIGHT_ADDR_TUPLE "${item}")
-    list(GET LIGHT_ADDR_TUPLE 0 light_addr_channels)
-    if(light_addr_channels MATCHES "(^|\\+)[Nn][0-9]")
-        set(LIGHT_HAS_ADDRESSABLE TRUE)
-    endif()
-    if(light_addr_channels MATCHES "(^|\\+)[RrGgBbCcWw][0-9]")
-        set(LIGHT_HAS_PWM TRUE)
-    endif()
-    if(light_addr_channels MATCHES "[Nn][0-9]+[Xx]([0-9]+)")
-        if(CMAKE_MATCH_1 GREATER LIGHT_EFFECTS_MAX_LEDS)
-            set(LIGHT_EFFECTS_MAX_LEDS "${CMAKE_MATCH_1}")
-        endif()
+# The lights this device drives come from a per-profile lights.toml, turned into a C table here at
+# configure time by tools/lights_gen.py. The script is also what answers the three questions this
+# file used to answer with regexes over a config string: whether any channel is PWM, whether any is
+# an addressable strip, and how long the longest strip is.
+idf_build_get_property(DEVICE_CONFIG_DIR DEVICE_CONFIG_DIR)
+if(NOT DEVICE_CONFIG_DIR)
+    message(FATAL_ERROR "cikon_light: DEVICE_CONFIG_DIR is not set, so there is nowhere to look "
+                        "for lights.toml. The project root is expected to set it with "
+                        "idf_build_set_property(DEVICE_CONFIG_DIR ...).")
+endif()
+
+set(LIGHT_CONFIG_TOML "${DEVICE_CONFIG_DIR}/cikon_light/lights.toml")
+set(LIGHT_CONFIG_GEN "${CMAKE_CURRENT_LIST_DIR}/tools/lights_gen.py")
+
+if(NOT EXISTS "${LIGHT_CONFIG_TOML}")
+    message(FATAL_ERROR
+        "cikon_light: no lights.toml for this device profile.\n"
+        "  Expected:\n"
+        "    ${LIGHT_CONFIG_TOML}\n"
+        "\n"
+        "  Every entry in that file is a GPIO this firmware will drive, so there is no safe\n"
+        "  default to fall back on.\n"
+        "\n"
+        "    - this device does have lights: copy the template and edit it\n"
+        "        cp ${CMAKE_CURRENT_LIST_DIR}/tools/lights.toml.example \\\n"
+        "           ${LIGHT_CONFIG_TOML}\n"
+        "\n"
+        "    - this device has no lights: set CONFIG_ENABLE_SUPERVISOR_LIGHT=n\n")
+endif()
+
+# Re-run when either the wiring or the generator changes. Without this a changed lights.toml would
+# build the old table, which is the one failure this whole arrangement exists to prevent.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${LIGHT_CONFIG_TOML}" "${LIGHT_CONFIG_GEN}")
+
+set(LIGHT_GENERATED_HEADER "${CMAKE_CURRENT_BINARY_DIR}/light_generated.h")
+set(LIGHT_GENERATED_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/light_generated.c")
+
+# ESP-IDF's own interpreter, not the system one: lights_gen.py needs tomllib (3.11+).
+idf_build_get_property(python PYTHON)
+execute_process(
+    COMMAND "${python}" "${LIGHT_CONFIG_GEN}" "${LIGHT_CONFIG_TOML}"
+            --out-header "${LIGHT_GENERATED_HEADER}"
+            --out-source "${LIGHT_GENERATED_SOURCE}"
+    OUTPUT_VARIABLE LIGHT_GEN_OUTPUT
+    ERROR_VARIABLE LIGHT_GEN_ERROR
+    RESULT_VARIABLE LIGHT_GEN_RESULT
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+if(NOT LIGHT_GEN_RESULT EQUAL 0)
+    message(FATAL_ERROR "cikon_light: ${LIGHT_GEN_ERROR}")
+endif()
+
+# The script prints one KEY=VALUE per line, and foreach walks a ;-separated list - without this
+# the whole output stays a single item and only the first key is ever read.
+string(REPLACE "\n" ";" LIGHT_GEN_OUTPUT "${LIGHT_GEN_OUTPUT}")
+foreach(line ${LIGHT_GEN_OUTPUT})
+    if(line MATCHES "^([A-Z_]+)=(.*)$")
+        set(LIGHT_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
     endif()
 endforeach()
 
-# LIGHT_EFFECTS_BUILD - opt-in animation task for addressable strips
-# =====================================================================
-# Only compiled in when the device both has a role-N channel (LIGHT_HAS_ADDRESSABLE, above)
-# and the user hasn't opted out (CONFIG_LIGHT_ENABLE_EFFECTS). A device with no addressable
-# strip never pays for this regardless of the Kconfig setting.
-set(LIGHT_SRCS "light.c" "light_color.c" "light_config.c")
+# The animation task is opt-in and only means anything for a strip: a device with none never pays
+# for it whatever the Kconfig setting says.
+set(LIGHT_SRCS "light.c" "light_color.c" "${LIGHT_GENERATED_SOURCE}")
 if(CONFIG_LIGHT_ENABLE_EFFECTS AND LIGHT_HAS_ADDRESSABLE)
     list(APPEND LIGHT_SRCS "light_effects.c")
 endif()
@@ -44,8 +70,11 @@ endif()
 idf_component_register(
     SRCS
         ${LIGHT_SRCS}
+    # The generated header is public: besides sizing this component's own tables it carries the
+    # per-light command and entity lists the adapter expands. light_internal.h, which has the
+    # types and lights[] itself, stays private.
     INCLUDE_DIRS
-        "include"
+        "include" "${CMAKE_CURRENT_BINARY_DIR}"
     PRIV_INCLUDE_DIRS
         "private_include"
     # Not narrowed by LIGHT_HAS_PWM: requirements are collected in an earlier pass than the one
@@ -57,13 +86,12 @@ idf_component_register(
         nvs_flash
 )
 
-if(LIGHT_HAS_ADDRESSABLE)
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_HAS_ADDRESSABLE=1)
-endif()
 if(LIGHT_HAS_PWM)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_HAS_PWM=1)
 endif()
+if(LIGHT_HAS_ADDRESSABLE)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_HAS_ADDRESSABLE=1)
+endif()
 if(CONFIG_LIGHT_ENABLE_EFFECTS AND LIGHT_HAS_ADDRESSABLE)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_EFFECTS_BUILD=1)
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE LIGHT_EFFECTS_MAX_LEDS=${LIGHT_EFFECTS_MAX_LEDS})
 endif()

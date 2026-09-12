@@ -4,14 +4,18 @@
 // handful of functions the component's .c files share. Not installed under include/ -
 // light_adapter.h remains the only public surface.
 //
-// Holding the state here, rather than behind a getter/setter layer, lets light.c,
-// light_config.c and light_effects.c all treat lights[] as one shared thing - they are one
-// logical adapter, split by concern rather than by ownership. Pure color math lives in
-// light_color.h instead, which stays free of ESP-IDF headers so it can be compiled and checked
-// on a host.
+// Holding the state here, rather than behind a getter/setter layer, lets light.c and
+// light_effects.c both treat lights[] as one shared thing - they are one logical adapter, split
+// by concern rather than by ownership. Pure color math lives in light_color.h instead, which
+// stays free of ESP-IDF headers so it can be compiled and checked on a host.
 
 #include <stdbool.h>
 #include <stdint.h>
+
+// LIGHT_COUNT, and LIGHT_EFFECTS_MAX_LEDS where a strip is configured. Written by
+// tools/lights_gen.py from the device's lights.toml, which also produces the lights[] table
+// itself - the numbers have to arrive first, since the structs below are sized with them.
+#include "light_generated.h"
 
 #include "driver/gpio.h" // IWYU pragma: keep - gpio_num_t used in light_channel_t
 #include "light_color.h"
@@ -46,21 +50,18 @@ typedef struct {
 #endif
 #ifdef LIGHT_HAS_ADDRESSABLE
     uint16_t led_count;                            // only meaningful when role == CH_ADDRESSABLE
+    led_model_t led_model;                         // chip timing; only for CH_ADDRESSABLE
     led_color_component_format_t led_color_format; // only meaningful when role == CH_ADDRESSABLE
     bool has_white_channel; // format has a 4th (W) component; only for CH_ADDRESSABLE
 #endif
 } light_channel_t;
 
 #if LIGHT_EFFECTS_BUILD
-#ifndef LIGHT_EFFECTS_MAX_LEDS
-#define LIGHT_EFFECTS_MAX_LEDS 300 // fallback if CMake didn't inject it
-#endif
-
 // Generic per-effect scratch state, WLED SEGENV equivalent. Static, not malloc'd - since
 // LIGHT_EFFECTS_BUILD is a compile-time flag, this either lives for the light's whole lifetime
 // or isn't in the binary at all, so there's nothing to lazily allocate or free.
-// LIGHT_EFFECTS_MAX_LEDS is computed by CMakeLists.txt from CONFIG_LIGHT_GPIO_LIST's actual
-// addressable channel(s), not guessed.
+// LIGHT_EFFECTS_MAX_LEDS comes from light_generated.h - the longest strip actually configured,
+// not a guess.
 typedef struct {
     uint16_t aux0;
     uint16_t aux1;
@@ -72,7 +73,7 @@ typedef struct {
 
 typedef struct {
     light_channel_t channels[LIGHT_MAX_CHANNELS];
-    uint8_t channel_count; // 0 == unused slot (sentinel)
+    uint8_t channel_count;
     bool has_color;        // has R+G+B
     bool has_white;        // has C and/or W
     bool has_cct;          // has C and W together (real cold/warm mixing)
@@ -107,10 +108,8 @@ typedef struct {
 #endif
 } light_config_t;
 
-extern light_config_t lights[CONFIG_LIGHT_MAX_COUNT + 1]; // +1 sentinel
-
-// Fills lights[] from CONFIG_LIGHT_GPIO_LIST. Defined in light_config.c, called once at init.
-void light_config_parse(void);
+// Defined in the generated light_generated.c, which is where the wiring from lights.toml lands.
+extern light_config_t lights[LIGHT_COUNT];
 
 // The effect catalogue. Defined in light.c and answerable in every build - light_effects.c,
 // which holds the rows, is compiled only when the effects engine is enabled. Count is 0 and
