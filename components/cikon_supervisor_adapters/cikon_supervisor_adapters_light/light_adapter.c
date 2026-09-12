@@ -22,8 +22,8 @@
 
 // One cmnd is registered per configured light, each pointing at its own trampoline below -
 // command_handler_t carries no context, so a single shared handler can't tell which light it
-// was called for. LIGHT_CMND_LIST comes from light_generated.h, built from the same lights.toml
-// as the driver's own table, so the Nth trampoline is the Nth light by construction.
+// was called for. The list is generated in the same pass as the driver's own table, so the Nth
+// trampoline is the Nth light by construction.
 
 // Decodes one cmnd payload into a change and hands it over. Two payload shapes are accepted:
 // an object naming any subset of the fields, or a bare on/off/toggle string.

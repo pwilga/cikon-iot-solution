@@ -1,7 +1,5 @@
-# LIGHT_CMND_LIST and HA_ENTITY_LIST - one entry per configured light - come from cikon_light's
-# generated header, built from the device's lights.toml. They used to be assembled here by
-# splitting the configuration string a second time, which only lined up with the driver's own
-# reading of it as long as both splits were kept identical by hand.
+# The per-light command and entity lists come from the driver's generated header, so they line up
+# with its own table by construction rather than by being kept in step by hand.
 
 idf_component_register(
     SRCS
