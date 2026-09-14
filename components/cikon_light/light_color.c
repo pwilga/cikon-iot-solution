@@ -76,6 +76,27 @@ static uint16_t scale_duty_channel(uint16_t channel, float lightness, uint32_t f
     return (scaled == 0 && channel > floor_threshold) ? 1 : scaled;
 }
 
+// Whatever all three channels hold in common is the part a strip's own white element can emit
+// instead, from one diode rather than three mixed. Subtracting it leaves the color behind and
+// moves that share across - the mode WLED calls accurate (bus_manager.cpp, Bus::autoWhiteCalc).
+//
+// Runs before the output stage, so gamma and the slider see the finished four channels. The
+// white-mode guard is the reason for the early return: light_compute_color() drives c = w = 255
+// there and r/g/b are zero, where the minimum below would be zero too and put the light out.
+light_color_t light_color_extract_white(light_color_t color) {
+    if (color.w != 0) {
+        return color;
+    }
+
+    uint8_t shared = color.r < color.g ? (color.r < color.b ? color.r : color.b)
+                                       : (color.g < color.b ? color.g : color.b);
+    color.r -= shared;
+    color.g -= shared;
+    color.b -= shared;
+    color.w = shared;
+    return color;
+}
+
 light_pixel_t light_color_to_pixel(light_color_t color, uint8_t brightness) {
     light_pixel_t out = {0};
 

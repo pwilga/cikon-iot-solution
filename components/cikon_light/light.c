@@ -64,6 +64,18 @@ static bool state_dirty = false;
 
 static bool light_initialized = false;
 
+// A strip's fourth byte is a white element with no cold or warm identity of its own. It answers
+// as the cold one because that is the nearer of the two the outside world knows about: these
+// strips ship neutral to cool, and the alternative would present a plain white as warm.
+static bool light_strip_has_white(light_config_t *light) {
+#ifdef LIGHT_HAS_ADDRESSABLE
+    return light->is_addressable && light->has_white;
+#else
+    (void)light;
+    return false;
+#endif
+}
+
 static bool light_has_role(light_config_t *light, light_channel_role_t role) {
     for (uint8_t i = 0; i < light->channel_count; i++) {
         if (light->channels[i].role == role) {
@@ -137,6 +149,9 @@ static void light_strip_write(led_strip_handle_t handle, uint16_t pixel_index, b
 // Non-static: shared with light_effects.c.
 void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t pixel_index, bool has_white,
                                  light_color_t color, uint8_t brightness) {
+    if (has_white) {
+        color = light_color_extract_white(color);
+    }
     light_strip_write(handle, pixel_index, has_white, light_color_to_pixel(color, brightness));
 }
 
@@ -144,6 +159,9 @@ void light_addressable_set_pixel(led_strip_handle_t handle, uint16_t pixel_index
 // output stage runs once here rather than per pixel, since every pixel gets the same color.
 void light_addressable_fill(led_strip_handle_t handle, uint16_t count, bool has_white,
                             light_color_t color, uint8_t brightness) {
+    if (has_white) {
+        color = light_color_extract_white(color);
+    }
     light_pixel_t levels = light_color_to_pixel(color, brightness);
     for (uint16_t pixel_index = 0; pixel_index < count; pixel_index++) {
         light_strip_write(handle, pixel_index, has_white, levels);
@@ -271,7 +289,7 @@ bool light_get_caps(size_t index, light_caps_t *caps) {
         .is_switch = light->is_switch,
         .has_color = light->has_color,
         .has_cct = light->has_cct,
-        .has_cold_white = light_has_role(light, CH_COLD_WHITE),
+        .has_cold_white = light_has_role(light, CH_COLD_WHITE) || light_strip_has_white(light),
         .has_warm_white = light_has_role(light, CH_WARM_WHITE),
 #ifdef LIGHT_HAS_ADDRESSABLE
         .has_effects = light->is_addressable && light_effect_count() > 0,
@@ -536,8 +554,10 @@ esp_err_t light_init(void) {
         light->sat = 100;
         light->hue = 0;
         light->cct = 50;
-        // Colour is the starting mode only for a light with no white channel to prefer.
-        light->color_mode = light->has_color && !light->has_white;
+        // White is the starting mode only where there is a cold/warm pair to mix, which is what
+        // a lamp built around its whites has. A strip's single white element is somewhere its
+        // color can be sent, not the reason it exists, so it starts on color.
+        light->color_mode = light->has_color && !light->has_cct;
 #if LIGHT_EFFECTS_BUILD
         // WLED's own DEFAULT_SPEED/DEFAULT_INTENSITY are 128/255 (~50%) - same proportion here.
         light->effect_speed = 50;

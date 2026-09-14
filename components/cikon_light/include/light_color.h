@@ -46,6 +46,12 @@ void light_color_init(void);
 void light_color_hsv_to_rgb(uint16_t hue, uint8_t saturation, uint8_t value, uint8_t *red,
                             uint8_t *green, uint8_t *blue);
 
+// Splits the white a color already carries in r/g/b off onto .w, for hardware with a white
+// element of its own. A saturated color has none to give and passes through unchanged. Leaves
+// .w alone when it already holds a value, so a color aimed at the white channel directly
+// survives.
+light_color_t light_color_extract_white(light_color_t color);
+
 // The two output stages, and the only places gamma or brightness is applied. Each one carries
 // the brightness curve its hardware can afford, so neither takes a flag saying which to use.
 light_pixel_t light_color_to_pixel(light_color_t color, uint8_t brightness);
