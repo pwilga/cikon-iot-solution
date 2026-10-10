@@ -22,7 +22,14 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---- helpers ----
-  function fmtHeap(b) { return (b / 1024).toFixed(0) + " kB"; }
+  // Bytes -> "84.9 kB" / "147 kB" / "1.87 MB" / "2 MB" (binary units, trailing zeros trimmed).
+  function fmtMem(b) {
+    if (b == null) return "—";
+    function trim(v, d) { return String(parseFloat(v.toFixed(d))); }
+    if (b < 1024) return b + " B";
+    if (b < 1048576) { var k = b / 1024; return trim(k, k < 100 ? 1 : 0) + " kB"; }
+    var m = b / 1048576; return trim(m, m < 10 ? 2 : 1) + " MB";
+  }
   function fmtUptime(s) {
     s = Math.floor(s);
     var d = Math.floor(s / 86400), h = Math.floor(s / 3600) % 24, m = Math.floor(s / 60) % 60;
@@ -382,10 +389,58 @@
     // hero
     $("uptime").textContent = t.uptime != null ? fmtUptime(t.uptime) : "—";
     $("since").textContent = "since " + fmtBoot(t.boot_time);
-    $("free-heap").textContent = t.free_heap != null ? fmtHeap(t.free_heap) : "—";
-    $("min-heap").textContent = "min seen " + (t.min_heap != null ? fmtHeap(t.min_heap) : "—");
-    var pct = (t.free_heap && t.min_heap) ? Math.max(6, Math.min(100, (t.min_heap / t.free_heap) * 100)) : 60;
-    $("heap-fill").style.width = pct + "%";
+    // Memory: internal RAM (primary) + optional PSRAM. Bars show the used share of each region's
+    // own total; the tick marks peak use since boot (size - min_free). Falls back to the older
+    // free_heap/min_heap keys so a device on firmware predating dram_* still reads correctly.
+    function pctOf(v, tot) { return Math.max(0, Math.min(100, (v / tot) * 100)); }
+    var ramFree = t.dram_free != null ? t.dram_free : t.free_heap;
+    var ramMin = t.dram_min_free != null ? t.dram_min_free : t.min_heap;
+    var ramSize = t.dram_size != null ? t.dram_size : t.heap_total;
+    var hasRamBar = !!ramSize && ramFree != null;
+    var hasRamMark = hasRamBar && ramMin != null;
+    var ramLevel = ramFree == null ? "ok" : ramFree < 40 * 1024 ? "crit" : ramFree < 80 * 1024 ? "warn" : "ok";
+    var LEVELS = { ok: ["var(--accent)", ""], warn: ["#d9b27a", "low"], crit: ["#d98e84", "critical"] };
+    var ramColor = LEVELS[ramLevel][0], ramStatus = LEVELS[ramLevel][1];
+
+    $("free-heap").textContent = fmtMem(ramFree);
+    $("ram-size").textContent = "/ " + fmtMem(ramSize);
+    $("ram-size").hidden = !hasRamBar;
+    $("ram-status").textContent = "· " + ramStatus;
+    $("ram-status").style.color = "color-mix(in oklab, " + ramColor + " 62%, var(--text))";
+    $("ram-status").hidden = ramLevel === "ok";
+    $("ram-bar").hidden = !hasRamBar;
+    $("ram-bar").title = hasRamBar
+      ? "Used " + fmtMem(ramSize - ramFree) + " of " + fmtMem(ramSize) +
+        (hasRamMark ? " · peak " + fmtMem(ramSize - ramMin) : "")
+      : "";
+    $("heap-fill").style.width = (hasRamBar ? pctOf(ramSize - ramFree, ramSize) : 0) + "%";
+    $("heap-fill").style.background = ramColor;
+    $("ram-peak").style.left = (hasRamMark ? pctOf(ramSize - ramMin, ramSize) : 0) + "%";
+    $("ram-peak").hidden = !hasRamMark;
+    $("min-heap").textContent = "min seen " + fmtMem(ramMin);
+    $("ram-swatch").hidden = !hasRamMark;
+    $("ram-min-row").hidden = ramMin == null;
+
+    var psFree = t.psram_free, psMin = t.psram_min_free, psSize = t.psram_size;
+    var hasPsram = psFree != null;
+    var hasPsBar = hasPsram && !!psSize;
+    var hasPsMark = hasPsBar && psMin != null;
+
+    $("psram-block").hidden = !hasPsram;
+    $("psram-free").textContent = fmtMem(psFree);
+    $("psram-size").textContent = "/ " + fmtMem(psSize);
+    $("psram-size").hidden = !hasPsBar;
+    $("psram-bar").hidden = !hasPsBar;
+    $("psram-bar").title = hasPsBar
+      ? "Used " + fmtMem(psSize - psFree) + " of " + fmtMem(psSize) +
+        (hasPsMark ? " · peak " + fmtMem(psSize - psMin) : "")
+      : "";
+    $("psram-fill").style.width = (hasPsBar ? pctOf(psSize - psFree, psSize) : 0) + "%";
+    $("psram-peak").style.left = (hasPsMark ? pctOf(psSize - psMin, psSize) : 0) + "%";
+    $("psram-peak").hidden = !hasPsMark;
+    $("psram-min").textContent = "min seen " + fmtMem(psMin);
+    $("psram-swatch").hidden = !hasPsMark;
+    $("psram-min-row").hidden = !hasPsram || psMin == null;
 
     // capabilities (esp_chip_info features + flash/psram size)
     var CAP_ICON = {

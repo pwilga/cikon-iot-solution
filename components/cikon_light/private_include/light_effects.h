@@ -18,6 +18,7 @@ typedef enum {
     LIGHT_EFFECT_FIRE_2012,
     LIGHT_EFFECT_TWINKLE,
     LIGHT_EFFECT_METEOR,
+    LIGHT_EFFECT_FLOW,
 } light_effect_t;
 
 // The effect registry: one row per effect, indexed by light_effect_t. Exposed as data rather

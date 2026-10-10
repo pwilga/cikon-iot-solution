@@ -11,6 +11,7 @@
 #include "esp_err.h"
 #include "esp_event.h"
 #include "esp_flash.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "esp_ota_ops.h"
@@ -24,9 +25,6 @@
 
 #if SOC_TEMP_SENSOR_SUPPORTED
 #include "driver/temperature_sensor.h"
-#endif
-#if CONFIG_SPIRAM
-#include "esp_heap_caps.h"
 #endif
 #if CONFIG_VFS_EVENTFD_MAX_FDS > 0
 #include "esp_vfs_eventfd.h"
@@ -259,6 +257,33 @@ size_t get_psram_size(void) {
 #endif
 }
 
+// DRAM, not the whole heap: once PSRAM joins the malloc pool, esp_get_free_heap_size() is dominated
+// by a couple of megabytes of external RAM and stops saying anything about the memory that actually
+// runs out. DMA buffers, task stacks, WiFi and mbedTLS all need internal memory specifically.
+size_t get_dram_size(void) { return heap_caps_get_total_size(MALLOC_CAP_INTERNAL); }
+
+size_t get_dram_free_size(void) { return heap_caps_get_free_size(MALLOC_CAP_INTERNAL); }
+
+// Low watermarks are tracked per region, so both minimums below are a worst case rather than a
+// true all-time global minimum - which is what a "lowest seen" reading wants anyway.
+size_t get_dram_min_free_size(void) { return heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL); }
+
+size_t get_psram_free_size(void) {
+#if CONFIG_SPIRAM
+    return heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+#else
+    return 0;
+#endif
+}
+
+size_t get_psram_min_free_size(void) {
+#if CONFIG_SPIRAM
+    return heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
+#else
+    return 0;
+#endif
+}
+
 int get_cpu_freq_mhz(void) { return CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ; }
 
 bool get_fs_info(size_t *used, size_t *total) {
@@ -307,8 +332,8 @@ bool coredump_export_to_littlefs(void) {
         return false;
     }
 
-    const esp_partition_t *part =
-        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+    const esp_partition_t *part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
     if (!part) {
         ESP_LOGE(TAG, "Coredump partition not found");
         return false;
@@ -330,7 +355,8 @@ bool coredump_export_to_littlefs(void) {
     bool ok = true;
     while (offset < size) {
         size_t chunk = (size - offset) < sizeof(buf) ? (size - offset) : sizeof(buf);
-        if (esp_partition_read(part, offset, buf, chunk) != ESP_OK || fwrite(buf, 1, chunk, f) != chunk) {
+        if (esp_partition_read(part, offset, buf, chunk) != ESP_OK ||
+            fwrite(buf, 1, chunk, f) != chunk) {
             ESP_LOGE(TAG, "Failed while copying coredump at offset %u", (unsigned)offset);
             ok = false;
             break;

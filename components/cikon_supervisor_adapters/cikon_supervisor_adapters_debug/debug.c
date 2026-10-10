@@ -18,6 +18,7 @@
 #include "debug_adapter.h"
 #include "enum_helpers.h"
 #include "metadata.h"
+#include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
 
@@ -203,8 +204,15 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
             ESP_LOGE(TAG, "SAFE MODE ACTIVE - limited functionality");
         }
 
-        size_t free_heap = esp_get_free_heap_size();
-        ESP_LOGI(TAG, "Free heap: %.2f KB", free_heap / 1024.0);
+        size_t psram_free = get_psram_free_size();
+        if (psram_free > 0) {
+            ESP_LOGI(TAG, "Free DRAM: %.2f KB (min %.2f KB), free PSRAM: %.2f KB",
+                     get_dram_free_size() / 1024.0, get_dram_min_free_size() / 1024.0,
+                     psram_free / 1024.0);
+        } else {
+            ESP_LOGI(TAG, "Free DRAM: %.2f KB (min %.2f KB)", get_dram_free_size() / 1024.0,
+                     get_dram_min_free_size() / 1024.0);
+        }
 
         uint32_t uptime = esp_timer_get_time() / 1000000ULL;
         ESP_LOGI(TAG, "Uptime: %" PRIu32 " s", uptime);

@@ -456,6 +456,106 @@ static void effect_meteor(light_config_t *light, uint32_t now_ms) {
     light_effects_render_blend(light);
 }
 
+// WLED's Rainbow palette (its palette 11), pre-corrected with an inverse gamma of 2.2 so it comes
+// out looking like the original once the output stage applies gamma (WLED palettes.cpp,
+// RainbowColors_gc22). This project's strip path applies the same 2.2 in light_color_to_pixel()
+// and light_color_t is plain sRGB by definition, so the entries transfer verbatim as 0xRRGGBB.
+//
+// Not interchangeable with the hue sweep effect_rainbow does: this curve holds the secondary
+// channels at 0xD5 rather than full, so its yellow lands near (211,174,0) where a plain HSV wheel
+// gives (253,255,0). Visibly a different rainbow on a strip, which is why the table is here
+// instead of another call to light_color_hsv_to_rgb.
+//
+// Note this is a palette a WLED user picks, not WLED's own default: setMode() falls back to
+// palette 6 (Party) for any effect that declares no "pal" token, and Flow declares none.
+static const uint32_t rainbow_palette[16] = {
+    0xFF0000, 0xEB7000, 0xD59B00, 0xD5BA00, 0xD5D500, 0x9CEB00, 0x00FF00, 0x00EB70,
+    0x00D59B, 0x009CD4, 0x0000FF, 0x7000EB, 0x9B00D5, 0xBA00BB, 0xD5009B, 0xEB0072,
+};
+
+// FastLED's ColorFromPalette for a 16-entry palette at full brightness, LINEARBLEND: the index's
+// high nibble picks the entry and the low nibble blends it into the next one, wrapping 15 -> 0.
+// That wrap is what WLED's `moving` argument selects, and the effect below passes it, so there is
+// no no-wrap variant to carry here.
+static light_color_t rainbow_at(uint8_t index) {
+    uint8_t hi = index >> 4;
+    uint8_t lo = index & 0x0F;
+    uint32_t entry = rainbow_palette[hi];
+    light_color_t color = {
+        .r = (uint8_t)(entry >> 16),
+        .g = (uint8_t)(entry >> 8),
+        .b = (uint8_t)entry,
+    };
+
+    if (lo) {
+        uint32_t next = rainbow_palette[(hi + 1) & 0x0F];
+        uint8_t f2 = (uint8_t)(lo << 4);
+        uint8_t f1 = (uint8_t)(255 - f2);
+        color.r = (uint8_t)((((uint16_t)color.r * f1) >> 8) +
+                            (((uint16_t)((next >> 16) & 0xFF) * f2) >> 8));
+        color.g = (uint8_t)((((uint16_t)color.g * f1) >> 8) +
+                            (((uint16_t)((next >> 8) & 0xFF) * f2) >> 8));
+        color.b =
+            (uint8_t)((((uint16_t)color.b * f1) >> 8) + (((uint16_t)(next & 0xFF) * f2) >> 8));
+    }
+    return color;
+}
+
+// Ported 1:1 from WLED's mode_flow: the strip is cut into zones, each zone carries one full pass
+// through the palette, and neighbouring zones run in opposite directions - so the colors appear to
+// flow out of and back into each other instead of marching one way. effect_intensity is the zone
+// count (WLED labels that slider "Zones"); at effect_speed 0 the pattern stands still.
+//
+// Colored through the palette rather than the light's own hue, like effect_washing_machine above:
+// Flow declares zero color slots and calls color_from_palette with mcol=255, which fails that
+// function's `mcol < NUM_COLORS` test and so never takes its "return the segment color" shortcut
+// (FX_fcn.cpp) - the palette is the only color source the effect has.
+//
+// The zone count deliberately overshoots the strip. WLED recomputes it to cover what the integer
+// division truncated, adds two, and centers the result with an offset that comes out negative - so
+// both ends are covered by zones starting outside the strip. Pixels that land outside are dropped
+// rather than wrapped, because Segment::setPixelColor returns early for i < 0 and i >= length;
+// that is what the skip below preserves.
+static void effect_flow(light_config_t *light, uint32_t now_ms) {
+    uint16_t led_count = light->channels[0].led_count;
+    bool has_white = light->channels[0].has_white_channel;
+
+    uint16_t wled_speed = light_effects_wled_scale(light->effect_speed);
+    uint32_t counter = 0;
+    if (wled_speed != 0) {
+        counter = (now_ms * ((wled_speed >> 2) + 1)) >> 8;
+    }
+
+    int max_zones = led_count / 6; // a zone needs about six LEDs before it reads as one
+    int zones = (light_effects_wled_scale(light->effect_intensity) * max_zones) >> 8;
+    if (zones & 0x01) {
+        zones++; // even, so the alternating directions pair up
+    }
+    if (zones < 2) {
+        zones = 2;
+    }
+    int zone_len = led_count / zones;
+    if (zone_len < 1) {
+        zone_len = 1; // a one-LED strip reaches this, where WLED would divide by zero
+    }
+    int required_zones = (led_count + zone_len - 1) / zone_len;
+    zones = required_zones + 2;
+    int offset = ((int)led_count - zones * zone_len) / 2;
+
+    for (int z = 0; z < zones; z++) {
+        int pos = offset + z * zone_len;
+        for (int i = 0; i < zone_len; i++) {
+            int led = (z & 0x01) ? i : (zone_len - 1) - i;
+            if (pos + led < 0 || pos + led >= (int)led_count) {
+                continue;
+            }
+            uint8_t color_index = (uint8_t)((uint32_t)(i * 255 / zone_len) - counter);
+            light_addressable_set_pixel(light->addressable_handle, (uint16_t)(pos + led), has_white,
+                                        rainbow_at(color_index), light->val);
+        }
+    }
+}
+
 // Single source of truth per effect: name (for the cmnd "effect" field) + render function,
 // indexed by light_effect_t. Not static - light.c reads it to answer which effects exist.
 const light_effect_entry_t light_effect_table[] = {
@@ -468,6 +568,7 @@ const light_effect_entry_t light_effect_table[] = {
     [LIGHT_EFFECT_FIRE_2012] = {"fire_2012", effect_fire_2012},
     [LIGHT_EFFECT_TWINKLE] = {"twinkle", effect_twinkle},
     [LIGHT_EFFECT_METEOR] = {"meteor", effect_meteor},
+    [LIGHT_EFFECT_FLOW] = {"flow", effect_flow},
 };
 
 const size_t light_effect_table_size = sizeof(light_effect_table) / sizeof(light_effect_table[0]);

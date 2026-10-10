@@ -1,6 +1,7 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 
+#include "esp_check.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -13,12 +14,6 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <string.h>
-
-#define RETURN_IF_FALSE(x)                                                                         \
-    do {                                                                                           \
-        if (!(x))                                                                                  \
-            return;                                                                                \
-    } while (0)
 
 #define RX_BUFFER_SIZE 1024
 #define MAGIC_BYTES 0xAF, 0xCA, 0xEC, 0x2D, 0xFE, 0x55
@@ -82,24 +77,26 @@ static void handle_ota(const int client_sock) {
     uint8_t rx_buffer[RX_BUFFER_SIZE];
     const uint8_t magic_bytes[] = {MAGIC_BYTES};
 
+    esp_err_t ret = ESP_OK;
+    esp_ota_handle_t ota_handle = 0;
+    psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
+    const esp_partition_t *update_partition = NULL;
+
     // Mark that update is in progress (cannot be interrupted)
     ota_update_in_progress = true;
 
     OTA_LOG_STEP(0); // Magic header
     if (read_all(client_sock, rx_buffer) == sizeof(magic_bytes)) {
-        if (memcmp(rx_buffer, magic_bytes, sizeof(magic_bytes))) {
-            ESP_LOGE(TAG, "Invalid OTA magic header");
-            ota_update_in_progress = false;
-            return;
-        }
-        RETURN_IF_FALSE(send_ack(client_sock));
+        ESP_GOTO_ON_FALSE(!memcmp(rx_buffer, magic_bytes, sizeof(magic_bytes)), ESP_ERR_INVALID_ARG,
+                          cleanup, TAG, "Invalid OTA magic header");
+        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     }
     vTaskDelay(1);
 
     OTA_LOG_STEP(1); // Version, Size, MD5
     if (read_all(client_sock, rx_buffer) == sizeof(sw_version)) {
         memcpy(sw_version, rx_buffer, sizeof(sw_version));
-        RETURN_IF_FALSE(send_ack(client_sock));
+        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     }
     vTaskDelay(1);
 
@@ -107,27 +104,23 @@ static void handle_ota(const int client_sock) {
         firmware_size = ((uint32_t)rx_buffer[0] << 24) | ((uint32_t)rx_buffer[1] << 16) |
                         ((uint32_t)rx_buffer[2] << 8) | ((uint32_t)rx_buffer[3]);
 
-        RETURN_IF_FALSE(send_ack(client_sock));
+        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     }
     vTaskDelay(1);
 
     if (read_all(client_sock, rx_buffer) == sizeof(md5_expected)) {
         memcpy(md5_expected, rx_buffer, sizeof(md5_expected));
-        RETURN_IF_FALSE(send_ack(client_sock));
+        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     }
     vTaskDelay(1);
 
     OTA_LOG_STEP(2);
 
-    esp_ota_handle_t ota_handle = 0;
-    const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
+    update_partition = esp_ota_get_next_update_partition(NULL);
     vTaskDelay(1);
 
-    esp_err_t err = esp_ota_begin(update_partition, firmware_size, &ota_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to begin OTA update: %s", esp_err_to_name(err));
-        return;
-    }
+    ESP_GOTO_ON_ERROR(esp_ota_begin(update_partition, firmware_size, &ota_handle), cleanup, TAG,
+                      "Failed to begin OTA update");
     vTaskDelay(1);
 
     // Initialize PSA Crypto (if not already initialized)
@@ -135,13 +128,8 @@ static void handle_ota(const int client_sock) {
     vTaskDelay(1);
 
     // Initialize MD5 hash operation
-    psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
-    psa_status_t status = psa_hash_setup(&hash_op, PSA_ALG_MD5);
-    if (status != PSA_SUCCESS) {
-        ESP_LOGE(TAG, "Failed to setup MD5 hash: %ld", (long)status);
-        esp_ota_end(ota_handle);
-        return;
-    }
+    ESP_GOTO_ON_FALSE(psa_hash_setup(&hash_op, PSA_ALG_MD5) == PSA_SUCCESS, ESP_FAIL, cleanup, TAG,
+                      "Failed to setup MD5 hash");
     vTaskDelay(1);
 
     // Ready for image transmission
@@ -164,14 +152,8 @@ static void handle_ota(const int client_sock) {
             last_percent_reported = percent;
         }
 
-        err = esp_ota_write(ota_handle, rx_buffer, read_bytes);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to write OTA data chunk (%d bytes): %s", read_bytes,
-                     esp_err_to_name(err));
-            esp_ota_end(ota_handle);
-            psa_hash_abort(&hash_op);
-            return;
-        }
+        ESP_GOTO_ON_ERROR(esp_ota_write(ota_handle, rx_buffer, read_bytes), cleanup, TAG,
+                          "Failed to write OTA data chunk (%d bytes)", read_bytes);
         psa_hash_update(&hash_op, rx_buffer, read_bytes);
 
         // Yield to watchdog every 10 chunks (~10KB) instead of every chunk
@@ -180,44 +162,41 @@ static void handle_ota(const int client_sock) {
         }
     }
 
-    RETURN_IF_FALSE(send_ack(client_sock));
+    // The client half-closes the socket once the last byte is out, so a failed ACK here only means
+    // it stopped listening. The image is already complete, so finish it either way.
+    send_ack(client_sock);
 
     OTA_LOG_STEP(4);
 
-    err = esp_ota_end(ota_handle);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Finalizing OTA update failed: %s", esp_err_to_name(err));
-        return;
-    }
-
+    ret = esp_ota_end(ota_handle);
+    ota_handle = 0;
+    ESP_GOTO_ON_ERROR(ret, cleanup, TAG, "Finalizing OTA update failed");
     vTaskDelay(1);
 
     uint8_t md5_calc[MD5_SIZE];
     size_t hash_length;
-    status = psa_hash_finish(&hash_op, md5_calc, sizeof(md5_calc), &hash_length);
-    if (status != PSA_SUCCESS || hash_length != MD5_SIZE) {
-        ESP_LOGE(TAG, "Failed to finalize MD5: status=%ld, len=%zu", (long)status, hash_length);
-        return;
-    }
+    psa_status_t status = psa_hash_finish(&hash_op, md5_calc, sizeof(md5_calc), &hash_length);
+    ESP_GOTO_ON_FALSE(status == PSA_SUCCESS && hash_length == MD5_SIZE, ESP_FAIL, cleanup, TAG,
+                      "Failed to finalize MD5: status=%ld, len=%zu", (long)status, hash_length);
     vTaskDelay(1);
 
     // Compare calculated MD5 with expected
-    if (memcmp(md5_calc, md5_expected, sizeof(md5_expected))) {
-        ESP_LOGE(TAG, "MD5 mismatch!");
-        return;
-    }
+    ESP_GOTO_ON_FALSE(!memcmp(md5_calc, md5_expected, sizeof(md5_expected)), ESP_FAIL, cleanup, TAG,
+                      "MD5 mismatch");
 
-    err = esp_ota_set_boot_partition(update_partition);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Setting new boot partition failed: %s", esp_err_to_name(err));
-        ota_update_in_progress = false;
-        return;
-    }
+    ESP_GOTO_ON_ERROR(esp_ota_set_boot_partition(update_partition), cleanup, TAG,
+                      "Setting new boot partition failed");
 
     ota_update_in_progress = false;
 
     OTA_LOG_STEP(5); // Reboot
     esp_safe_restart();
+
+cleanup:
+    if (ota_handle)
+        esp_ota_end(ota_handle);
+    psa_hash_abort(&hash_op);
+    ota_update_in_progress = false;
 }
 
 void tcp_ota_task(void *args) {

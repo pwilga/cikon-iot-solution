@@ -560,12 +560,16 @@ static void tele_startup_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddStringToObject(json_root, tele_id, get_boot_time());
 }
 
-static void tele_free_heap_appender(const char *tele_id, cJSON *json_root) {
-    cJSON_AddNumberToObject(json_root, tele_id, esp_get_free_heap_size());
+static void tele_dram_size_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, get_dram_size());
 }
 
-static void tele_min_heap_appender(const char *tele_id, cJSON *json_root) {
-    cJSON_AddNumberToObject(json_root, tele_id, esp_get_minimum_free_heap_size());
+static void tele_dram_free_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, get_dram_free_size());
+}
+
+static void tele_dram_min_free_appender(const char *tele_id, cJSON *json_root) {
+    cJSON_AddNumberToObject(json_root, tele_id, get_dram_min_free_size());
 }
 
 static void tele_name_appender(const char *tele_id, cJSON *json_root) {
@@ -641,6 +645,18 @@ static void tele_psram_size_appender(const char *tele_id, cJSON *json_root) {
         cJSON_AddNumberToObject(json_root, tele_id, size);
 }
 
+static void tele_psram_free_appender(const char *tele_id, cJSON *json_root) {
+    size_t size = get_psram_free_size();
+    if (size > 0)
+        cJSON_AddNumberToObject(json_root, tele_id, size);
+}
+
+static void tele_psram_min_free_appender(const char *tele_id, cJSON *json_root) {
+    size_t size = get_psram_min_free_size();
+    if (size > 0)
+        cJSON_AddNumberToObject(json_root, tele_id, size);
+}
+
 static void tele_cpu_freq_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddNumberToObject(json_root, tele_id, get_cpu_freq_mhz());
 }
@@ -679,8 +695,9 @@ static const command_entry_t core_commands[] = {
 static const tele_entry_t core_tele[] = {
     {"uptime", tele_uptime_appender},
     {"boot_time", tele_startup_appender},
-    {"free_heap", tele_free_heap_appender},
-    {"min_heap", tele_min_heap_appender},
+    {"dram_size", tele_dram_size_appender},
+    {"dram_free", tele_dram_free_appender},
+    {"dram_min_free", tele_dram_min_free_appender},
     {"name", tele_name_appender},
     {"version", tele_version_appender},
     {"idf", tele_idf_appender},
@@ -696,6 +713,8 @@ static const tele_entry_t core_tele[] = {
     {"features", tele_features_appender},
     {"flash_size", tele_flash_size_appender},
     {"psram_size", tele_psram_size_appender},
+    {"psram_free", tele_psram_free_appender},
+    {"psram_min_free", tele_psram_min_free_appender},
     {"cpu_freq", tele_cpu_freq_appender},
     {"reset_reason", tele_reset_reason_appender},
     {"fs_used", tele_fs_used_appender},

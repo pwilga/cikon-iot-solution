@@ -35,10 +35,23 @@
         <div class="hero-foot" id="since">since —</div>
       </div>
       <div class="hero-side">
-        <div class="hlabel">Free heap</div>
-        <div class="hero-heap" id="free-heap">—</div>
-        <div class="heap-bar"><span id="heap-fill"></span></div>
-        <div class="hero-foot" id="min-heap">min seen —</div>
+        <div class="hlabel mem-head"><span>Free heap</span><span class="mem-status" id="ram-status" hidden></span></div>
+        <div class="hero-heap"><span id="free-heap">—</span><span class="mem-total" id="ram-size" hidden></span></div>
+        <div class="heap-bar" id="ram-bar" hidden>
+          <span id="heap-fill"></span><i class="mem-peak" id="ram-peak" hidden></i>
+        </div>
+        <div class="hero-foot mem-min" id="ram-min-row" hidden>
+          <i class="mem-swatch" id="ram-swatch" hidden></i><span id="min-heap">min seen —</span>
+        </div>
+      </div>
+      <div class="hero-psram" id="psram-block" hidden>
+        <div class="mem-head"><span class="hlabel">PSRAM free</span><span class="mem-vals"><span class="psram-free" id="psram-free">—</span><span class="mem-total" id="psram-size" hidden></span></span></div>
+        <div class="psram-bar" id="psram-bar" hidden>
+          <span id="psram-fill"></span><i class="mem-peak" id="psram-peak" hidden></i>
+        </div>
+        <div class="hero-foot mem-min" id="psram-min-row" hidden>
+          <i class="mem-swatch" id="psram-swatch" hidden></i><span id="psram-min">min seen —</span>
+        </div>
       </div>
     </section>
 

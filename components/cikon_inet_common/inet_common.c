@@ -101,9 +101,10 @@ static void build_fs_used_attrs(cJSON *payload, const char *sanitized_name) {
 
 static void build_free_heap_attrs(cJSON *payload, const char *sanitized_name) {
     (void)sanitized_name;
+    cJSON_ReplaceItemInObject(payload, "val_tpl", cJSON_CreateString("{{ value_json.dram_free }}"));
     cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
     cJSON_AddStringToObject(payload, "json_attr_tpl",
-                            "{{ {'min_heap': value_json.min_heap} | tojson }}");
+                            "{{ {'min_heap': value_json.dram_min_free} | tojson }}");
 }
 
 static void build_app_build_time_attrs(cJSON *payload, const char *sanitized_name) {
@@ -363,10 +364,8 @@ void inet_common_on_event(EventBits_t bits) {
                                                  .name = "IP",
                                                  .icon = "mdi:ip-outline",
                                                  .entity_category = "diagnostic"});
-        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                                 .name = "mDNS",
-                                                 .icon = "mdi:dns",
-                                                 .entity_category = "diagnostic"});
+        ha_register_entity(&(ha_entity_config_t){
+            .type = HA_SENSOR, .name = "mDNS", .icon = "mdi:dns", .entity_category = "diagnostic"});
     }
 #endif
 
