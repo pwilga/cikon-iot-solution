@@ -3,7 +3,7 @@
   "use strict";
 
   var POLL_MS = 5000;
-  var PENDING_TTL_MS = POLL_MS * 2; // must outlast one full poll cycle with margin
+  var PENDING_TTL = POLL_MS * 2; // must outlast one full poll cycle with margin
 
   // ---- state ----
   var state = {
@@ -22,13 +22,58 @@
   var $ = function (id) { return document.getElementById(id); };
 
   // ---- helpers ----
-  // Bytes -> "84.9 kB" / "147 kB" / "1.87 MB" / "2 MB" (binary units, trailing zeros trimmed).
+  // Bytes → "84.9 kB" / "147 kB" / "1.87 MB" / "2 MB" (binary units, trailing zeros trimmed)
   function fmtMem(b) {
     if (b == null) return "—";
     function trim(v, d) { return String(parseFloat(v.toFixed(d))); }
     if (b < 1024) return b + " B";
     if (b < 1048576) { var k = b / 1024; return trim(k, k < 100 ? 1 : 0) + " kB"; }
     var m = b / 1048576; return trim(m, m < 10 ? 2 : 1) + " MB";
+  }
+  function pctOf(v, tot) { return Math.max(0, Math.min(100, (v / tot) * 100)); }
+  // ---- memory tiles ----
+  // To add a memory (e.g. FAT) append one entry: keys are tried in order; give either `free` or `used` keys.
+  // Tile appears only when size + free/used exist; "min seen" line only if a min key exists.
+  // level(free, min, pct) -> "ok" | "warn" | "crit"
+  var MEMS = [
+    { label: "DRAM", size: ["dram_size", "heap_total"], free: ["dram_free", "free_heap"], min: ["dram_min_free", "min_heap"],
+      level: function (free, min) { return free < 40960 ? "crit" : (free < 81920 || (min != null && min < 40960)) ? "warn" : "ok"; } },
+    { label: "PSRAM", size: ["psram_size"], free: ["psram_free"], min: ["psram_min_free"],
+      level: function (f, m, pct) { return pct >= 95 ? "crit" : pct >= 85 ? "warn" : "ok"; } },
+    { label: "FS", size: ["fs_size", "fs_total"], used: ["fs_used"],
+      level: function (f, m, pct) { return pct >= 90 ? "crit" : pct >= 75 ? "warn" : "ok"; } }
+  ];
+  var MEM_COLORS = { ok: "var(--accent)", warn: "#d9b27a", crit: "#d98e84" };
+  function renderMems(t) {
+    function pick(keys) { if (!keys) return null; for (var i = 0; i < keys.length; i++) if (t[keys[i]] != null) return t[keys[i]]; return null; }
+    var C = 2 * Math.PI * 19;
+    function dash(p) { return (p / 100 * C).toFixed(1) + " " + C.toFixed(1); }
+    var html = "";
+    MEMS.forEach(function (d) {
+      var size = pick(d.size);
+      var used = d.used ? pick(d.used) : null;
+      var free = d.free ? pick(d.free) : (used != null ? size - used : null);
+      if (!size || free == null) return;
+      var min = d.min ? pick(d.min) : null;
+      var pct = pctOf(size - free, size);
+      var peak = min != null ? pctOf(size - min, size) : 0;
+      var col = MEM_COLORS[d.level(free, min, pct)];
+      var title = d.label + " · used " + fmtMem(size - free) + " of " + fmtMem(size) + (min != null ? " · min seen " + fmtMem(min) : "");
+      html += '<div class="mem-tile" title="' + esc(title) + '">' +
+        '<div class="mem-row"><div class="mem-ring">' +
+          '<svg viewBox="0 0 46 46"><circle cx="23" cy="23" r="19" class="mem-trk"/>' +
+          '<circle cx="23" cy="23" r="19" class="mem-pk" style="stroke:' + col + '" stroke-dasharray="' + dash(Math.max(peak, pct)) + '"/>' +
+          '<circle cx="23" cy="23" r="19" class="mem-us" style="stroke:' + col + '" stroke-dasharray="' + dash(pct) + '"/></svg>' +
+          '<span>' + Math.round(pct) + '%</span></div>' +
+          '<div class="mem-txt"><span class="mem-lbl">' + esc(d.label) + '</span>' +
+          '<span class="mem-val"><b>' + fmtMem(free) + '</b><small>/' + fmtMem(size) + '</small></span>' +
+          (min != null ? '<span class="mem-min"><i style="background:' + col + '"></i>min<span class="mem-seen"> seen</span> ' + fmtMem(min) + '</span>' : '') +
+        '</div></div>' +
+      '</div>';
+    });
+    var box = $("mems");
+    box.innerHTML = html;
+    box.hidden = !html;
   }
   function fmtUptime(s) {
     s = Math.floor(s);
@@ -101,12 +146,20 @@
         Object.keys(pendingSwitch).forEach(function (name) {
           var p = pendingSwitch[name];
           if (t[name] === p.value) { delete pendingSwitch[name]; }
-          else if (Date.now() - p.ts < PENDING_TTL_MS) { t[name] = p.value; }
+          else if (Date.now() - p.ts < PENDING_TTL) { t[name] = p.value; }
           else { delete pendingSwitch[name]; }
         });
         state.tele = t; state.online = true; state.live = true; render();
       })
-      .catch(function () { if (state.live) { state.online = false; render(); } })
+      .catch(function () {
+        if (state.live) { state.online = false; render(); return; }
+        // No real /tele (design preview) → feed the UI from a sample file.
+        // Not needed on the device, where /tele always answers.
+        return fetch("sample-tele.json", { cache: "no-store" })
+          .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
+          .then(function (t) { state.tele = t; state.online = true; render(); })
+          .catch(function () { state.online = false; render(); });
+      })
       .finally(function () { clearTimeout(to); });
   }
 
@@ -139,162 +192,189 @@
     wrap.innerHTML = "";
     keys.forEach(function (name) {
       var card = document.createElement("div");
-      card.className = "card row";
+      card.className = "card";
+      card.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px";
       card.innerHTML =
-        '<div class="switch-card-left">' +
-          '<button class="toggle sm" role="switch" aria-checked="false"><span class="knob"></span></button>' +
-          '<div class="row-title"></div>' +
-        '</div>' +
-        '<div class="row-sub"></div>';
+        '<div style="display:flex;align-items:center;gap:12px;min-width:0">' +
+        '<button class="toggle sm" role="switch" aria-checked="false" style="flex:none"><span class="knob"></span></button>' +
+        '<div class="row-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div></div>' +
+        '<div class="row-sub" style="font-size:13px;font-weight:600"></div>';
       card.querySelector(".row-title").textContent = switchPretty(name);
+      card.querySelector(".row-title").style.marginBottom = "0";
       card._name = name;
       card.querySelector(".toggle").addEventListener("click", function () { switchToggle(name); });
       wrap.appendChild(card);
     });
   }
 
-  // ---- Lights: fully data-driven from t.lights (names) + flat t[name] = {on,v,r?,g?,b?,c?,w?}.
-  // Channel presence (which of r/g/b/c/w exist) is fixed by hardware config, so dots are built
-  // once per card alongside the rest of the DOM, not recomputed every poll - only their
-  // active/inactive state and the toggle/slider tone update each poll.
-  var lightKeysBuilt = "";
-  var pendingLights = {}; // name -> { ts, patch: {on?, v?}, group?, key? } - optimistic, merged across calls
-
-  var LIGHT_DOT_COLOR = { r: "#cf8f86", g: "#8fb88a", b: "#6f8fd6", c: "#f7f5f0", w: "#deb98c" };
-  var LIGHT_DOT_LABEL = { r: "Red", g: "Green", b: "Blue", c: "Cold white", w: "Warm white" };
-
-  function lightEffectiveV(name) {
-    var raw = state.tele[name] || {};
-    var pend = pendingLights[name];
-    var fresh = pend && (Date.now() - pend.ts < PENDING_TTL_MS);
-    return fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
-  }
-  function lightMergePending(name, group, key, patch) {
-    var prev = pendingLights[name];
-    var prevFresh = prev && (Date.now() - prev.ts < PENDING_TTL_MS);
-    var mergedPatch = prevFresh ? prev.patch : {};
-    for (var k in patch) { mergedPatch[k] = patch[k]; }
-    pendingLights[name] = {
-      ts: Date.now(),
-      group: group !== undefined ? group : (prevFresh ? prev.group : undefined),
-      key: key !== undefined ? key : (prevFresh ? prev.key : undefined),
-      patch: mergedPatch
-    };
-  }
+  // ---- Lights: fully data-driven from t.lights (names) + flat t[name] = {on,v,r?,g?,b?,c?,w?} ----
+  var lightKeysBuilt = "";  // signature of the currently-built card set
+  var pendingLights = {};   // name -> { ts, group?, key?, patch:{on?,v?} } — optimistic overrides for ~4s
+  var lightLast = {}, lightTimer = {};
+  var DOT_COLOR = { r: "#cf8f86", g: "#8fb88a", b: "#6f8fd6", c: "#f7f5f0", w: "#deb98c" };
+  var DOT_LABEL = { r: "Red", g: "Green", b: "Blue", c: "Cold white", w: "Warm white" };
+  var WARM_GRAD = ["#f4d3b0", "#e9a68f"];
 
   function lightPretty(k) {
     return k.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
-  function lightActiveInGroup(raw, keys) {
+  function activeInGroup(raw, keys) {
     var best = null, bestV = -1;
-    keys.forEach(function (k) {
-      if (raw[k] != null && raw[k] > bestV) { bestV = raw[k]; best = k; }
-    });
+    keys.forEach(function (k) { if (raw[k] != null && raw[k] > bestV) { bestV = raw[k]; best = k; } });
     return bestV > 0 ? best : null;
   }
   function lightTone(allKeys, activeKey) {
-    if (activeKey) return LIGHT_DOT_COLOR[activeKey];
-    if (allKeys.length === 1) return LIGHT_DOT_COLOR[allKeys[0]];
+    if (activeKey) return DOT_COLOR[activeKey];
+    if (allKeys.length === 1) return DOT_COLOR[allKeys[0]];
     return "var(--accent)";
   }
   function lightPost(name, payload) {
     var body = {}; body[name] = payload;
     fetch("/cmnd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(function () {});
   }
-  function lightToggle(name, nextOn) {
-    lightMergePending(name, undefined, undefined, { on: nextOn });
-    render();
+  function effectiveLightV(name) {
+    var raw = (state.tele && state.tele[name]) || {};
+    var pend = pendingLights[name];
+    var fresh = pend && (Date.now() - pend.ts < PENDING_TTL);
+    return fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
+  }
+  function mergePendingLight(name, fields) {
+    var prev = pendingLights[name];
+    var prevFresh = prev && (Date.now() - prev.ts < PENDING_TTL);
+    pendingLights[name] = {
+      ts: Date.now(),
+      group: fields.group !== undefined ? fields.group : (prevFresh ? prev.group : undefined),
+      key: fields.key !== undefined ? fields.key : (prevFresh ? prev.key : undefined),
+      patch: Object.assign({}, prevFresh ? prev.patch : {}, fields.patch)
+    };
+  }
+  function toggleLight(name, nextOn) {
+    mergePendingLight(name, { patch: { on: nextOn } });
+    renderLightCards();
     lightPost(name, { on: nextOn });
   }
-  function lightSetColor(name, key, group) {
-    var v = lightEffectiveV(name) || 100;
+  function setLightColor(name, key, group, curV) {
+    var v = effectiveLightV(name) || 100;
     var payload = key === "r" ? { h: 0, s: 100, v: v, on: true }
       : key === "g" ? { h: 120, s: 100, v: v, on: true }
       : key === "b" ? { h: 240, s: 100, v: v, on: true }
       : key === "c" ? { cct: 100, v: v, on: true }
       : { cct: 0, v: v, on: true };
-    lightMergePending(name, group, key, { on: true });
-    render();
+    mergePendingLight(name, { group: group, key: key, patch: { on: true } });
+    renderLightCards();
     lightPost(name, payload);
   }
-  var lightLast = {}, lightTimer = {};
-  function lightSetValue(name, v) {
+  function setLightValue(name, v) {
     v = Math.max(1, Math.min(100, v | 0));
-    lightMergePending(name, undefined, undefined, { on: true, v: v });
-    render();
-    var send = function () {
-      lightLast[name] = Date.now();
-      lightPost(name, { v: v, on: true });
-    };
+    mergePendingLight(name, { patch: { on: true, v: v } });
+    renderLightCards();
     var now = Date.now();
+    var send = function () { lightLast[name] = Date.now(); lightPost(name, { v: v, on: true }); };
     if (now - (lightLast[name] || 0) > 120) send();
     else { clearTimeout(lightTimer[name]); lightTimer[name] = setTimeout(send, 130); }
   }
-  function buildLightCards(keys, t) {
+
+  function buildLightCards(names, t) {
     var wrap = $("light-cards");
     wrap.innerHTML = "";
-    keys.forEach(function (name) {
-      var raw = t[name] || {};
-      var hasBrightness = raw.v != null;
+    names.forEach(function (name) {
+      var card = document.createElement("div");
+      card.className = "card";
+      card.style.cssText = "display:flex;flex-direction:column;gap:12px;padding:16px 18px";
+      card.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">' +
+        '<div style="display:flex;align-items:center;gap:12px;min-width:0">' +
+        '<button class="light-toggle" role="switch" aria-checked="false" style="background:none;border:none;cursor:pointer;padding:0;flex:none">' +
+        '<span class="light-track" style="width:40px;height:24px;border-radius:12px;background:var(--track-off);position:relative;display:block;transition:background .25s">' +
+        '<span class="knob" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.2);transition:transform .25s;display:block"></span>' +
+        '</span></button>' +
+        '<div class="row-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div></div>' +
+        '<div class="light-dim" style="display:flex;align-items:center;gap:10px;flex:none">' +
+        '<span class="light-dots" style="display:flex;gap:8px"></span>' +
+        '<span class="mono light-pct" style="font-size:13px;font-weight:600;color:var(--muted);min-width:34px;text-align:right">0%</span>' +
+        '</div>' +
+        '<span class="light-onoff" style="font-size:13px;font-weight:600;color:var(--muted)"></span>' +
+        '</div>' +
+        '<div class="light-dim" style="position:relative;height:24px;display:flex;align-items:center">' +
+        '<div style="position:absolute;left:0;right:0;height:12px;border-radius:6px;background:var(--track-off)"></div>' +
+        '<div class="light-fill" style="pointer-events:none;position:relative;height:12px;border-radius:6px;background:var(--accent);width:0%;transition:width .06s"></div>' +
+        '<input type="range" min="1" max="100" class="slider">' +
+        '</div>';
+      card._name = name;
+      card._hasBrightness = (t[name] || {}).v != null;
+      [].forEach.call(card.querySelectorAll(".light-dim"), function (el) { el.hidden = !card._hasBrightness; });
+      card.querySelector(".light-onoff").hidden = card._hasBrightness;
+      card.querySelector(".row-title").textContent = lightPretty(name);
+      var toggle = card.querySelector(".light-toggle");
+      var inp = card.querySelector(".slider");
+      toggle.addEventListener("click", function () {
+        var on = toggle.getAttribute("aria-checked") === "true";
+        toggleLight(name, !on);
+      });
+      inp.addEventListener("input", function () { setLightValue(name, parseInt(inp.value, 10) || 1); });
+      inp.addEventListener("click", function (e) {
+        var r = inp.getBoundingClientRect();
+        setLightValue(name, Math.max(1, Math.round((e.clientX - r.left) / r.width * 100)));
+      });
+      wrap.appendChild(card);
+    });
+  }
+
+  function renderLightCards() {
+    var t = state.tele;
+    var names = (Array.isArray(t.lights) ? t.lights : []).filter(function (n) { return n && t[n] != null; });
+    var sig = names.join(",");
+    $("lights-label").hidden = names.length === 0;
+    $("lights-label").style.marginTop = $("controls-label").hidden ? "0" : "16px";
+    $("controls-cell").hidden = names.length === 0 && $("controls-label").hidden;
+    if (sig !== lightKeysBuilt) { buildLightCards(names, t); lightKeysBuilt = sig; }
+    [].forEach.call($("light-cards").children, function (card) {
+      var name = card._name, raw = t[name] || {};
+      var hasBrightness = card._hasBrightness;
+      var pend = pendingLights[name], fresh = pend && (Date.now() - pend.ts < PENDING_TTL);
+      var on = fresh && pend.patch.on != null ? pend.patch.on : !!raw.on;
+      var v = fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
       var rgbKeys = ["r", "g", "b"].filter(function (k) { return raw[k] != null; });
       var cwKeys = ["c", "w"].filter(function (k) { return raw[k] != null; });
       var allKeys = rgbKeys.concat(cwKeys);
-      var showDots = allKeys.length >= 2;
-
-      // --dot-c carries this dot's own color into .light-dot.active's box-shadow ring in
-      // style.css (matches .dc.html's boxShadow: '0 0 0 2px var(--surface), 0 0 0 4px ' + dotColor[k]).
-      var dotsHtml = !showDots ? "" : allKeys.map(function (k) {
-        return '<button class="light-dot' + (k === "c" ? " cold" : "") + '" data-ch="' + k +
-          '" title="' + LIGHT_DOT_LABEL[k] + '" style="background:' + LIGHT_DOT_COLOR[k] +
-          ';--dot-c:' + LIGHT_DOT_COLOR[k] + '"></button>';
-      }).join("");
-
-      var rightHtml = hasBrightness
-        ? '<span class="light-dots">' + dotsHtml + '</span><span class="light-pct mono">0%</span>'
-        : '<span class="light-state-text">Off</span>';
-
-      var card = document.createElement("div");
-      card.className = "card light-card";
-      card.innerHTML =
-        '<div class="light-card-head">' +
-          '<div class="light-card-left">' +
-            '<button class="toggle sm" role="switch" aria-checked="false"><span class="knob"></span></button>' +
-            '<div class="row-title"></div>' +
-          '</div>' +
-          '<div class="light-card-right">' + rightHtml + '</div>' +
-        '</div>' +
-        (hasBrightness
-          ? '<div class="light-slider"><div class="light-slider-fill"></div><input type="range" min="1" max="100" class="slider"></div>'
-          : '');
-
-      card._name = name;
-      card._hasBrightness = hasBrightness;
-      card._rgbKeys = rgbKeys;
-      card._cwKeys = cwKeys;
-      card._lastRaw = raw;
-      card.querySelector(".row-title").textContent = lightPretty(name);
-
-      var toggle = card.querySelector(".toggle");
-      toggle.addEventListener("click", function () {
-        var on = toggle.getAttribute("aria-checked") === "true";
-        lightToggle(name, !on);
-      });
-      if (hasBrightness) {
-        var inp = card.querySelector(".slider");
-        inp.addEventListener("input", function () { lightSetValue(name, +inp.value); });
-        inp.addEventListener("click", function (e) {
-          var r = inp.getBoundingClientRect();
-          var v = Math.max(1, Math.min(100, Math.round((e.clientX - r.left) / r.width * 100)));
-          lightSetValue(name, v);
+      // c/w first: they are either real scaled brightness (white mode) or exactly 0 (RGB mode).
+      // r/g/b in white mode is a decorative cct-only approximation and inflated, so the two
+      // groups must never be compared in one "take the largest" pass.
+      var activeKey = fresh && pend.key
+        ? pend.key
+        : (activeInGroup(raw, cwKeys) || activeInGroup(raw, rgbKeys));
+      var tone = hasBrightness ? lightTone(allKeys, activeKey) : "#deb98c";
+      card.querySelector(".light-toggle").setAttribute("aria-checked", on ? "true" : "false");
+      card.querySelector(".light-track").style.background = on ? tone : "var(--track-off)";
+      card.querySelector(".knob").style.transform = "translateX(" + (on ? "16px" : "0px") + ")";
+      card.querySelector(".light-pct").textContent = v + "%";
+      card.querySelector(".light-onoff").textContent = on ? "On" : "Off";
+      card.querySelector(".light-fill").style.background = tone;
+      card.querySelector(".light-fill").style.width = v + "%";
+      var slider = card.querySelector(".slider");
+      if (document.activeElement !== slider) slider.value = v;
+      [].forEach.call(card.querySelectorAll(".light-dim"), function (el) { el.style.opacity = on ? 1 : 0.5; });
+      var dots = card.querySelector(".light-dots");
+      if (!hasBrightness) return;
+      var dotKeys = allKeys.length < 2 ? [] : allKeys;
+      if (dots.childElementCount !== dotKeys.length || dots._sig !== dotKeys.join(",")) {
+        dots.innerHTML = "";
+        dots._sig = dotKeys.join(",");
+        dotKeys.forEach(function (k) {
+          var dot = document.createElement("button");
+          dot.title = DOT_LABEL[k];
+          dot.className = "light-dot";
+          dot.style.cssText = "width:18px;height:18px;border-radius:50%;border:" + (k === "c" ? "1px solid var(--faint)" : "none") + ";cursor:pointer;padding:0;flex:none;background:" + DOT_COLOR[k] + ";--dot-c:" + DOT_COLOR[k] + ";transition:all .15s";
+          dot._key = k;
+          dot.addEventListener("click", function () {
+            setLightColor(name, k, rgbKeys.indexOf(k) !== -1 ? "rgb" : "cw", v);
+          });
+          dots.appendChild(dot);
         });
       }
-      [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
-        var k = dot.getAttribute("data-ch");
-        dot.addEventListener("click", function () {
-          lightSetColor(name, k, rgbKeys.indexOf(k) >= 0 ? "rgb" : "cw");
-        });
+      [].forEach.call(dots.children, function (dot) {
+        dot.classList.toggle("active", dot._key === activeKey);
       });
-      wrap.appendChild(card);
     });
   }
 
@@ -389,58 +469,7 @@
     // hero
     $("uptime").textContent = t.uptime != null ? fmtUptime(t.uptime) : "—";
     $("since").textContent = "since " + fmtBoot(t.boot_time);
-    // Memory: internal RAM (primary) + optional PSRAM. Bars show the used share of each region's
-    // own total; the tick marks peak use since boot (size - min_free). Falls back to the older
-    // free_heap/min_heap keys so a device on firmware predating dram_* still reads correctly.
-    function pctOf(v, tot) { return Math.max(0, Math.min(100, (v / tot) * 100)); }
-    var ramFree = t.dram_free != null ? t.dram_free : t.free_heap;
-    var ramMin = t.dram_min_free != null ? t.dram_min_free : t.min_heap;
-    var ramSize = t.dram_size != null ? t.dram_size : t.heap_total;
-    var hasRamBar = !!ramSize && ramFree != null;
-    var hasRamMark = hasRamBar && ramMin != null;
-    var ramLevel = ramFree == null ? "ok" : ramFree < 40 * 1024 ? "crit" : ramFree < 80 * 1024 ? "warn" : "ok";
-    var LEVELS = { ok: ["var(--accent)", ""], warn: ["#d9b27a", "low"], crit: ["#d98e84", "critical"] };
-    var ramColor = LEVELS[ramLevel][0], ramStatus = LEVELS[ramLevel][1];
-
-    $("free-heap").textContent = fmtMem(ramFree);
-    $("ram-size").textContent = "/ " + fmtMem(ramSize);
-    $("ram-size").hidden = !hasRamBar;
-    $("ram-status").textContent = "· " + ramStatus;
-    $("ram-status").style.color = "color-mix(in oklab, " + ramColor + " 62%, var(--text))";
-    $("ram-status").hidden = ramLevel === "ok";
-    $("ram-bar").hidden = !hasRamBar;
-    $("ram-bar").title = hasRamBar
-      ? "Used " + fmtMem(ramSize - ramFree) + " of " + fmtMem(ramSize) +
-        (hasRamMark ? " · peak " + fmtMem(ramSize - ramMin) : "")
-      : "";
-    $("heap-fill").style.width = (hasRamBar ? pctOf(ramSize - ramFree, ramSize) : 0) + "%";
-    $("heap-fill").style.background = ramColor;
-    $("ram-peak").style.left = (hasRamMark ? pctOf(ramSize - ramMin, ramSize) : 0) + "%";
-    $("ram-peak").hidden = !hasRamMark;
-    $("min-heap").textContent = "min seen " + fmtMem(ramMin);
-    $("ram-swatch").hidden = !hasRamMark;
-    $("ram-min-row").hidden = ramMin == null;
-
-    var psFree = t.psram_free, psMin = t.psram_min_free, psSize = t.psram_size;
-    var hasPsram = psFree != null;
-    var hasPsBar = hasPsram && !!psSize;
-    var hasPsMark = hasPsBar && psMin != null;
-
-    $("psram-block").hidden = !hasPsram;
-    $("psram-free").textContent = fmtMem(psFree);
-    $("psram-size").textContent = "/ " + fmtMem(psSize);
-    $("psram-size").hidden = !hasPsBar;
-    $("psram-bar").hidden = !hasPsBar;
-    $("psram-bar").title = hasPsBar
-      ? "Used " + fmtMem(psSize - psFree) + " of " + fmtMem(psSize) +
-        (hasPsMark ? " · peak " + fmtMem(psSize - psMin) : "")
-      : "";
-    $("psram-fill").style.width = (hasPsBar ? pctOf(psSize - psFree, psSize) : 0) + "%";
-    $("psram-peak").style.left = (hasPsMark ? pctOf(psSize - psMin, psSize) : 0) + "%";
-    $("psram-peak").hidden = !hasPsMark;
-    $("psram-min").textContent = "min seen " + fmtMem(psMin);
-    $("psram-swatch").hidden = !hasPsMark;
-    $("psram-min-row").hidden = !hasPsram || psMin == null;
+    renderMems(t);
 
     // capabilities (esp_chip_info features + flash/psram size)
     var CAP_ICON = {
@@ -512,12 +541,6 @@
 
     // cpu frequency moved to capabilities row (first row)
 
-    // filesystem usage
-    if (t.fs_total && t.fs_used != null) {
-      var fsPct = Math.round(t.fs_used / t.fs_total * 100);
-      var fsTitle = "Filesystem · " + fmtFS(t.fs_used) + " / " + fmtFS(t.fs_total);
-      statusHTML += '<span class="cap cap-mem" title="' + esc(fsTitle) + '"><span class="cap-i" style="color:#5f9ea8"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="8" cy="4" rx="5" ry="2"></ellipse><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"></path></svg></span><span class="fsbar"><span style="width:' + fsPct + '%"></span></span><b>FS ' + fsPct + '%</b></span>';
-    }
 
     // last reset reason → shown in System list (below Firmware), not as a chip
     var resetLabel = null, resetColor = null;
@@ -535,60 +558,19 @@
     $("status-cell").hidden = statusHTML === "";
 
     // switch cards
-    var switchKeys = Array.isArray(t.switches) ? t.switches : [];
-    $("controls-label").hidden = switchKeys.length === 0;
+    // only names that actually have a value in /tele count as controls
+    var switchKeys = (Array.isArray(t.switches) ? t.switches : []).filter(function (n) { return n && t[n] != null; });
     var swSig = switchKeys.join(",");
     if (swSig !== switchKeysBuilt) { buildSwitchCards(switchKeys); switchKeysBuilt = swSig; }
+    $("controls-label").hidden = switchKeys.length === 0;
     [].forEach.call($("switch-cards").children, function (card) {
       var on = !!t[card._name];
       card.querySelector(".toggle").setAttribute("aria-checked", on ? "true" : "false");
       card.querySelector(".row-sub").textContent = on ? "On" : "Off";
     });
 
-    // Lights — data-driven from t.lights
-    var lightNames = Array.isArray(t.lights) ? t.lights : [];
-    $("light-label").hidden = lightNames.length === 0;
-    var lightSig = lightNames.join(",");
-    if (lightSig !== lightKeysBuilt) { buildLightCards(lightNames, t); lightKeysBuilt = lightSig; }
-    [].forEach.call($("light-cards").children, function (card) {
-      var name = card._name;
-      var raw = t[name] || {};
-      card._lastRaw = raw;
-      var pend = pendingLights[name];
-      var fresh = pend && (Date.now() - pend.ts < PENDING_TTL_MS);
-      var on = fresh && pend.patch.on != null ? pend.patch.on : !!raw.on;
-      var v = fresh && pend.patch.v != null ? pend.patch.v : Math.max(1, Math.min(100, raw.v | 0));
-
-      var allChKeys = card._rgbKeys.concat(card._cwKeys);
-      // c/w are always trustworthy: either real scaled brightness (white mode) or exactly 0
-      // (RGB mode). r/g/b in white mode is a decorative cct-only approximation and inflated,
-      // so never compare the two groups together.
-      var activeKey = (fresh && pend.key) ? pend.key
-        : (lightActiveInGroup(raw, card._cwKeys) || lightActiveInGroup(raw, card._rgbKeys));
-      var tone = !card._hasBrightness ? "#deb98c" : lightTone(allChKeys, activeKey);
-
-      var toggle = card.querySelector(".toggle");
-      toggle.setAttribute("aria-checked", on ? "true" : "false");
-      toggle.style.background = on ? tone : "";
-
-      if (!card._hasBrightness) {
-        var stateText = card.querySelector(".light-state-text");
-        if (stateText) stateText.textContent = on ? "On" : "Off";
-        return;
-      }
-
-      [].forEach.call(card.querySelectorAll(".light-dot"), function (dot) {
-        var k = dot.getAttribute("data-ch");
-        dot.classList.toggle("active", k === activeKey);
-      });
-
-      card.querySelector(".light-pct").textContent = v + "%";
-      var slider = card.querySelector(".slider");
-      if (document.activeElement !== slider) slider.value = v;
-      card.querySelector(".light-slider-fill").style.width = v + "%";
-      card.querySelector(".light-slider-fill").style.background = tone;
-      card.querySelector(".light-slider").style.opacity = on ? 1 : 0.5;
-    });
+    // Lights — fully data-driven from t.lights
+    renderLightCards();
 
     // system
     var rows = [

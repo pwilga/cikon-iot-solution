@@ -92,19 +92,41 @@ static void build_chip_attrs(cJSON *payload, const char *sanitized_name) {
                             "| tojson }}");
 }
 
-static void build_fs_used_attrs(cJSON *payload, const char *sanitized_name) {
+static void build_fs_attrs(cJSON *payload, const char *sanitized_name) {
     (void)sanitized_name;
+    cJSON_ReplaceItemInObject(
+        payload, "val_tpl",
+        cJSON_CreateString("{{ (100 * value_json.fs_used / value_json.fs_size) | round(1) }}"));
     cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
     cJSON_AddStringToObject(payload, "json_attr_tpl",
-                            "{{ {'fs_total': value_json.fs_total} | tojson }}");
+                            "{{ {'fs_used': value_json.fs_used, "
+                            "'fs_size': value_json.fs_size} | tojson }}");
 }
 
-static void build_free_heap_attrs(cJSON *payload, const char *sanitized_name) {
+static void build_dram_attrs(cJSON *payload, const char *sanitized_name) {
     (void)sanitized_name;
-    cJSON_ReplaceItemInObject(payload, "val_tpl", cJSON_CreateString("{{ value_json.dram_free }}"));
+    cJSON_ReplaceItemInObject(
+        payload, "val_tpl",
+        cJSON_CreateString(
+            "{{ (100 * (1 - value_json.dram_free / value_json.dram_size)) | round(1) }}"));
     cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
     cJSON_AddStringToObject(payload, "json_attr_tpl",
-                            "{{ {'min_heap': value_json.dram_min_free} | tojson }}");
+                            "{{ {'dram_free': value_json.dram_free, "
+                            "'dram_min_free': value_json.dram_min_free, "
+                            "'dram_size': value_json.dram_size} | tojson }}");
+}
+
+static void build_psram_attrs(cJSON *payload, const char *sanitized_name) {
+    (void)sanitized_name;
+    cJSON_ReplaceItemInObject(
+        payload, "val_tpl",
+        cJSON_CreateString(
+            "{{ (100 * (1 - value_json.psram_free / value_json.psram_size)) | round(1) }}"));
+    cJSON_AddStringToObject(payload, "json_attr_t", "~/tele");
+    cJSON_AddStringToObject(payload, "json_attr_tpl",
+                            "{{ {'psram_free': value_json.psram_free, "
+                            "'psram_min_free': value_json.psram_min_free, "
+                            "'psram_size': value_json.psram_size} | tojson }}");
 }
 
 static void build_app_build_time_attrs(cJSON *payload, const char *sanitized_name) {
@@ -131,12 +153,19 @@ static void register_core_ha_entities(void) {
                                              .icon = "mdi:clock-start",
                                              .entity_category = "diagnostic"});
     ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "Free Heap",
-                                             .device_class = "data_size",
-                                             .unit = "B",
+                                             .name = "DRAM",
+                                             .unit = "%",
                                              .icon = "mdi:memory",
                                              .entity_category = "diagnostic",
-                                             .custom_builder = build_free_heap_attrs});
+                                             .custom_builder = build_dram_attrs});
+    if (get_psram_size() > 0) {
+        ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
+                                                 .name = "PSRAM",
+                                                 .unit = "%",
+                                                 .icon = "mdi:memory",
+                                                 .entity_category = "diagnostic",
+                                                 .custom_builder = build_psram_attrs});
+    }
 
     // Device info
     ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
@@ -175,12 +204,11 @@ static void register_core_ha_entities(void) {
                                              .icon = "mdi:restart-alert",
                                              .entity_category = "diagnostic"});
     ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
-                                             .name = "FS Used",
-                                             .device_class = "data_size",
-                                             .unit = "B",
+                                             .name = "FS",
+                                             .unit = "%",
                                              .icon = "mdi:folder-outline",
                                              .entity_category = "diagnostic",
-                                             .custom_builder = build_fs_used_attrs});
+                                             .custom_builder = build_fs_attrs});
     float chip_temp;
     if (get_chip_temp(&chip_temp)) {
         ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,

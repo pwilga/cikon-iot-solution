@@ -671,7 +671,7 @@ static void tele_fs_used_appender(const char *tele_id, cJSON *json_root) {
         cJSON_AddNumberToObject(json_root, tele_id, used);
 }
 
-static void tele_fs_total_appender(const char *tele_id, cJSON *json_root) {
+static void tele_fs_size_appender(const char *tele_id, cJSON *json_root) {
     size_t used = 0, total = 0;
     if (get_fs_info(&used, &total))
         cJSON_AddNumberToObject(json_root, tele_id, total);
@@ -718,6 +718,6 @@ static const tele_entry_t core_tele[] = {
     {"cpu_freq", tele_cpu_freq_appender},
     {"reset_reason", tele_reset_reason_appender},
     {"fs_used", tele_fs_used_appender},
-    {"fs_total", tele_fs_total_appender},
+    {"fs_size", tele_fs_size_appender},
     {"chip_temp", tele_chip_temp_appender},
     {NULL, NULL}};

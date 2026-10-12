@@ -83,54 +83,46 @@ body {
 
 /* Hero */
 .hero {
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 240px);
-  column-gap: 24px; align-items: end;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 20px 28px;
   background: linear-gradient(135deg, var(--surface), var(--surface2));
   border: 1px solid var(--border); border-radius: 20px; padding: 24px;
   box-shadow: 0 2px 12px var(--shadow);
 }
-.hero-main { grid-column: 1; grid-row: 1 / span 2; align-self: end; min-width: 0; }
 .hero-value { font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1; margin-top: 8px; }
 .hero-foot { font-size: 12px; color: var(--faint); margin-top: 8px; }
-.hero-side { grid-column: 2; grid-row: 1; min-width: 0; }
-.hero-heap { font-size: 26px; font-weight: 700; letter-spacing: -.02em; margin-top: 8px; white-space: nowrap; }
-.heap-bar { position: relative; margin-top: 11px; height: 6px; }
-.heap-bar span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .4s, background-color .4s; }
-/* The track is a background layer so the peak tick can overhang it without being clipped. */
-.heap-bar, .psram-bar { border-radius: 3px; background: var(--track-off); }
-.heap-bar span, .psram-bar span { border-radius: inherit; }
-
-/* Memory readouts: internal RAM above, optional PSRAM below, each against its own total. */
-.mem-head { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-.mem-status { font-weight: 600; }
-.mem-total { font-size: 12px; font-weight: 400; color: var(--faint); margin-left: 5px; }
-.mem-peak {
-  position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px;
-  border-radius: 1px; background: var(--text); opacity: .45; transition: left .4s;
-}
-.mem-min { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 11px; white-space: nowrap; }
-.mem-swatch { width: 2px; height: 9px; border-radius: 1px; background: var(--text); opacity: .45; flex: none; }
-.hero-psram {
-  grid-column: 2; grid-row: 2; min-width: 0;
-  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--divider);
-}
-.hero-psram .mem-head { justify-content: space-between; gap: 10px; align-items: baseline; }
-.mem-vals { display: flex; align-items: baseline; gap: 4px; }
-.psram-free { font-size: 14px; font-weight: 700; }
-.psram-bar { position: relative; margin-top: 8px; height: 4px; }
-.psram-bar span { display: block; height: 100%; width: 0; background: var(--muted); transition: width .4s; }
-/* Vanilla-port-only overrides, no .dc.html equivalent (sc-if removes the node there instead of
-   using [hidden]) - these are toggled via .hidden in app.js and each sets its own display above. */
-.mem-min[hidden], .mem-vals[hidden], .mem-swatch[hidden], .mem-peak[hidden] { display: none !important; }
-#psram-block[hidden], #ram-bar[hidden], #psram-bar[hidden] { display: none !important; }
+.hero-main { flex: 0 0 auto; min-width: 0; }
+.mems { flex: 1 1 300px; min-width: 0; container-type: inline-size; display: flex; flex-wrap: wrap; gap: 8px; }
+.mems[hidden] { display: none; }
+.mem-tile { flex: 1 1 185px; box-sizing: border-box; min-width: max-content; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 9px; display: flex; flex-direction: column; justify-content: center; }
+.mem-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.mem-ring { position: relative; width: 44px; height: 44px; flex: none; }
+.mem-ring svg { width: 100%; height: 100%; display: block; transform: rotate(-90deg); }
+.mem-ring circle { fill: none; stroke-width: 5; transition: stroke-dasharray .4s, stroke .4s; }
+.mem-trk { stroke: var(--track-off); }
+.mem-pk { stroke-opacity: .35; stroke-linecap: round; }
+.mem-us { stroke-linecap: round; }
+.mem-ring span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+.mem-txt { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mem-lbl { font-size: 11px; font-weight: 600; color: var(--muted); }
+.mem-val { display: flex; align-items: baseline; white-space: nowrap; }
+.mem-val b { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
+.mem-val small { font-size: 10px; color: var(--faint); }
+.mem-min { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 11px; color: var(--faint); white-space: nowrap; }
+.mem-min i { width: 8px; height: 4px; border-radius: 2px; opacity: .35; flex: none; }
+/* narrow memory area (phones, 2 tiles per row): "min 1.71 MB", no swatch */
+@container (max-width: 480px) { .mem-seen, .mem-min i { display: none; } }
+/* 3 tiles in a row only when each gets ≥ 185px; phones keep 2 per row */
+@container (max-width: 400px) { .mem-tile { flex-basis: 140px; } }
+/* exactly 4 tiles → balanced 2×2 (or 4 in a row when each gets ≥ 185px), never 3+1 */
+.mems:has(> .mem-tile:nth-child(4):last-child) > .mem-tile { flex-basis: calc(50% - 4px); }
+@container (min-width: 764px) { .mems:has(> .mem-tile:nth-child(4):last-child) > .mem-tile { flex-basis: calc(25% - 6px); } }
 
 /* Layout */
 .chip-label { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 4px 8px; }
 .caps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-/* Vanilla-port-only override, no .dc.html equivalent (sc-if removes the node there
-   instead of using [hidden]) - #caps/#status-chips are toggled via .hidden in app.js,
-   and without this the display:flex above beats the browser's [hidden] rule. */
 .caps[hidden] { display: none; }
+.cell[hidden] { display: none !important; }
+.light-dim[hidden], .light-onoff[hidden] { display: none !important; }
 .grid { margin-top: 14px; }
 .cols { display: flex; gap: 22px; align-items: flex-start; }
 .col { flex: 1 1 0; min-width: 0; }
@@ -180,10 +172,6 @@ body {
 .fw-built { font-size: 11.5px; color: var(--faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fw-built[hidden] { display: none; }
 .switch-cards .card + .card { margin-top: 12px; }
-.switch-card-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.switch-card-left .row-title { margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.switch-cards .row-sub { font-size: 13px; font-weight: 600; }
-.light-cards .card + .card { margin-top: 12px; }
 
 /* Toggle */
 .toggle { width: 52px; height: 30px; border-radius: 15px; background: var(--track-off); border: none; position: relative; cursor: pointer; padding: 0; transition: background .25s; }
@@ -193,6 +181,14 @@ body {
 .toggle.sm { width: 40px; height: 24px; border-radius: 12px; }
 .toggle.sm .knob { width: 18px; height: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
 .toggle.sm[aria-checked="true"] .knob { transform: translateX(16px); }
+
+/* Light channel dots */
+.light-dot { opacity: .4; }
+.light-dot.active {
+  opacity: 1;
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px var(--surface, #fffdfa), 0 0 0 4px var(--dot-c);
+}
 
 /* Tasks */
 .tasks-section { margin-top: 26px; }
@@ -227,32 +223,15 @@ body {
 .footer { margin-top: 26px; text-align: center; font-size: 11px; color: var(--faint); }
 
 /* Lights */
-.light-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
-.light-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.light-card-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.light-card-left .row-title { margin-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.light-card-right { display: flex; align-items: center; gap: 10px; flex: none; }
-.light-dots { display: flex; align-items: center; gap: 8px; }
-.light-dot { width: 18px; height: 18px; border-radius: 50%; border: none; cursor: pointer; padding: 0; flex: none; opacity: .4; transform: none; transition: opacity .15s, transform .15s, box-shadow .15s; }
-.light-dot.cold { border: 1px solid var(--faint); }
-.light-dot.active { opacity: 1; transform: scale(1.08); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--dot-c); }
-.light-pct { font-size: 13px; font-weight: 600; color: var(--muted); min-width: 34px; text-align: right; font-family: ui-monospace, Menlo, monospace; }
-.light-state-text { font-size: 13px; font-weight: 600; color: var(--muted); }
-.light-slider { position: relative; height: 24px; display: flex; align-items: center; }
-.light-slider::before { content: ""; position: absolute; left: 0; right: 0; height: 12px; border-radius: 6px; background: var(--track-off); }
-.light-slider-fill { pointer-events: none; position: relative; z-index: 1; height: 12px; border-radius: 6px; transition: width .06s; }
+.light-cards .card + .card { margin-top: 12px; }
 .slider { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
 
 /* Narrow screens (phones): drop the CPU bar and shrink its column so task names stay visible */
 @media (max-width: 480px) {
   .task-cpu .bar { display: none; }
   .task-cpu, .th-cpu { width: 34px; }
-  /* Hero: Uptime + Free heap stay on one line, PSRAM drops to its own full-width row */
-  .hero { grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
-  .hero-main { grid-row: 1; }
-  .hero-psram { grid-column: 1 / -1; }
   .hero-value { font-size: 30px; }
-  .hero-heap { font-size: 19px; }
+  .hero { padding: 16px; }
   /* Status badge collapses to just its dot; live = gentle pulse. Restart keeps its label */
   #status { padding: 8px; gap: 0; }
   #status-text { display: none; }
