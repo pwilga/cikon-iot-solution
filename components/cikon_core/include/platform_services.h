@@ -66,8 +66,8 @@ esp_err_t nvs_flash_safe_init();
 /**
  * @brief Returns the ISO8601-formatted boot time of the system.
  *
- * Calculates the startup timestamp once and returns the cached value
- * on subsequent calls.
+ * Recalculated from the current system clock on every call, so it follows
+ * SNTP corrections.
  *
  * @return Pointer to a static ISO8601 string (UTC).
  */

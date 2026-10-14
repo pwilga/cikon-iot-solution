@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <time.h>
 
 #include "esp_app_desc.h"
@@ -177,28 +178,14 @@ const device_info_t *get_device_info(void) {
 const char *get_boot_time(void) {
 
     static char iso8601[32] = {0};
-    static bool initialized = false;
 
-    if (initialized) {
-        return iso8601;
-    }
+    struct timeval now = {0};
+    gettimeofday(&now, NULL);
 
-    time_t now_sec = 0;
-    struct tm tm_now = {0};
-    time(&now_sec);
-    gmtime_r(&now_sec, &tm_now);
-    int calendar_year = tm_now.tm_year + 1900;
-
-    int64_t uptime_us = esp_timer_get_time();
-    time_t boot_time = now_sec - (uptime_us / 1000000);
+    int64_t now_us = (int64_t)now.tv_sec * 1000000 + now.tv_usec;
+    time_t boot_time = (now_us - esp_timer_get_time()) / 1000000;
 
     format_iso8601(gmtime(&boot_time), iso8601, sizeof(iso8601));
-
-    // treat time as unsynced until year >= 2020 (likely after SNTP)
-    if (calendar_year > 2020) {
-        initialized = true;
-    }
-
     return iso8601;
 }
 
