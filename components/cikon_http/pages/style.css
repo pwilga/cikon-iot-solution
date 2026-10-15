@@ -52,11 +52,13 @@ body {
 .hlabel { font-size: 13px; color: var(--muted); }
 
 /* Header */
-.header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 22px; flex-wrap: wrap; }
-.ident { min-width: 0; }
-.ident h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ident-sub { font-size: 13px; color: var(--muted); margin-top: 2px; font-family: ui-monospace, Menlo, monospace; }
-.header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* name + actions always on one row; IP on its own line below (fits IPv6 without wrapping) */
+.header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 22px; }
+.header-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.header h1 { min-width: 0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ident-sub { font-size: 13px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+.ident-sub:empty { display: none; }
+.header-actions { display: flex; align-items: center; gap: 10px; flex: none; }
 
 .badge {
   display: flex; align-items: center; gap: 7px;
@@ -93,6 +95,15 @@ body {
 .hero-main { flex: 0 0 auto; min-width: 0; }
 .mems { flex: 1 1 300px; min-width: 0; container-type: inline-size; display: flex; flex-wrap: wrap; gap: 8px; }
 .mems[hidden] { display: none; }
+/* Live strip under Uptime + memory: link, temp, CPU, flash */
+.live { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: -4px; padding-top: 12px; border-top: 1px solid var(--divider); font-size: 12.5px; color: var(--muted); }
+.live[hidden] { display: none; }
+.live-i { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.live-i b { font-weight: 600; color: var(--text); }
+.live-ic { display: inline-flex; flex: none; color: var(--muted); }
+.live-ic svg { display: block; }
+.live-bars { display: inline-flex; align-items: flex-end; gap: 1.5px; height: 11px; flex: none; }
+.live-bars span { width: 2.5px; border-radius: 1px; display: block; }
 .mem-tile { flex: 1 1 185px; box-sizing: border-box; min-width: max-content; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 9px; display: flex; flex-direction: column; justify-content: center; }
 .mem-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .mem-ring { position: relative; width: 44px; height: 44px; flex: none; }
@@ -118,29 +129,13 @@ body {
 @container (min-width: 764px) { .mems:has(> .mem-tile:nth-child(4):last-child) > .mem-tile { flex-basis: calc(25% - 6px); } }
 
 /* Layout */
-.chip-label { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 4px 8px; }
-.caps { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.caps[hidden] { display: none; }
 .cell[hidden] { display: none !important; }
 .light-dim[hidden], .light-onoff[hidden] { display: none !important; }
 .grid { margin-top: 14px; }
 .cols { display: flex; gap: 22px; align-items: flex-start; }
 .col { flex: 1 1 0; min-width: 0; }
 .cell { margin-bottom: 22px; }
-.band { margin-bottom: 18px; }
 @media (max-width: 700px) { .cols { display: block; } }
-.cap {
-  width: 30px; height: 30px; border-radius: 9px;
-  background: var(--surface); border: 1px solid var(--border); color: var(--accent);
-  display: inline-flex; align-items: center; justify-content: center; flex: none;
-  box-shadow: 0 1px 2px var(--shadow2);
-}
-.cap-mem { width: auto; padding: 0 11px 0 9px; gap: 6px; color: var(--text); }
-.cap-mem .cap-i { display: inline-flex; flex: none; }
-.cap-mem b { font-size: 12.5px; font-weight: 600; }
-.cap-mem .cap-tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; color: var(--muted); }
-.cap-mem .fsbar { width: 34px; height: 5px; border-radius: 3px; background: var(--track-off); overflow: hidden; flex: none; }
-.cap-mem .fsbar span { display: block; height: 100%; background: #5f9ea8; }
 
 /* (grid handles columns) */
 .section-label { display: block; margin: 0 4px 12px; }
@@ -151,11 +146,14 @@ body {
 .row-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
 .row-sub { font-size: 12px; color: var(--muted); }
 
-.list .item { display: flex; justify-content: space-between; gap: 14px; padding: 13px 18px; font-size: 13px; border-top: 1px solid var(--divider); }
+.list .item { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px 18px; font-size: 13px; border-top: 1px solid var(--divider); }
 .list .item:first-child { border-top: none; }
 .list .item .k { color: var(--muted); flex: none; }
 .list .item .v { font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list .item .v.ok { color: var(--accent); }
+.list .item .tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; }
+.tag { display: flex; align-items: center; gap: 5px; font-weight: 600; white-space: nowrap; }
+.tag svg { display: block; }
 
 /* Firmware tile */
 .fw-card { padding: 0; display: flex; }
@@ -232,6 +230,7 @@ body {
   .task-cpu, .th-cpu { width: 34px; }
   .hero-value { font-size: 30px; }
   .hero { padding: 16px; }
+  .live { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
   /* Status badge collapses to just its dot; live = gentle pulse. Restart keeps its label */
   #status { padding: 8px; gap: 0; }
   #status-text { display: none; }

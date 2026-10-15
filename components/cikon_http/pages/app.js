@@ -15,7 +15,7 @@
     sortDir: "desc",
     resetPhase: "idle"
   };
-  var confirmTimer = null, resetTimer = null, pollTimer = null;
+  var confirmTimer = null, resetTimer = null;
   var prevTicks = null, prevTotal = null;  // for live (delta) CPU
   state.cpu = null;                         // { taskName: pct } or null
 
@@ -165,7 +165,7 @@
 
   function pollLoop() {
     loadTele().finally(function () {
-      pollTimer = setTimeout(pollLoop, state.online ? POLL_MS : 2000);
+      setTimeout(pollLoop, state.online ? POLL_MS : 2000);
     });
   }
 
@@ -213,7 +213,6 @@
   var lightLast = {}, lightTimer = {};
   var DOT_COLOR = { r: "#cf8f86", g: "#8fb88a", b: "#6f8fd6", c: "#f7f5f0", w: "#deb98c" };
   var DOT_LABEL = { r: "Red", g: "Green", b: "Blue", c: "Cold white", w: "Warm white" };
-  var WARM_GRAD = ["#f4d3b0", "#e9a68f"];
 
   function lightPretty(k) {
     return k.replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
@@ -253,7 +252,7 @@
     renderLightCards();
     lightPost(name, { on: nextOn });
   }
-  function setLightColor(name, key, group, curV) {
+  function setLightColor(name, key, group) {
     var v = effectiveLightV(name) || 100;
     var payload = key === "r" ? { h: 0, s: 100, v: v, on: true }
       : key === "g" ? { h: 120, s: 100, v: v, on: true }
@@ -367,7 +366,7 @@
           dot.style.cssText = "width:18px;height:18px;border-radius:50%;border:" + (k === "c" ? "1px solid var(--faint)" : "none") + ";cursor:pointer;padding:0;flex:none;background:" + DOT_COLOR[k] + ";--dot-c:" + DOT_COLOR[k] + ";transition:all .15s";
           dot._key = k;
           dot.addEventListener("click", function () {
-            setLightColor(name, k, rgbKeys.indexOf(k) !== -1 ? "rgb" : "cw", v);
+            setLightColor(name, k, rgbKeys.indexOf(k) !== -1 ? "rgb" : "cw");
           });
           dots.appendChild(dot);
         });
@@ -443,7 +442,9 @@
 
     // header
     $("dev-name").textContent = t.name || "—";
-    $("dev-sub").textContent = t.mdns || (t.name ? t.name + ".local" : "");
+    // IP under the device name (System list no longer repeats it); mDNS name as tooltip
+    $("dev-sub").textContent = t.ip || t.mdns || "";
+    $("dev-sub").title = t.ip && t.mdns ? t.mdns : "";
 
     var badge = $("status");
     badge.classList.toggle("online", state.online);
@@ -477,8 +478,7 @@
       bt: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l6 6-3 3V2l3 3-6 6"></path></svg>',
       net: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3" r="1.6"></circle><circle cx="3.4" cy="12" r="1.6"></circle><circle cx="12.6" cy="12" r="1.6"></circle><path d="M8 4.6 4 10.6M8 4.6l4 6M5 12h6"></path></svg>'
     };
-    var FLASH_ICON = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="7" height="7" rx="1.2"></rect><path d="M6.5 1.8v2M9.5 1.8v2M6.5 12.2v2M9.5 12.2v2M1.8 6.5h2M1.8 9.5h2M12.2 6.5h2M12.2 9.5h2"></path></svg>';
-    var PSRAM_ICON = '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="12" height="6" rx="1"></rect><path d="M5 5v6M8 5v6M11 5v6"></path></svg>';
+    var FLASH_ICON = '<svg width="13" height="14" viewBox="0 0 14 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M3 1.5h5.5l3 3v10h-8.5z"></path><path d="M5.5 4v2.5M8 4v2.5" stroke-linecap="round"></path></svg>';
     function capType(f) {
       if (f === "wifi") return "wifi";
       if (f === "ble" || f === "bt") return "bt";
@@ -486,63 +486,60 @@
       return null;
     }
     var fmtMB = function (b) { return (b / 1048576).toFixed(0) + " MB"; };
-    var fmtFS = function (b) { return b < 1048576 ? Math.round(b / 1024) + " kB" : (b / 1048576).toFixed(1) + " MB"; };
     var CAP_COLOR = { wifi: "#5f9ea8", bt: "#6f8fd6", net: "#a98ad0" };
-    var capsHTML = (Array.isArray(t.features) ? t.features : []).map(function (f) {
-      var ty = capType(f);
-      if (!ty) return "";
-      return '<span class="cap" title="' + esc(CAP_LABELS[f] || f) + '" style="color:' + CAP_COLOR[ty] + '">' + CAP_ICON[ty] + '</span>';
+    var CAP_SHORT = { wifi: "Wi‑Fi", ble: "BLE", bt: "BT", ieee802154: "Thread", thread: "Thread", zigbee: "Zigbee" };
+    function sized(svg, px) { return svg.replace(/width="\d+" height="\d+"/, 'width="' + px + '" height="' + px + '"'); }
+    var LINK_ICON = {
+      wifi: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.8 5.8A9 9 0 0 1 14.2 5.8"></path><path d="M4.3 8.4A5.3 5.3 0 0 1 11.7 8.4"></path><circle cx="8" cy="11.5" r="1" fill="currentColor" stroke="none"></circle></svg>',
+      eth: '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="4.5" width="11.6" height="7" rx="1.4"></rect><path d="M5 11.5v-2M8 11.5v-2M11 11.5v-2"></path></svg>'
+    };
+    var TEMP_ICON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9.3V3.2a1.5 1.5 0 0 0-3 0v6.1a3 3 0 1 0 3 0z"></path></svg>';
+    var CPU_ICON = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5a5.5 5.5 0 1 1 10 0"></path><path d="M8 8.5 10.4 6"></path></svg>';
+
+    // Radio row (System list): chip capabilities from esp_chip_info(), deduped by label
+    var seen = {};
+    var radioHTML = (Array.isArray(t.features) ? t.features : []).map(function (f) {
+      var ty = capType(f), short = CAP_SHORT[f] || f;
+      if (!ty || seen[short]) return "";
+      seen[short] = true;
+      return '<span class="tag" title="' + esc(CAP_LABELS[f] || f) + '" style="color:' + CAP_COLOR[ty] + '">' + sized(CAP_ICON[ty], ty === "bt" ? 14 : 15) + '<span>' + esc(short) + '</span></span>';
     }).join("");
-    if (t.flash_size) {
-      capsHTML += '<span class="cap cap-mem" title="Flash size"><span class="cap-i" style="color:#d9a866">' + FLASH_ICON + '</span><b>' + fmtMB(t.flash_size) + '</b></span>';
+
+    // Live strip (hero card): active link (+ RSSI only on Wi-Fi), chip temp, CPU, flash — each only if present
+    var dim = dark ? "#4d4a57" : "#ddd6ca";
+    var liveHTML = "";
+    if (t.link) {
+      var isEth = t.link === "ethernet" || t.link === "eth", isThread = t.link === "thread", isWifi = t.link === "wifi";
+      var name = isEth ? "Ethernet" : isThread ? "Thread" : isWifi ? (t.ssid || "Wi‑Fi") : t.link;
+      var lcol = isEth ? "#6fae84" : isThread ? "#a98ad0" : "#5f9ea8";
+      var licon = isEth ? LINK_ICON.eth : isThread ? sized(CAP_ICON.net, 15) : LINK_ICON.wifi;
+      var ltitle = isWifi ? (t.ssid ? "Wi‑Fi · " + t.ssid : "Wi‑Fi") : name;
+      var body;
+      if (isWifi && typeof t.rssi === "number") {
+        var lvl = t.rssi >= -55 ? 4 : t.rssi >= -67 ? 3 : t.rssi >= -78 ? 2 : 1;
+        var rc = lvl >= 3 ? "#6fae84" : lvl === 2 ? "#d9a866" : "#cf8f86";
+        var bars = ["4px", "6.5px", "9px", "11px"].map(function (bh, i) {
+          return '<span style="height:' + bh + ';background:' + (i < lvl ? rc : dim) + '"></span>';
+        }).join("");
+        body = '<span>' + esc(name) + '</span><span class="live-bars">' + bars + '</span><b>' + t.rssi + ' dBm</b>';
+      } else {
+        body = '<b>' + esc(name) + '</b>';
+      }
+      liveHTML += '<span class="live-i" title="' + esc(ltitle) + '"><span class="live-ic" style="color:' + lcol + '">' + licon + '</span>' + body + '</span>';
     }
-    if (t.psram_size) {
-      capsHTML += '<span class="cap cap-mem" title="Pseudo-static RAM"><span class="cap-i" style="color:#cf8f86">' + PSRAM_ICON + '</span><b>' + fmtMB(t.psram_size) + '</b><span class="cap-tag">PSRAM</span></span>';
+    if (typeof t.chip_temp === "number") {
+      liveHTML += '<span class="live-i" title="Chip temperature"><span class="live-ic" style="color:#d9a866">' + TEMP_ICON + '</span><b>' + t.chip_temp.toFixed(1) + ' °C</b></span>';
     }
     if (t.cpu_freq) {
-      capsHTML += '<span class="cap cap-mem" title="CPU frequency"><span class="cap-i" style="color:#6f9ec4"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5a5.5 5.5 0 1 1 10 0"></path><path d="M8 8.5 10.4 6"></path></svg></span><b>' + t.cpu_freq + ' MHz</b></span>';
+      liveHTML += '<span class="live-i" title="CPU frequency"><span class="live-ic">' + CPU_ICON + '</span><b>' + t.cpu_freq + ' MHz</b></span>';
     }
-    var capsEl = $("caps");
-    capsEl.hidden = capsHTML === "";
-    capsEl.innerHTML = capsHTML;
-    $("hw-cell").hidden = capsHTML === "";
-
-    // live status chips (all optional)
-    var dim = dark ? "#4d4a57" : "#ddd6ca";
-    var statusHTML = "";
-
-    // connection link
-    if (t.link) {
-      var linkIsEth = t.link === "ethernet" || t.link === "eth";
-      var linkLabel = linkIsEth ? "Ethernet" : (t.link === "wifi" ? (t.ssid || "Wi-Fi") : t.link);
-      var linkColor = linkIsEth ? "#6fae84" : "#5f9ea8";
-      var linkIcon = linkIsEth
-        ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="4.5" width="11.6" height="7" rx="1.4"></rect><path d="M5 11.5v-2M8 11.5v-2M11 11.5v-2"></path></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M1.8 5.8A9 9 0 0 1 14.2 5.8"></path><path d="M4.3 8.4A5.3 5.3 0 0 1 11.7 8.4"></path><circle cx="8" cy="11.5" r="1" fill="currentColor" stroke="none"></circle></svg>';
-      statusHTML += '<span class="cap cap-mem" title="Uplink"><span class="cap-i" style="color:' + linkColor + '">' + linkIcon + '</span><b>' + esc(linkLabel) + '</b></span>';
+    if (t.flash_size) {
+      liveHTML += '<span class="live-i" title="Flash size"><span class="live-ic" style="color:#d9b27a">' + FLASH_ICON + '</span><b>' + fmtMB(t.flash_size) + '</b></span>';
     }
+    $("live").innerHTML = liveHTML;
+    $("live").hidden = liveHTML === "";
 
-    // wifi rssi
-    if (typeof t.rssi === "number") {
-      var lvl = t.rssi >= -55 ? 4 : t.rssi >= -67 ? 3 : t.rssi >= -78 ? 2 : 1;
-      var rc = lvl >= 3 ? "#6fae84" : lvl === 2 ? "#d9a866" : "#cf8f86";
-      var heights = ["6px", "9px", "12px", "15px"];
-      var bars = heights.map(function (h, i) {
-        return '<span style="width:3px;height:' + h + ';background:' + (i < lvl ? rc : dim) + ';border-radius:1px;display:block"></span>';
-      }).join("");
-      var rssiTitle = "Wi-Fi signal strength";
-      statusHTML += '<span class="cap cap-mem" title="' + esc(rssiTitle) + '"><span style="display:inline-flex;align-items:flex-end;gap:2px;height:15px;flex:none">' + bars + '</span><b>' + t.rssi + ' dBm</b></span>';
-    }
-
-    // chip temperature
-    if (typeof t.chip_temp === "number") {
-      statusHTML += '<span class="cap cap-mem" title="Chip temperature"><span class="cap-i" style="color:#d9a866"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9.3V3.2a1.5 1.5 0 0 0-3 0v6.1a3 3 0 1 0 3 0z"></path></svg></span><b>' + Math.round(t.chip_temp) + ' °C</b></span>';
-    }
-
-    // cpu frequency moved to capabilities row (first row)
-
-
-    // last reset reason → shown in System list (below Firmware), not as a chip
+    // last reset reason → shown in System list
     var resetLabel = null, resetColor = null;
     if (t.reset_reason) {
       resetLabel = t.reset_reason;
@@ -551,11 +548,6 @@
 
     var otaLabel = t.ota_state || "—";
     var otaColor = dark ? "#b4afbe" : "#a89c91";
-
-    var statusEl = $("status-chips");
-    statusEl.hidden = statusHTML === "";
-    statusEl.innerHTML = statusHTML;
-    $("status-cell").hidden = statusHTML === "";
 
     // switch cards
     // only names that actually have a value in /tele count as controls
@@ -575,16 +567,17 @@
     // system
     var rows = [
       ["Chip", (t.chip || "—") + (t.chip_rev != null ? " rev" + t.chip_rev : "") + (t.cores ? " · " + t.cores + (t.cores == 1 ? " core" : " cores") : ""), false, false],
-      ["Device ID", t.id || "—", true, false],
-      ["IP address", t.ip || "—", true, false]
+      ["Device ID", t.id || "—", true, false]
     ];
     if (resetLabel) rows.push(["Last reset reason", resetLabel, false, false, resetColor]);
     rows.push(["OTA state", otaLabel, false, false, otaColor]);
-    $("sys-list").innerHTML = rows.map(function (r) {
+    var sysHTML = rows.map(function (r) {
       var col = r[4] ? ' style="color:' + r[4] + '"' : "";
       return '<div class="item"><span class="k">' + esc(r[0]) + '</span>' +
         '<span class="v' + (r[2] ? " mono" : "") + (r[3] ? " ok" : "") + '"' + col + '>' + esc(r[1]) + "</span></div>";
-    }).join("");
+    });
+    if (radioHTML) sysHTML.splice(1, 0, '<div class="item"><span class="k">Radio</span><span class="tags">' + radioHTML + '</span></div>');
+    $("sys-list").innerHTML = sysHTML.join("");
 
     // firmware tile: IDF is the primary (bold) line; version moves into a "?" tooltip next to it
     $("fw-app-idf").textContent = "IDF " + (t.idf || "—");

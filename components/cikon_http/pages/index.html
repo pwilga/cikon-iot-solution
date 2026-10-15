@@ -11,10 +11,8 @@
 
     <!-- Header -->
     <header class="header">
-      <div class="ident">
+      <div class="header-top">
         <h1 id="dev-name">—</h1>
-        <div class="ident-sub" id="dev-sub"></div>
-      </div>
       <div class="header-actions">
         <span class="badge" id="status">
           <span class="dot"></span><span id="status-text">Offline</span>
@@ -25,6 +23,8 @@
         </button>
         <button class="btn-icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme"></button>
       </div>
+      </div>
+      <div class="ident-sub" id="dev-sub"></div>
     </header>
 
     <!-- Hero -->
@@ -35,19 +35,12 @@
         <div class="hero-foot" id="since">since —</div>
       </div>
       <div class="mems" id="mems" hidden></div>
+      <div class="live" id="live" hidden></div>
     </section>
 
     <div class="grid">
     <div class="cols">
       <div class="col">
-      <div class="cell band" id="hw-cell" hidden>
-        <div class="chip-label" id="caps-label">Hardware</div>
-        <div class="caps" id="caps"></div>
-      </div>
-      <div class="cell band" id="status-cell" hidden>
-        <div class="chip-label" id="status-label">Live status</div>
-        <div class="caps" id="status-chips"></div>
-      </div>
       <section class="cell" id="controls-cell" hidden>
         <div class="label section-label" id="controls-label" hidden>Controls</div>
         <div class="switch-cards" id="switch-cards"></div>
