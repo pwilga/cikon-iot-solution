@@ -1,0 +1,11 @@
+menu "Cikon IoT Supervisor Network Adapter"
+    depends on ENABLE_SUPERVISOR_NETWORK
+
+    config NETWORK_UPLINK_WIFI
+        bool "WiFi uplink"
+        default y
+        depends on SOC_WIFI_SUPPORTED
+        help
+            Bring the device onto the network over WiFi (STA, with AP mode for local access).
+
+endmenu

@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "network.c"
+        "uplink_wifi.c"
+    INCLUDE_DIRS
+        "include"
+    PRIV_INCLUDE_DIRS
+        "private_include"
+    PRIV_REQUIRES
+        esp_wifi
+        esp_netif_stack
+)

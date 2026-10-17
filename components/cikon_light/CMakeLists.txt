@@ -12,6 +12,13 @@ endif()
 set(LIGHT_CONFIG_YAML "${DEVICE_CONFIG_DIR}/cikon_light/lights.yaml")
 set(LIGHT_CONFIG_GEN "${CMAKE_CURRENT_LIST_DIR}/tools/lights_gen.py")
 
+# Every component in EXTRA_COMPONENT_DIRS is processed, used or not. A device without lights has
+# no lights.yaml and nothing to generate, so it gets an empty component.
+if(NOT EXISTS "${LIGHT_CONFIG_YAML}" AND NOT CONFIG_ENABLE_SUPERVISOR_LIGHT)
+    idf_component_register()
+    return()
+endif()
+
 if(NOT EXISTS "${LIGHT_CONFIG_YAML}")
     message(FATAL_ERROR
         "cikon_light: no lights.yaml for this device profile.\n"
