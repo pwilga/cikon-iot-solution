@@ -39,36 +39,4 @@ menu "Cikon IoT WiFi Configuration"
             Typical: 10000 (10 sec).
 
 
-    config WIFI_STA_CONNECTION_TASK_STACK_SIZE
-        int "WiFi STA connection task stack size"
-        default 2048
-        range 1024 8192
-        help
-            Stack size (in bytes) for the WiFi STA connection management task.
-            Typical: 2048.
-
-    config WIFI_STA_CONNECTION_TASK_PRIORITY
-        int "WiFi STA connection task priority"
-        default 1
-        range 0 10
-        help
-            Priority for the WiFi STA connection management task.
-            Typical: 1.
-
-    config WIFI_AP_TIMEOUT_TASK_STACK_SIZE
-        int "WiFi AP timeout task stack size"
-        default 3072
-        range 1024 8192
-        help
-            Stack size (in bytes) for the WiFi AP timeout management task.
-            Typical: 3072.
-
-    config WIFI_AP_TIMEOUT_TASK_PRIORITY
-        int "WiFi AP timeout task priority"
-        default 1
-        range 0 10
-        help
-            Priority for the WiFi AP timeout management task.
-            Typical: 1.
-
 endmenu

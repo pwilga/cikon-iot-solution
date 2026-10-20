@@ -14,20 +14,28 @@ typedef struct {
     const char *ap_password;
 } wifi_credentials_t;
 
-// Callback called when AP timeout occurs and system wants to switch to STA
-// Upper layers can use this to cleanup services before switch
-typedef void (*wifi_ap_timeout_callback_t)(void);
-
-void wifi_set_ap_timeout_callback(wifi_ap_timeout_callback_t cb);
-
-void wifi_configure(const wifi_credentials_t *creds);
-void wifi_init_sta_mode();
-void wifi_init_ap_mode();
 /**
- * @brief Completely disables WiFi (STA and AP). If STA is connected, disconnects first.
- * @return esp_err_t result of the last WiFi operation
+ * @brief Start WiFi in STA mode and keep reconnecting to the configured network.
+ * Network interfaces are created once and never destroyed; the AP is added next to STA on demand.
  */
-esp_err_t safe_wifi_stop();
+esp_err_t wifi_start(const wifi_credentials_t *creds);
+
+/**
+ * @brief Connect STA to the given network, dropping the current one first. No restart needed.
+ * The strings must stay valid while WiFi runs (only the pointers are kept).
+ */
+esp_err_t wifi_sta_connect(const char *ssid, const char *password);
+
+/**
+ * @brief Bring up the access point next to the running STA (WIFI_MODE_APSTA).
+ * STA stays connected and services keep running on both interfaces.
+ */
+void wifi_ap_enable(void);
+
+/**
+ * @brief Take the access point down, back to STA only. STA stays connected.
+ */
+void wifi_ap_disable(void);
 
 /**
  * @brief Completely shuts down WiFi subsystem (stops WiFi, unregisters handlers,

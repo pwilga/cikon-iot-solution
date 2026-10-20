@@ -18,6 +18,3 @@ typedef struct {
 #if CONFIG_NETWORK_UPLINK_WIFI
 extern const uplink_t uplink_wifi;
 #endif
-
-// For uplinks that switch modes on their own (WiFi STA <-> AP)
-void network_stop_services(void);

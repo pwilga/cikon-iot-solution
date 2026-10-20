@@ -23,15 +23,18 @@
 
 // BIT2-4: Available
 
-#define INET_EVENT_STA_READY BIT5  // WiFi STA got IP
-#define INET_EVENT_STA_LOST BIT6   // WiFi STA disconnected
+#define INET_EVENT_STA_READY BIT5 // WiFi STA got IP
+#define INET_EVENT_STA_LOST BIT6  // WiFi STA disconnected
 #define INET_EVENT_AP_READY BIT7
 #define INET_INTERNET_READY BIT8
 #define INET_INTERNET_LOST BIT9
-#define INET_ETH_READY BIT10       // Ethernet got IP
-#define INET_ETH_LOST BIT11        // Ethernet link down
+#define INET_ETH_READY BIT10 // Ethernet got IP
+#define INET_ETH_LOST BIT11  // Ethernet link down
 
-#define THREAD_BORDER_ROUTER_READY BIT12  // Thread border router initialized
-#define THREAD_DEVICE_READY BIT13  // Thread device joined network
+#define THREAD_BORDER_ROUTER_READY BIT12 // Thread border router initialized
+#define THREAD_DEVICE_READY BIT13        // Thread device joined network
 
-// BIT14-23: Available (10 bits)
+#define NETWORK_UPLINK_READY BIT14 // Network: active uplink has IP into the LAN (any uplink)
+#define NETWORK_UPLINK_LOST BIT15  // Network: active uplink lost
+
+// BIT16-23: Available (8 bits)

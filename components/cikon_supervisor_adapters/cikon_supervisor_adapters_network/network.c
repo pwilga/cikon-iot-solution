@@ -7,6 +7,7 @@
 #include "metadata.h"
 #include "mqtt.h"
 #include "network_adapter.h"
+#include "network_ap.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tcp_monitor.h"
@@ -27,10 +28,9 @@ _Static_assert(sizeof(uplinks) / sizeof(uplinks[0]) > 0, "network adapter: no up
 static const uplink_t *uplink = NULL;
 static bool initialized = false;
 
-static volatile bool sta_services_running = false;
-static volatile bool ap_services_running = false;
+static volatile bool network_services_running = false;
 
-void network_stop_services(void) {
+static void network_stop_services(void) {
     ESP_LOGI(TAG, "Stopping network services");
 
     // CRITICAL: Shutdown tcp_monitor FIRST before network stack resets
@@ -47,8 +47,7 @@ void network_stop_services(void) {
         tcp_ota_shutdown();
     }
 
-    sta_services_running = false;
-    ap_services_running = false;
+    network_services_running = false;
 }
 
 static esp_err_t network_adapter_init(void) {
@@ -71,6 +70,10 @@ static esp_err_t network_adapter_init(void) {
     if (uplink->tele) {
         tele_register_group(uplink->tele);
     }
+
+#if CONFIG_NETWORK_UPLINK_WIFI
+    cmnd_register_group(network_ap_commands);
+#endif
 
     register_restart_callback(inet_common_on_restart);
 
@@ -98,6 +101,10 @@ static esp_err_t network_adapter_shutdown(void) {
         tele_unregister_group(uplink->tele);
     }
 
+#if CONFIG_NETWORK_UPLINK_WIFI
+    cmnd_unregister_group(network_ap_commands);
+#endif
+
     uplink->stop();
 
     initialized = false;
@@ -108,17 +115,18 @@ static void network_adapter_on_event(EventBits_t bits) {
 
     inet_common_on_event(bits);
 
-    if (bits & INET_EVENT_STA_READY) {
+    if (bits & (NETWORK_UPLINK_READY | INET_EVENT_AP_READY)) {
 
-        if (sta_services_running) {
-            ESP_LOGW(TAG, "STA services already running, ignoring");
-            if (!supervisor_is_safe_mode_active()) {
+        // Services start once, on whichever comes first, and keep running: they listen on any
+        // address, so the AP coming and going doesn't touch them
+        if (network_services_running) {
+            if ((bits & NETWORK_UPLINK_READY) && !supervisor_is_safe_mode_active()) {
                 mqtt_init();
             }
             return;
         }
 
-        ESP_LOGI(TAG, "STA ready, starting services");
+        ESP_LOGI(TAG, "Uplink or AP ready, starting services");
         tcp_ota_init();
         tcp_monitor_init();
 
@@ -129,34 +137,14 @@ static void network_adapter_on_event(EventBits_t bits) {
             inet_common_http_init(config_get()->http_secure);
         }
 
-        sta_services_running = true;
-        ap_services_running = false;
-    }
-
-    if (bits & INET_EVENT_AP_READY) {
-        if (ap_services_running) {
-            ESP_LOGW(TAG, "AP services already running, ignoring duplicate event");
-            return;
-        }
-
-        ESP_LOGI(TAG, "AP ready, starting services");
-        tcp_ota_init();
-        tcp_monitor_init();
-
-        if (!supervisor_is_safe_mode_active()) {
-            inet_common_http_init(true);
-            inet_common_mdns_init();
-        }
-
-        ap_services_running = true;
-        sta_services_running = false;
+        network_services_running = true;
     }
 }
 
 static void network_adapter_on_interval(supervisor_interval_stage_t stage) {
     inet_common_on_interval(stage);
 
-    if (stage == SUPERVISOR_INTERVAL_10M && sta_services_running) {
+    if (stage == SUPERVISOR_INTERVAL_10M && network_services_running) {
         mqtt_init();
     }
 }
@@ -167,10 +155,7 @@ static void tele_network_link(const char *tele_id, cJSON *json_root) {
     }
 }
 
-static const tele_entry_t network_tele[] = {
-    {"link", tele_network_link},
-    {NULL, NULL}
-};
+static const tele_entry_t network_tele[] = {{"link", tele_network_link}, {NULL, NULL}};
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
 static void build_link_attrs(cJSON *payload, const char *sanitized_name) {
@@ -185,11 +170,11 @@ static void build_link_attrs(cJSON *payload, const char *sanitized_name) {
 static const ha_metadata_t network_ha_metadata = {
     .magic = HA_METADATA_MAGIC,
     .entities = {{.type = HA_SENSOR,
-                 .name = "Link",
-                 .icon = "mdi:lan-connect",
-                 .entity_category = "diagnostic",
-                 .custom_builder = build_link_attrs},
-                {.type = HA_ENTITY_NONE}},
+                  .name = "Link",
+                  .icon = "mdi:lan-connect",
+                  .entity_category = "diagnostic",
+                  .custom_builder = build_link_attrs},
+                 {.type = HA_ENTITY_NONE}},
 };
 #endif
 

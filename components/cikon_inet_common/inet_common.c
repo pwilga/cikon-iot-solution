@@ -282,7 +282,8 @@ bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
     esp_netif_t *netif = esp_netif_get_handle_from_ifkey(if_key);
     esp_netif_ip_info_t ip_info;
 
-    if (!netif || esp_netif_get_ip_info(netif, &ip_info) != ESP_OK) {
+    if (!netif || !esp_netif_is_netif_up(netif) ||
+        esp_netif_get_ip_info(netif, &ip_info) != ESP_OK) {
         buf[0] = '\0';
         return false;
     }

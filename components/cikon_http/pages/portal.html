@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wi‑Fi setup</title>
+<style>
+:root{--bg:#f6f1ec;--surface:#fffefb;--surface2:#fbf4f1;--border:#efe6df;--divider:#f3ebe5;--text:#4a4039;--muted:#a89c91;--faint:#c9bfb5;--accent:#8cc2a3;--accent-ink:#5f9a78;--on-accent:#24382c;--sel:#f1f7f2;--field:#fbf8f4;--ring:rgba(140,194,163,.28);--pill-bg:#e6f1ea;--pill-c:#5fa67e;--track-off:#e4ddd4;--dim:#ddd6ca;--shadow:rgba(150,120,90,.05);--shadow2:rgba(0,0,0,.03);--coral:#d98e84}
+[data-theme=dark]{--bg:#322f38;--surface:#3c3944;--surface2:#43404c;--border:#4d4a57;--divider:#454250;--text:#ece8f0;--muted:#b4afbe;--faint:#827d8c;--accent:#a9d8bd;--accent-ink:#a9d8bd;--sel:#3f4a47;--field:#36333e;--ring:rgba(169,216,189,.22);--pill-bg:#384a40;--pill-c:#a9d8bd;--track-off:#504d5b;--dim:#4d4a57;--shadow:rgba(0,0,0,.25);--shadow2:rgba(0,0,0,.18)}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font-family:system-ui,'Helvetica Neue',Arial,sans-serif;transition:background .25s,color .25s}
+button{font:inherit;cursor:pointer}
+a{color:var(--text);text-decoration:none}
+a:hover{text-decoration:underline}
+[hidden]{display:none!important}
+.wrap{max-width:460px;margin:0 auto;padding:28px 18px 40px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:22px}
+.head>div{min-width:0}
+.title{font-weight:700;font-size:22px;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{font-size:13px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{flex:none;width:38px;height:38px;border-radius:50%;background:var(--surface);border:1px solid var(--border);color:var(--text);display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px var(--shadow2);padding:0}
+.label-row{display:flex;align-items:center;justify-content:space-between;margin:0 4px 10px}
+.label{font-size:12px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.rescan{display:flex;align-items:center;gap:6px;background:none;border:none;padding:4px 0;font-size:12.5px;font-weight:600;color:var(--muted)}
+.rescan.busy svg{animation:spin .8s linear infinite}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 1px 2px var(--shadow2)}
+.net{border-bottom:1px solid var(--divider);transition:background .15s}
+.net.sel{background:var(--sel)}
+.row{width:100%;display:flex;align-items:center;gap:12px;min-height:52px;padding:0 16px;background:none;border:none;color:var(--text);text-align:left}
+.bars{display:inline-flex;align-items:flex-end;gap:2px;height:14px;width:17px;flex:none}
+.bars i{width:3px;border-radius:1px;display:block;background:var(--dim)}
+.ssid{flex:1 1 auto;min-width:0;font-size:15px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sel .ssid{font-weight:600}
+.pill{flex:none;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--pill-bg);color:var(--pill-c)}
+.lock{color:var(--faint);display:inline-flex;flex:none}
+.check{width:16px;display:inline-flex;justify-content:center;flex:none;color:var(--accent-ink);visibility:hidden}
+.sel>.row .check,.other.sel .check{visibility:visible}
+.other .row{color:var(--muted)}
+.other .row .ssid{color:var(--muted)}
+.fields{padding:0 16px 14px 45px;display:flex;flex-direction:column;gap:10px}
+.pwbox{position:relative}
+input{width:100%;height:46px;border-radius:12px;border:1px solid var(--border);background:var(--field);color:var(--text);padding:0 14px;font:inherit;font-size:16px;outline:none}
+input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+input::placeholder{color:var(--faint)}
+.pwbox input{padding-right:66px}
+.show{position:absolute;right:6px;top:7px;height:32px;padding:0 10px;border:none;border-radius:8px;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600}
+.hint{margin:10px 4px 0;font-size:12.5px;color:var(--muted)}
+.hint.err{color:#c98a7f}
+.actions{display:flex;gap:10px;margin-top:20px}
+.btn-clear{flex:none;height:50px;padding:0 20px;border-radius:25px;border:1px solid var(--border);background:transparent;color:var(--coral);font-size:15px;font-weight:600;transition:background .15s}
+.btn-clear.confirm{background:var(--coral);border-color:var(--coral);color:#fff}
+.btn-clear:disabled{opacity:.45;cursor:default}
+.btn-save{flex:1 1 auto;height:50px;border:none;border-radius:25px;background:var(--accent);color:var(--on-accent);font-size:16px;font-weight:700;transition:background .15s}
+.btn-save:disabled{background:var(--track-off);color:var(--faint);cursor:default}
+.hero{background:linear-gradient(135deg,var(--surface),var(--surface2));border:1px solid var(--border);border-radius:20px;padding:28px 22px 22px;box-shadow:0 2px 12px var(--shadow);display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px}
+.spinner{width:44px;height:44px;border-radius:50%;border:4px solid var(--track-off);border-top-color:var(--accent);animation:spin .8s linear infinite}
+.badge{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:var(--on-accent)}
+.badge.bad{background:var(--coral);color:#fff}
+.h{font-size:19px;font-weight:700}
+.p{font-size:13px;color:var(--muted);line-height:1.5;max-width:300px;text-wrap:pretty}
+.kv{align-self:stretch;margin-top:8px;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;text-align:left}
+.kv>div{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 16px;font-size:13px}
+.kv>div+div{border-top:1px solid var(--divider)}
+.kv span{color:var(--muted);flex:none}
+.kv b,.kv a{font-weight:600;font-family:ui-monospace,Menlo,monospace;text-align:right;word-break:break-all}
+.btn-retry{margin-top:6px;height:46px;padding:0 28px;border:none;border-radius:23px;background:var(--accent);color:var(--on-accent);font-size:15px;font-weight:700}
+.foot{margin-top:28px;text-align:center;font-size:11px;color:var(--faint)}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div><div class="title">Wi‑Fi setup</div><div class="sub" id="sub">Cikon device</div></div>
+    <button class="icon-btn" id="theme" title="Toggle theme"></button>
+  </div>
+
+  <div id="v-form">
+    <div class="label-row"><span class="label">Networks</span>
+      <button class="rescan" id="rescan"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9"/><path d="M13.5 2v3h-3"/></svg><span>Rescan</span></button>
+    </div>
+    <div class="card">
+      <div id="nets"></div>
+      <div class="other" id="other">
+        <button class="row" id="other-btn"><span style="width:17px;display:inline-flex;justify-content:center;flex:none"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg></span><span class="ssid">Hidden network…</span><span class="check">CHECK</span></button>
+        <div class="fields" id="other-fields" hidden>
+          <input id="ssid-in" placeholder="Network name (SSID)" autocapitalize="none" autocorrect="off" spellcheck="false">
+        </div>
+      </div>
+    </div>
+    <div class="hint" id="hint" hidden></div>
+    <div class="actions">
+      <button class="btn-clear" id="clear">Clear</button>
+      <button class="btn-save" id="save" disabled>Save</button>
+    </div>
+  </div>
+
+  <div class="hero" id="v-conn" hidden>
+    <div class="spinner"></div>
+    <div class="h" style="font-size:18px">Connecting to <span class="tgt"></span>…</div>
+    <div class="p">Keep this page open. It can take up to 20 seconds.</div>
+  </div>
+
+  <div class="hero" id="v-ok" hidden>
+    <div class="badge"><svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg></div>
+    <div class="h">Saved <span class="tgt"></span></div>
+    <div class="kv">
+      <div id="ok-mdns-row"><span>Address</span><a id="ok-mdns"></a></div>
+      <div><span>IP</span><b id="ok-ip">—</b></div>
+    </div>
+    <div class="p" style="max-width:none;margin-top:4px">The device is connecting to <span class="tgt"></span>. Switch back to your Wi‑Fi network.</div>
+  </div>
+
+  <div class="hero" id="v-fail" hidden>
+    <div class="badge bad"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></div>
+    <div class="h">Couldn't connect to <span class="tgt"></span></div>
+    <div class="p" id="fail-why"></div>
+    <button class="btn-retry" id="retry">Try again</button>
+  </div>
+
+  <div class="foot" id="foot"></div>
+</div>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var CHECK='<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5 6.5 11.5 12.5 4.5"/></svg>';
+  var LOCK='<span class="lock" title="Secured"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="7" rx="1.6"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg></span>';
+  var SUN='<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"/><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.8 3.8l1.4 1.4M12.8 12.8l1.4 1.4M3.8 14.2l1.4-1.4M12.8 5.2l1.4-1.4"/></svg>';
+  var MOON='<svg width="18" height="18" viewBox="0 0 18 18"><path d="M14.5 11.2A6 6 0 1 1 7.3 3.6a4.8 4.8 0 0 0 7.2 7.6z" fill="currentColor"/></svg>';
+  // ── Config ──
+  var CONNECTING_MS=2000;        // how long "Connecting…" shows after a successful save
+
+  // ── MOCK: replace with real GET /scan → {saved, aps:[{ssid,rssi,auth}]} (auth 0 = open) ──
+  function mockScan(){return Promise.resolve({aps:[],saved:null})}
+
+  // ── MOCK: replace with real GET /wifi/status → {ip, mdns} ──
+  function mockStatus(){return Promise.resolve({ip:'',mdns:devName?devName+'.local':''})}
+
+  // ── REAL: save credentials via POST /cmnd ──
+  // true  → HTTP 200 (body is plain "OK", not parsed), or a network error after sending
+  //         (the AP stays up but may hop to the new network's channel, so the phone can briefly drop).
+  // false → non-200 response, or an exception before the request was sent.
+  function sendWifi(ssid,pass){
+    var body;
+    try{var cmd={setconf:{wifi_ssid:ssid,wifi_pass:pass}};cmd.sta_connect=null;body=JSON.stringify(cmd)}catch(e){return Promise.resolve(false)}
+    var c=new AbortController(),to=setTimeout(function(){c.abort()},6000);
+    return fetch('/cmnd',{method:'POST',headers:{'Content-Type':'application/json'},body:body,cache:'no-store',signal:c.signal})
+      .then(function(r){clearTimeout(to);return r.status===200},function(){clearTimeout(to);return true});
+  }
+
+  var S={aps:[],saved:null,sel:null,pw:'',showPw:false,target:'',clear:'idle'};
+  var clearT,connT,devName='';
+
+  // Theme (shared key with dashboard)
+  function setTheme(t){document.documentElement.setAttribute('data-theme',t);$('theme').innerHTML=t==='dark'?SUN:MOON;try{localStorage.setItem('cikon-theme',t)}catch(e){}}
+  var th='light';try{th=localStorage.getItem('cikon-theme')||'light'}catch(e){}
+  setTheme(th);
+  $('theme').onclick=function(){setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark')};
+  $('foot').textContent='© 2025–'+new Date().getFullYear()+' Cikon IoT Solutions';
+  document.querySelector('#other .check').innerHTML=CHECK;
+
+  function getJson(url,opts,ms){
+    var c=new AbortController(),to=setTimeout(function(){c.abort()},ms||4000);
+    opts=opts||{};opts.cache='no-store';opts.signal=c.signal;
+    return fetch(url,opts).then(function(r){clearTimeout(to);if(!r.ok)throw 0;return r.json()},function(e){clearTimeout(to);throw e});
+  }
+  // GET /tele (flat JSON) → name, chip. No answer → header keeps "Cikon device".
+  getJson('/tele',null,1500).then(function(t){
+    devName=t.name||'';
+    $('sub').textContent=[t.name||'Cikon device',t.chip].filter(Boolean).join(' · ');
+  }).catch(function(){});
+
+  function view(v){['form','conn','ok','fail'].forEach(function(k){$('v-'+k).hidden=k!==v});}
+  function setTgt(s){[].forEach.call(document.querySelectorAll('.tgt'),function(e){e.textContent=s})}
+
+  function scan(){
+    var b=$('rescan');b.classList.add('busy');b.lastChild.textContent='Scanning…';
+    mockScan().catch(function(){return {aps:[],saved:null}}).then(function(d){
+      S.aps=d.aps||[];S.saved=d.saved||null;
+      b.classList.remove('busy');b.lastChild.textContent='Rescan';renderNets();update();
+    });
+  }
+  $('rescan').onclick=function(){if(!this.classList.contains('busy'))scan()};
+
+  function apFor(ss){for(var i=0;i<S.aps.length;i++)if(S.aps[i].ssid===ss)return S.aps[i];return null}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+  function pwBox(){
+    var w=document.createElement('div');w.className='pwbox';
+    w.innerHTML='<input class="pw" placeholder="Password" autocomplete="current-password"><button class="show" type="button"></button>';
+    var i=w.firstChild,btn=w.lastChild;
+    i.type=S.showPw?'text':'password';i.value=S.pw;btn.textContent=S.showPw?'Hide':'Show';
+    i.oninput=function(){S.pw=i.value;$('hint').dataset.msg='';update()};
+    i.onkeydown=function(e){if(e.key==='Enter')save()};
+    btn.onclick=function(){S.showPw=!S.showPw;i.type=S.showPw?'text':'password';btn.textContent=S.showPw?'Hide':'Show';i.focus()};
+    return w;
+  }
+
+  function renderNets(){
+    var best={};
+    S.aps.forEach(function(a){if(a.ssid&&(!best[a.ssid]||a.rssi>best[a.ssid].rssi))best[a.ssid]=a});
+    var list=Object.keys(best).map(function(k){return best[k]}).sort(function(a,b){return b.rssi-a.rssi});
+    var box=$('nets');box.innerHTML='';
+    list.forEach(function(a){
+      var lvl=a.rssi>=-55?4:a.rssi>=-67?3:a.rssi>=-78?2:1,col=lvl>=3?'#6fae84':lvl===2?'#d9a866':'#cf8f86';
+      var bars='';[5,8,11,14].forEach(function(h,i){bars+='<i style="height:'+h+'px'+(i<lvl?';background:'+col:'')+'"></i>'});
+      var sel=S.sel===a.ssid,locked=a.auth!==0;
+      var d=document.createElement('div');d.className='net'+(sel?' sel':'');
+      d.innerHTML='<button class="row"><span class="bars" title="'+a.rssi+' dBm">'+bars+'</span><span class="ssid">'+esc(a.ssid)+'</span>'+(a.ssid===S.saved?'<span class="pill">Saved</span>':'')+(locked?LOCK:'')+'<span class="check">'+CHECK+'</span></button>';
+      d.firstChild.onclick=function(){pick(a.ssid)};
+      if(sel&&locked){var f=document.createElement('div');f.className='fields';f.appendChild(pwBox());d.appendChild(f)}
+      box.appendChild(d);
+    });
+    var o=S.sel==='__other';
+    $('other').className='other'+(o?' sel':'');
+    var of=$('other-fields');of.hidden=!o;
+    while(of.children.length>1)of.removeChild(of.lastChild);
+    if(o){var pb=pwBox();pb.firstChild.placeholder='Password (empty if open)';of.appendChild(pb)}
+  }
+
+  function pick(ss){
+    if(S.sel===ss)return;
+    S.sel=ss;S.pw='';$('hint').dataset.msg='';renderNets();update();
+    var f=ss==='__other'?$('ssid-in'):document.querySelector('#nets .pw');if(f)f.focus();
+  }
+  $('other-btn').onclick=function(){pick('__other')};
+  $('ssid-in').oninput=update;
+  $('ssid-in').onkeydown=function(e){if(e.key==='Enter')save()};
+
+  function canSave(){
+    if(!S.sel)return false;
+    if(S.sel==='__other')return $('ssid-in').value.trim().length>0&&(S.pw.length===0||S.pw.length>=8);
+    var a=apFor(S.sel);return !a||a.auth===0||S.pw.length>=8;
+  }
+  function update(){
+    var a=S.sel&&S.sel!=='__other'?apFor(S.sel):null;
+    var short=S.pw.length>0&&S.pw.length<8&&(S.sel==='__other'||(a&&a.auth!==0));
+    var h=$('hint'),msg=short?'Password must be at least 8 characters.':(h.dataset.msg||'');
+    h.hidden=!msg;h.textContent=msg;h.className='hint'+(short?' err':'');
+    $('save').disabled=!canSave();
+    var c=$('clear');c.title='Forget saved network'; // TODO: disable when !S.saved once the real /scan reports it
+    c.className='btn-clear'+(S.clear==='confirm'?' confirm':'');c.textContent=S.clear==='confirm'?'Clear saved?':'Clear';
+  }
+
+  function save(){
+    if(!canSave()||$('v-form').hidden)return;
+    var ssid=S.sel==='__other'?$('ssid-in').value.trim():S.sel;
+    S.target=ssid;setTgt(ssid);view('conn');
+    sendWifi(ssid,S.pw).then(function(sent){
+      if(!sent)return fail("Couldn't save the settings to the device.");
+      connT=setTimeout(function(){mockStatus().then(ok)},CONNECTING_MS);
+    });
+  }
+  $('save').onclick=save;
+
+  function ok(st){
+    S.saved=S.target;
+    var u=st.mdns?'http://'+st.mdns+'/':'';
+    $('ok-mdns-row').hidden=!u;
+    if(u){$('ok-mdns').textContent=u;$('ok-mdns').href=u}
+    $('ok-ip').textContent=st.ip||'—';view('ok');
+  }
+  function fail(why){$('fail-why').textContent=why;view('fail')}
+  $('retry').onclick=function(){view('form');renderNets();update()};
+
+  $('clear').onclick=function(){
+    if(S.clear!=='confirm'){S.clear='confirm';update();clearTimeout(clearT);clearT=setTimeout(function(){S.clear='idle';update()},4000);return}
+    clearTimeout(clearT);S.clear='idle';update();
+    // TODO MOCK: send the real "forget Wi-Fi" command here. Nothing is sent yet.
+  };
+
+  update();scan();
+})();
+</script>
+</body>
+</html>

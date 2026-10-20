@@ -6,7 +6,6 @@
 #include "esp_wifi_types_generic.h"
 
 #include "bits_helper.h"
-#include "cmnd.h"
 #include "config_manager.h"
 #include "platform_services.h"
 #include "supervisor.h"
@@ -19,55 +18,30 @@
 static esp_event_handler_instance_t wifi_event_instance = NULL;
 static esp_event_handler_instance_t ip_event_instance = NULL;
 
-static SemaphoreHandle_t network_transition_mutex = NULL;
-
-static void switch_to_ap_mode(void) {
-    if (xSemaphoreTake(network_transition_mutex, pdMS_TO_TICKS(100)) == pdFALSE) {
-        ESP_LOGW(TAG, "Network transition already in progress, cannot switch to AP");
-        return;
-    }
-
-    network_stop_services();
-    wifi_init_ap_mode();
-
-    xSemaphoreGive(network_transition_mutex);
-}
-
-static void switch_to_sta_mode(void) {
-    if (xSemaphoreTake(network_transition_mutex, pdMS_TO_TICKS(100)) == pdFALSE) {
-        ESP_LOGW(TAG, "Network transition already in progress, cannot switch to STA");
-        return;
-    }
-
-    network_stop_services();
-    wifi_init_sta_mode();
-
-    xSemaphoreGive(network_transition_mutex);
-}
-
 static void uplink_wifi_on_restart(void) { wifi_unregister_event_handlers(); }
 
 static void uplink_wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                       void *event_data) {
 
     if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        supervisor_notify_event(INET_EVENT_STA_READY);
+        supervisor_notify_event(INET_EVENT_STA_READY | NETWORK_UPLINK_READY);
     } else if (event_base == WIFI_EVENT) {
         switch (event_id) {
         case WIFI_EVENT_STA_DISCONNECTED:
-            supervisor_notify_event(INET_EVENT_STA_LOST);
+            supervisor_notify_event(INET_EVENT_STA_LOST | NETWORK_UPLINK_LOST);
             break;
         case WIFI_EVENT_AP_START:
             supervisor_notify_event(INET_EVENT_AP_READY);
             break;
         case WIFI_EVENT_AP_STOP:
-            // Services stopped via callback before mode switch
+            // AP runs next to STA, nothing to stop
             break;
         }
     }
 }
 
-static const char *get_or_generate_ap_ssid(void) {
+static const char *uplink_wifi_get_or_generate_ap_ssid(void) {
+
     const char *cfg_ssid = config_get()->wifi_ap_ssid;
     if (cfg_ssid && strlen(cfg_ssid) > 0) {
         return cfg_ssid;
@@ -87,33 +61,19 @@ static esp_err_t uplink_wifi_start(void) {
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (network_transition_mutex == NULL) {
-        network_transition_mutex = xSemaphoreCreateMutex();
-        if (!network_transition_mutex) {
-            ESP_LOGE(TAG, "Failed to create network transition mutex!");
-        }
-    }
-
     wifi_credentials_t creds = {.sta_ssid = config_get()->wifi_ssid,
                                 .sta_password = config_get()->wifi_pass,
-                                .ap_ssid = get_or_generate_ap_ssid(),
+                                .ap_ssid = uplink_wifi_get_or_generate_ap_ssid(),
                                 .ap_password = NULL};
 
-    wifi_configure(&creds);
-
     register_restart_callback(uplink_wifi_on_restart);
-
-    // Register callback for AP timeout -> STA mode switch
-    wifi_set_ap_timeout_callback(network_stop_services);
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         WIFI_EVENT, ESP_EVENT_ANY_ID, &uplink_wifi_event_handler, NULL, &wifi_event_instance));
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_GOT_IP, &uplink_wifi_event_handler, NULL, &ip_event_instance));
 
-    wifi_init_sta_mode();
-
-    return ESP_OK;
+    return wifi_start(&creds);
 }
 
 static esp_err_t uplink_wifi_stop(void) {
@@ -129,62 +89,49 @@ static esp_err_t uplink_wifi_stop(void) {
     }
 
     unregister_restart_callback(uplink_wifi_on_restart);
-    wifi_set_ap_timeout_callback(NULL);
-
-    if (network_transition_mutex) {
-        vSemaphoreDelete(network_transition_mutex);
-        network_transition_mutex = NULL;
-    }
 
     wifi_shutdown();
 
     return ESP_OK;
 }
 
-static void set_ap_handler(const char *args_json_str) {
-    (void)args_json_str;
-    switch_to_ap_mode();
-}
-
-static void set_sta_handler(const char *args_json_str) {
-    (void)args_json_str;
-    switch_to_sta_mode();
-}
-
-static void tele_wifi_ip_address(const char *tele_id, cJSON *json_root) {
+static void uplink_wifi_tele_ip_address(const char *tele_id, cJSON *json_root) {
     char ip[16];
     wifi_get_interface_ip(ip, sizeof(ip));
     cJSON_AddStringToObject(json_root, tele_id, ip);
 }
 
-static void tele_wifi_rssi(const char *tele_id, cJSON *json_root) {
+static void uplink_wifi_tele_rssi(const char *tele_id, cJSON *json_root) {
     int8_t rssi = wifi_get_rssi();
     if (rssi != 0)
         cJSON_AddNumberToObject(json_root, tele_id, rssi);
 }
 
-static void tele_wifi_ssid(const char *tele_id, cJSON *json_root) {
+static void uplink_wifi_tele_ssid(const char *tele_id, cJSON *json_root) {
     char ssid[33];
     if (wifi_get_ssid(ssid, sizeof(ssid)))
         cJSON_AddStringToObject(json_root, tele_id, ssid);
 }
 
-static const command_entry_t wifi_commands[] = {
-    {"ap", "Switch to AP mode", set_ap_handler},
-    {"sta", "Switch to STA mode", set_sta_handler},
+// Connect STA with the credentials currently in config, e.g. right after setconf
+static void uplink_wifi_sta_connect_handler(const char *args_json_str) {
+    wifi_sta_connect(config_get()->wifi_ssid, config_get()->wifi_pass);
+}
+
+static const command_entry_t uplink_wifi_commands[] = {
+    {"sta_connect", "Connect WiFi STA with the credentials from config",
+     uplink_wifi_sta_connect_handler},
     {NULL, NULL, NULL}};
 
-static const tele_entry_t wifi_tele[] = {
-    {"ip",   tele_wifi_ip_address},
-    {"rssi", tele_wifi_rssi},
-    {"ssid", tele_wifi_ssid},
-    {NULL, NULL}
-};
+static const tele_entry_t uplink_wifi_tele[] = {{"ip", uplink_wifi_tele_ip_address},
+                                                {"rssi", uplink_wifi_tele_rssi},
+                                                {"ssid", uplink_wifi_tele_ssid},
+                                                {NULL, NULL}};
 
 const uplink_t uplink_wifi = {
     .name = "wifi",
     .start = uplink_wifi_start,
     .stop = uplink_wifi_stop,
-    .commands = wifi_commands,
-    .tele = wifi_tele,
+    .commands = uplink_wifi_commands,
+    .tele = uplink_wifi_tele,
 };

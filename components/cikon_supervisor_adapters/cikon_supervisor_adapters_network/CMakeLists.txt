@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "network.c"
+        "network_ap.c"
         "uplink_wifi.c"
     INCLUDE_DIRS
         "include"

@@ -1,7 +1,11 @@
+#include <inttypes.h>
 #include <string.h>
+#include <sys/param.h>
 
+#include "esp_check.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/idf_additions.h"
 
@@ -20,136 +24,80 @@
 static wifi_credentials_t wifi_creds = {NULL};
 static esp_netif_t *sta_netif = NULL, *ap_netif = NULL;
 
-static bool ignore_sta_disconnect_event = false;
+static esp_timer_handle_t sta_reconnect_timer = NULL;
+static uint8_t sta_reconnect_attempt = 0; // attempts made in the current burst
+static uint32_t sta_reconnect_backoff_ms = CONFIG_WIFI_STA_RETRY_INITIAL_MS;
 
-static TaskHandle_t wifi_sta_connection_task_handle = NULL;
-static TaskHandle_t wifi_ap_task_handle = NULL;
-
-volatile static uint32_t ap_seconds_without_clients = 0;
-
-static portMUX_TYPE wifi_sta_task_mux = portMUX_INITIALIZER_UNLOCKED;
-static portMUX_TYPE wifi_ap_timeout_mux = portMUX_INITIALIZER_UNLOCKED;
+static esp_timer_handle_t ap_idle_timer = NULL;
 
 static esp_event_handler_instance_t instance_any_id = NULL;
 static esp_event_handler_instance_t instance_got_ip = NULL;
 
-static wifi_ap_timeout_callback_t ap_timeout_callback = NULL;
-
 static EventGroupHandle_t wifi_event_group = NULL;
 
-/**
- * @brief WiFi STA connection retry task with exponential backoff.
- *
- * After each burst of connection attempts, the interval before the next burst is multiplied
- * (doubled) to reduce network and power usage if the network is unavailable for a long time. This
- * prevents constant retries and allows for quick reconnection if the network returns soon, while
- * spacing out attempts over time if the outage persists.
- *
- * @param args Unused.
- */
-static void wifi_sta_connection_task(void *args) {
-
-    int interval = CONFIG_WIFI_STA_RETRY_INITIAL_MS;
-
-    while (1) {
-        bool connected = false;
-        for (int i = 0; i < CONFIG_WIFI_STA_BURST_RETRY_COUNT; ++i) {
-
-            ESP_LOGI(TAG_STA, "WIFI Connection retry (%d/%d).", i + 1,
-                     CONFIG_WIFI_STA_BURST_RETRY_COUNT);
-            ESP_ERROR_CHECK(esp_wifi_disconnect());
-            ESP_ERROR_CHECK(esp_wifi_connect());
-
-            EventBits_t bits =
-                xEventGroupWaitBits(wifi_event_group, WIFI_STA_CONNECTED_BIT, pdFALSE, pdFALSE,
-                                    pdMS_TO_TICKS(CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS));
-
-            if (bits & WIFI_STA_CONNECTED_BIT) {
-                connected = true;
-                break;
-            }
-        }
-
-        if (connected) {
-            break;
-        }
-
-        ESP_LOGI(TAG_STA, "Waiting %.2f s before next group of connection attempts",
-                 interval / 1000.0);
-        vTaskDelay(pdMS_TO_TICKS(interval));
-        interval *= 2;
-        if (interval > CONFIG_WIFI_STA_RETRY_MAX_MS)
-            interval = CONFIG_WIFI_STA_RETRY_MAX_MS;
+// Timer callback: only kicks off one attempt. esp_wifi_connect() doesn't wait - it queues the
+// request to the WiFi task and returns; the result comes back as IP_EVENT_STA_GOT_IP or
+// WIFI_EVENT_STA_DISCONNECTED, and the latter schedules the next attempt. If the request itself
+// is refused no event follows, so re-arm the timer to keep the chain going
+static void wifi_sta_reconnect(void *arg) {
+    if (esp_wifi_connect() != ESP_OK) {
+        esp_timer_start_once(sta_reconnect_timer,
+                             (uint64_t)CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS * 1000);
     }
-    wifi_sta_connection_task_handle = NULL;
-    vTaskDelete(NULL);
 }
 
-void wifi_sta_connection_task_ensure_running(void) {
+// Runs in the event handler, not in the timer: counting, logging and picking the delay. Within a
+// burst attempts are BURST_RETRY_DELAY apart, after a burst comes a pause that doubles up to
+// RETRY_MAX before the next burst
+static void wifi_sta_schedule_reconnect(void) {
 
-    taskENTER_CRITICAL(&wifi_sta_task_mux);
-    if (wifi_sta_connection_task_handle == NULL ||
-        eTaskGetState(wifi_sta_connection_task_handle) == eDeleted) {
-        xTaskCreate(wifi_sta_connection_task, "sta_con", CONFIG_WIFI_STA_CONNECTION_TASK_STACK_SIZE,
-                    NULL, CONFIG_WIFI_STA_CONNECTION_TASK_PRIORITY,
-                    &wifi_sta_connection_task_handle);
-    }
-    taskEXIT_CRITICAL(&wifi_sta_task_mux);
-}
+    esp_timer_stop(sta_reconnect_timer);
 
-static void wifi_ap_timeout_task(void *args) {
-
-    const int timeout_seconds = CONFIG_WIFI_AP_INACTIVITY_TIMEOUT_MINUTES * 60;
-
-    while (xEventGroupGetBits(wifi_event_group) & WIFI_AP_STARTED_BIT) {
-
-        if (xEventGroupGetBits(wifi_event_group) & WIFI_AP_CLIENT_CONNECTED_BIT) {
-
-            taskENTER_CRITICAL(&wifi_ap_timeout_mux);
-            ap_seconds_without_clients = 0;
-            taskEXIT_CRITICAL(&wifi_ap_timeout_mux);
-
-        } else {
-
-            taskENTER_CRITICAL(&wifi_ap_timeout_mux);
-            ap_seconds_without_clients++;
-            taskEXIT_CRITICAL(&wifi_ap_timeout_mux);
-
-            if (ap_seconds_without_clients >= timeout_seconds) {
-                ESP_LOGI(
-                    TAG_AP,
-                    "🚦 AP inactivity timeout: no clients for %d minute(s), disabling Access Point "
-                    "(AP).",
-                    CONFIG_WIFI_AP_INACTIVITY_TIMEOUT_MINUTES);
-                break;
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-
-    wifi_mode_t mode;
-
-    // Check if AP is still active - if not, someone else already stopped it
-    if (!(xEventGroupGetBits(wifi_event_group) & WIFI_AP_STARTED_BIT)) {
-        ESP_LOGI(TAG_AP, "AP already stopped by another task, timeout task exiting");
-        wifi_ap_task_handle = NULL;
-        vTaskDelete(NULL);
+    // Fresh disconnect: first attempt right away, no need to bounce through the timer
+    if (sta_reconnect_attempt == 0) {
+        sta_reconnect_attempt = 1;
+        ESP_LOGI(TAG_STA, "Connection attempt 1/%d", CONFIG_WIFI_STA_BURST_RETRY_COUNT);
+        wifi_sta_reconnect(NULL);
         return;
     }
 
-    if (esp_wifi_get_mode(&mode) != ESP_OK || mode != WIFI_MODE_STA) {
-        ESP_LOGI(TAG_AP, "AP timeout - switching to STA mode");
-        if (ap_timeout_callback) {
-            ap_timeout_callback();
-        }
-        wifi_init_sta_mode();
-    } else {
-        ESP_LOGI(TAG_AP, "Already in STA mode, no need to switch.");
+    // Burst used up: pause, the timer then starts the next burst with attempt 1
+    if (sta_reconnect_attempt >= CONFIG_WIFI_STA_BURST_RETRY_COUNT) {
+        uint32_t pause_ms = sta_reconnect_backoff_ms;
+        sta_reconnect_backoff_ms = MIN(sta_reconnect_backoff_ms * 2, CONFIG_WIFI_STA_RETRY_MAX_MS);
+        sta_reconnect_attempt = 1;
+        ESP_LOGI(TAG_STA, "Waiting %" PRIu32 " s before next group of connection attempts",
+                 pause_ms / 1000);
+        esp_timer_start_once(sta_reconnect_timer, (uint64_t)pause_ms * 1000);
+        return;
     }
 
-    wifi_ap_task_handle = NULL;
-    vTaskDelete(NULL);
+    // Within the burst
+    sta_reconnect_attempt++;
+    ESP_LOGI(TAG_STA, "Next connection attempt %d/%d in %d s", sta_reconnect_attempt,
+             CONFIG_WIFI_STA_BURST_RETRY_COUNT, CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS / 1000);
+    esp_timer_start_once(sta_reconnect_timer,
+                         (uint64_t)CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS * 1000);
 }
+
+static void wifi_sta_reconnect_reset(void) {
+    if (sta_reconnect_timer) {
+        esp_timer_stop(sta_reconnect_timer);
+    }
+    sta_reconnect_attempt = 0;
+    sta_reconnect_backoff_ms = CONFIG_WIFI_STA_RETRY_INITIAL_MS;
+}
+
+// (Re)start the "N minutes without a client" countdown
+static void wifi_ap_idle_countdown_start(void) {
+    esp_timer_stop(ap_idle_timer);
+    esp_timer_start_once(ap_idle_timer,
+                         (uint64_t)CONFIG_WIFI_AP_INACTIVITY_TIMEOUT_MINUTES * 60 * 1000000);
+}
+
+// Timer callback: the AP sat without a client for the whole countdown. Just a mode change, STA and
+// services are untouched
+static void wifi_ap_idle_timeout(void *arg) { wifi_ap_disable(); }
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                void *event_data) {
@@ -165,36 +113,19 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
             wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)event_data;
             ESP_LOGI(TAG_STA, "Disconnected, reason: %d", disconn->reason);
 
-            if (ignore_sta_disconnect_event) {
-                // ESP_LOGW(TAG_STA,
-                //          "Ignoring disconnect event due to ongoing shutdown or mode change.");
-                ignore_sta_disconnect_event = false;
-                return;
-            }
-
-            wifi_sta_connection_task_ensure_running();
+            wifi_sta_schedule_reconnect();
 
             break;
 
         case WIFI_EVENT_AP_START:
             xEventGroupSetBits(wifi_event_group, WIFI_AP_STARTED_BIT);
             xEventGroupClearBits(wifi_event_group, WIFI_AP_CLIENT_CONNECTED_BIT);
-
-            if (wifi_ap_task_handle != NULL) {
-                eTaskState state = eTaskGetState(wifi_ap_task_handle);
-                if (state != eDeleted && state != eInvalid) {
-                    // ESP_LOGW(TAG_AP, "AP timeout task already running (state: %d), ignoring.",
-                    //          state);
-                    break;
-                }
-            }
-
-            xTaskCreate(wifi_ap_timeout_task, "ap_timeout", CONFIG_WIFI_AP_TIMEOUT_TASK_STACK_SIZE,
-                        NULL, CONFIG_WIFI_AP_TIMEOUT_TASK_PRIORITY, &wifi_ap_task_handle);
+            wifi_ap_idle_countdown_start();
             break;
 
         case WIFI_EVENT_AP_STOP:
             ESP_LOGI(TAG_AP, "Access Point (AP) has been stopped.");
+            esp_timer_stop(ap_idle_timer);
             xEventGroupClearBits(wifi_event_group, WIFI_AP_STARTED_BIT);
             xEventGroupSetBits(wifi_event_group, WIFI_STOPPED_BIT);
             break;
@@ -205,13 +136,18 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
             break;
 
         case WIFI_EVENT_AP_STACONNECTED:
-            // ESP_LOGI(TAG_AP, "A client has connected to the Access Point (AP).");
+            esp_timer_stop(ap_idle_timer);
             xEventGroupSetBits(wifi_event_group, WIFI_AP_CLIENT_CONNECTED_BIT);
             break;
-        case WIFI_EVENT_AP_STADISCONNECTED:
-            // ESP_LOGI(TAG_AP, "A client has disconnected from the Access Point (AP).");
-            xEventGroupClearBits(wifi_event_group, WIFI_AP_CLIENT_CONNECTED_BIT);
+
+        case WIFI_EVENT_AP_STADISCONNECTED: {
+            wifi_sta_list_t clients;
+            if (esp_wifi_ap_get_sta_list(&clients) == ESP_OK && clients.num == 0) {
+                xEventGroupClearBits(wifi_event_group, WIFI_AP_CLIENT_CONNECTED_BIT);
+                wifi_ap_idle_countdown_start();
+            }
             break;
+        }
 
         default:
             break;
@@ -222,6 +158,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
                  wifi_creds.sta_ssid);
 
         xEventGroupSetBits(wifi_event_group, WIFI_STA_CONNECTED_BIT);
+        wifi_sta_reconnect_reset();
     }
 }
 
@@ -237,12 +174,88 @@ void wifi_unregister_event_handlers() {
     }
 }
 
+// Stops WiFi and destroys the interfaces (used by wifi_shutdown())
+static esp_err_t wifi_stop(void) {
+
+    // Check if WiFi driver is running (handle both netif and minimal mode)
+    wifi_mode_t mode;
+    esp_err_t mode_err = esp_wifi_get_mode(&mode);
+
+    // If WiFi not initialized or not started, nothing to stop
+    if (mode_err == ESP_ERR_WIFI_NOT_INIT || mode_err == ESP_ERR_WIFI_NOT_STARTED) {
+        return ESP_OK;
+    }
+
+    // If WiFi was started by cikon_wifi (netif exists), do full cleanup
+    bool has_netif = (sta_netif != NULL || ap_netif != NULL);
+
+    if (has_netif) {
+        // No reconnect attempt or AP timeout may fire while WiFi is being stopped
+        wifi_sta_reconnect_reset();
+        esp_timer_stop(ap_idle_timer);
+
+        // Clear the STOPPED bit before calling esp_wifi_stop()
+        xEventGroupClearBits(wifi_event_group, WIFI_STOPPED_BIT);
+    }
+
+    // Disconnect all AP clients before stopping (MAC 0 = disconnect all)
+    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
+        esp_wifi_deauth_sta(0);
+    }
+
+    esp_wifi_disconnect();
+    esp_err_t err = esp_wifi_stop();
+
+    // Wait for stop confirmation (different for netif vs minimal mode)
+    if (has_netif) {
+        // Check if shutdown is in progress - event handlers are already unregistered
+        // so WIFI_STOPPED_BIT will never be set by events
+        EventBits_t shutdown_bits = xEventGroupGetBits(wifi_event_group);
+        if (shutdown_bits & WIFI_SHUTDOWN_INITIATED_BIT) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+        } else {
+            // Wait for WiFi to actually stop (not shutdown)
+            EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_STOPPED_BIT, pdTRUE,
+                                                   pdFALSE, pdMS_TO_TICKS(1000));
+
+            if (!(bits & WIFI_STOPPED_BIT)) {
+                ESP_LOGW(TAG, "WiFi stop event timeout after 1000ms");
+            }
+        }
+    } else {
+        // WiFi started in minimal mode (no netif) - just wait a bit for driver to stop
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    // CRITICAL: Wait for WiFi driver to finish processing all packets
+    // before destroying netif to prevent NULL pointer dereference
+    vTaskDelay(pdMS_TO_TICKS(200));
+
+    if (has_netif) {
+        xEventGroupClearBits(wifi_event_group, WIFI_STA_CONNECTED_BIT | WIFI_AP_STARTED_BIT |
+                                                   WIFI_SHUTDOWN_INITIATED_BIT |
+                                                   WIFI_AP_CLIENT_CONNECTED_BIT);
+    }
+
+    if (sta_netif) {
+        esp_netif_destroy_default_wifi(sta_netif);
+        sta_netif = NULL;
+    }
+
+    if (ap_netif) {
+        esp_netif_destroy_default_wifi(ap_netif);
+        ap_netif = NULL;
+    }
+
+    return err;
+}
+
 void wifi_shutdown() {
     ESP_LOGI(TAG, "Shutting down WiFi subsystem...");
     xEventGroupSetBits(wifi_event_group, WIFI_SHUTDOWN_INITIATED_BIT);
 
     wifi_unregister_event_handlers();
-    safe_wifi_stop();
+    wifi_stop();
 
     esp_err_t err = esp_wifi_deinit();
     if (err != ESP_OK) {
@@ -255,8 +268,6 @@ void wifi_shutdown() {
     ESP_LOGI(TAG, "WiFi subsystem shutdown complete");
 }
 
-void wifi_set_ap_timeout_callback(wifi_ap_timeout_callback_t cb) { ap_timeout_callback = cb; }
-
 bool is_wifi_network_connected(void) {
     if (wifi_event_group == NULL) {
         return false;
@@ -264,7 +275,7 @@ bool is_wifi_network_connected(void) {
     return xEventGroupGetBits(wifi_event_group) & (WIFI_STA_CONNECTED_BIT | WIFI_AP_STARTED_BIT);
 }
 
-void wifi_configure(const wifi_credentials_t *creds) {
+static void wifi_configure(const wifi_credentials_t *creds) {
 
     if (creds) {
         wifi_creds = *creds;
@@ -290,7 +301,6 @@ void wifi_configure(const wifi_credentials_t *creds) {
 
     if (wifi_event_group == NULL) {
         wifi_event_group = xEventGroupCreateStatic(&event_group_storage);
-        // wifi_event_group = xEventGroupCreate();
     } else {
         xEventGroupClearBits(wifi_event_group, WIFI_SHUTDOWN_INITIATED_BIT);
     }
@@ -298,65 +308,65 @@ void wifi_configure(const wifi_credentials_t *creds) {
     if (!wifi_event_group) {
         ESP_LOGE(TAG, "Failed to create WiFi event group!");
     }
+
+    if (sta_reconnect_timer == NULL) {
+        const esp_timer_create_args_t timer_args = {.callback = wifi_sta_reconnect,
+                                                    .name = "sta_reconnect"};
+        ESP_ERROR_CHECK(esp_timer_create(&timer_args, &sta_reconnect_timer));
+    }
+
+    if (ap_idle_timer == NULL) {
+        const esp_timer_create_args_t ap_timer_args = {.callback = wifi_ap_idle_timeout,
+                                                       .name = "ap_idle"};
+        ESP_ERROR_CHECK(esp_timer_create(&ap_timer_args, &ap_idle_timer));
+    }
 }
 
-void wifi_init_ap_mode() {
+esp_err_t wifi_start(const wifi_credentials_t *creds) {
 
-    if (!wifi_creds.ap_ssid || strlen(wifi_creds.ap_ssid) == 0) {
-        ESP_LOGW(TAG_AP, "AP SSID is NULL or empty, cannot start WiFi AP mode!");
-        return;
+    wifi_configure(creds);
+
+    if (sta_netif == NULL) {
+        sta_netif = esp_netif_create_default_wifi_sta();
     }
 
-    ignore_sta_disconnect_event = true;
+    // The AP config can only be set while the AP is part of the mode. Before esp_wifi_start() the
+    // mode only takes effect at start, so this stores it without the AP ever going on air - a later
+    // wifi_ap_enable() brings the AP up with the right SSID from the first beacon
+    if (wifi_creds.ap_ssid && strlen(wifi_creds.ap_ssid) > 0) {
+        wifi_config_t ap_config = {.ap = {.max_connection = 1, .authmode = WIFI_AUTH_OPEN}};
+        strncpy((char *)ap_config.ap.ssid, wifi_creds.ap_ssid, sizeof(ap_config.ap.ssid) - 1);
 
-    esp_err_t err = safe_wifi_stop();
-    if (err != ESP_OK && err != ESP_ERR_WIFI_STOP_STATE) {
-        // ESP_ERR_WIFI_STOP_STATE means WiFi is already stopping - that's OK
-        ESP_LOGE(TAG_AP, "Failed to stop WiFi: %s", esp_err_to_name(err));
-        return;
+        ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_APSTA), TAG_AP, "set_mode(APSTA) failed");
+        ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &ap_config), TAG_AP,
+                            "set_config(AP) failed");
     }
 
-    wifi_config_t ap_config = {.ap = {.ssid_len = 0,
-                                      .password = "",
-                                      .channel = 1,
-                                      .max_connection = 1,
-                                      .authmode = WIFI_AUTH_OPEN}};
+    ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG_STA, "set_mode(STA) failed");
 
-    strncpy((char *)ap_config.ap.ssid, wifi_creds.ap_ssid, sizeof(ap_config.ap.ssid) - 1);
+    ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG_STA, "start failed");
 
-    // Create netif BEFORE setting mode and config
-    ap_netif = esp_netif_create_default_wifi_ap();
+    if (wifi_creds.sta_ssid && strlen(wifi_creds.sta_ssid) > 0) {
+        return wifi_sta_connect(wifi_creds.sta_ssid, wifi_creds.sta_password);
+    }
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
-
-    // Explicitly restart DHCP server to ensure it's listening
-    esp_netif_dhcps_stop(ap_netif);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    esp_netif_dhcps_start(ap_netif);
+    ESP_LOGW(TAG_STA, "STA SSID is NULL or empty, WiFi started without connecting");
+    return ESP_OK;
 }
 
-void wifi_init_sta_mode() {
+esp_err_t wifi_sta_connect(const char *ssid, const char *password) {
 
-    if (!wifi_creds.sta_ssid || strlen(wifi_creds.sta_ssid) == 0) {
-        ESP_LOGW(TAG_STA, "STA SSID is NULL or empty, cannot start WiFi STA mode!");
-        return;
+    if (!ssid || strlen(ssid) == 0) {
+        ESP_LOGW(TAG_STA, "STA SSID is NULL or empty, cannot connect");
+        return ESP_ERR_INVALID_ARG;
     }
 
-    if (sta_netif != NULL) {
-        ignore_sta_disconnect_event = true;
-    } else {
-        ignore_sta_disconnect_event = false;
-    }
+    wifi_creds.sta_ssid = ssid;
+    wifi_creds.sta_password = password;
 
-    esp_err_t err = safe_wifi_stop();
-    if (err != ESP_OK && err != ESP_ERR_WIFI_STOP_STATE) {
-        // ESP_ERR_WIFI_STOP_STATE means WiFi is already stopping - that's OK
-        ESP_LOGE(TAG_STA, "Failed to stop WiFi: %s", esp_err_to_name(err));
-        return;
-    }
+    wifi_sta_reconnect_reset();
 
+    // esp_wifi_connect() only uses the driver's own copy of the credentials
     wifi_config_t sta_config = {0};
 
     strncpy((char *)sta_config.sta.ssid, wifi_creds.sta_ssid, sizeof(sta_config.sta.ssid) - 1);
@@ -365,110 +375,66 @@ void wifi_init_sta_mode() {
 
     sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
 
-    sta_netif = esp_netif_create_default_wifi_sta();
+    ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &sta_config), TAG_STA,
+                        "set_config(STA) failed");
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    // Associated with a network: drop it, STA_DISCONNECTED then starts the attempts with the new
+    // credentials. Not associated: start them right away
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        esp_wifi_disconnect();
+    } else {
+        wifi_sta_schedule_reconnect();
+    }
 
-    wifi_sta_connection_task_ensure_running();
+    return ESP_OK;
 }
 
-esp_err_t safe_wifi_stop() {
+void wifi_ap_enable(void) {
 
-    // Check if WiFi driver is running (handle both netif and minimal mode)
+    if (!wifi_creds.ap_ssid || strlen(wifi_creds.ap_ssid) == 0) {
+        ESP_LOGW(TAG_AP, "AP SSID is NULL or empty, cannot enable AP");
+        return;
+    }
+
+    // The AP interface lives from the first enable on; switching it off only changes the mode
+    if (ap_netif == NULL) {
+        ap_netif = esp_netif_create_default_wifi_ap();
+    }
+
+    // Enabling an AP that already runs just extends it
     wifi_mode_t mode;
-    esp_err_t mode_err = esp_wifi_get_mode(&mode);
-
-    // If WiFi not initialized or not started, nothing to stop
-    if (mode_err == ESP_ERR_WIFI_NOT_INIT || mode_err == ESP_ERR_WIFI_NOT_STARTED) {
-        return ESP_OK;
+    if (esp_wifi_get_mode(&mode) == ESP_OK && mode == WIFI_MODE_APSTA) {
+        wifi_ap_idle_countdown_start();
+        ESP_LOGI(TAG_AP, "AP already running");
+        return;
     }
 
-    // If WiFi was started by cikon_wifi (netif exists), do full cleanup
-    bool has_netif = (sta_netif != NULL || ap_netif != NULL);
-
-    if (has_netif) {
-        // Atomically (thread-safe) detach the task handle from the global variable,
-        // so that no other code can use or delete it at the same time (prevents race conditions).
-        // vTaskDelete is called outside the critical section, because it may block or take time.
-        //
-        // This pattern should be used whenever a task handle can be accessed or deleted
-        // from multiple contexts (e.g. event handlers, timers, other tasks).
-        //
-        // For simple, single-context code (e.g. only one task manages the handle),
-        // a critical section may not be needed.
-        TaskHandle_t sta_tmp_handle = NULL;
-
-        taskENTER_CRITICAL(&wifi_sta_task_mux);
-        sta_tmp_handle = wifi_sta_connection_task_handle;
-        wifi_sta_connection_task_handle = NULL;
-        taskEXIT_CRITICAL(&wifi_sta_task_mux);
-
-        if (sta_tmp_handle != NULL) {
-            vTaskDelete(sta_tmp_handle);
-        }
-
-        taskENTER_CRITICAL(&wifi_ap_timeout_mux);
-        ap_seconds_without_clients = 0;
-        taskEXIT_CRITICAL(&wifi_ap_timeout_mux);
-
-        // Clear the STOPPED bit before calling esp_wifi_stop()
-        xEventGroupClearBits(wifi_event_group, WIFI_STOPPED_BIT);
+    // The inactivity countdown starts on WIFI_EVENT_AP_START
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG_AP, "set_mode(APSTA) failed: %s", esp_err_to_name(err));
+        return;
     }
 
-    // Disconnect all AP clients before stopping (MAC 0 = disconnect all)
-    if (mode == WIFI_MODE_AP || mode == WIFI_MODE_APSTA) {
-        esp_wifi_deauth_sta(0);
+    ESP_LOGI(TAG_AP, "Access Point enabled next to STA (SSID: %s)", wifi_creds.ap_ssid);
+}
+
+void wifi_ap_disable(void) {
+
+    wifi_mode_t mode;
+    if (esp_wifi_get_mode(&mode) != ESP_OK || mode != WIFI_MODE_APSTA) {
+        ESP_LOGI(TAG_AP, "AP not running");
+        return;
     }
 
-    esp_wifi_disconnect();
-    esp_err_t err = esp_wifi_stop();
-
-    // Wait for stop confirmation (different for netif vs minimal mode)
-    if (has_netif) {
-        // Check if shutdown is in progress - event handlers are already unregistered
-        // so WIFI_STOPPED_BIT will never be set by events
-        EventBits_t shutdown_bits = xEventGroupGetBits(wifi_event_group);
-        if (shutdown_bits & WIFI_SHUTDOWN_INITIATED_BIT) {
-            vTaskDelay(pdMS_TO_TICKS(500));
-        } else {
-            // Wait for WiFi to actually stop (not shutdown)
-            EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_STOPPED_BIT, pdTRUE, pdFALSE,
-                                                   pdMS_TO_TICKS(1000));
-
-            if (!(bits & WIFI_STOPPED_BIT)) {
-                ESP_LOGW(TAG, "WiFi stop event timeout after 1000ms");
-            }
-        }
-    } else {
-        // WiFi started in minimal mode (no netif) - just wait a bit for driver to stop
-        vTaskDelay(pdMS_TO_TICKS(100));
+    esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG_AP, "set_mode(STA) failed: %s", esp_err_to_name(err));
+        return;
     }
 
-    // CRITICAL: Wait for WiFi driver to finish processing all packets
-    // before destroying netif to prevent NULL pointer dereference
-    vTaskDelay(pdMS_TO_TICKS(200));
-
-    if (has_netif) {
-        xEventGroupClearBits(wifi_event_group, WIFI_STA_CONNECTED_BIT | WIFI_AP_STARTED_BIT |
-                                                   WIFI_SHUTDOWN_INITIATED_BIT |
-                                                   WIFI_AP_CLIENT_CONNECTED_BIT);
-    }
-
-    if (sta_netif) {
-        // esp_netif_destroy(sta_netif);
-        esp_netif_destroy_default_wifi(sta_netif);
-        sta_netif = NULL;
-    }
-
-    if (ap_netif) {
-        // esp_netif_destroy(ap_netif);
-        esp_netif_destroy_default_wifi(ap_netif);
-        ap_netif = NULL;
-    }
-
-    return err;
+    ESP_LOGI(TAG_AP, "Access Point disabled, STA only");
 }
 
 void wifi_get_interface_ip(char *buf, size_t buflen) {
@@ -478,8 +444,8 @@ void wifi_get_interface_ip(char *buf, size_t buflen) {
 
     if (sta_netif && esp_netif_get_ip_info(sta_netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
         active = sta_netif;
-    } else if (ap_netif && esp_netif_get_ip_info(ap_netif, &ip_info) == ESP_OK &&
-               ip_info.ip.addr != 0) {
+    } else if (ap_netif && esp_netif_is_netif_up(ap_netif) &&
+               esp_netif_get_ip_info(ap_netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
         active = ap_netif;
     }
     if (active) {
