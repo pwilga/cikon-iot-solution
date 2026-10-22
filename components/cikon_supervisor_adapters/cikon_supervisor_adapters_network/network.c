@@ -28,7 +28,8 @@ _Static_assert(sizeof(uplinks) / sizeof(uplinks[0]) > 0, "network adapter: no up
 static const uplink_t *uplink = NULL;
 static bool initialized = false;
 
-static volatile bool network_services_running = false;
+static volatile bool network_servers_running = false; // OTA, monitor, mDNS, HTTP - work on AP alone
+static volatile bool network_clients_running = false; // SNTP, MQTT - connect out, need the uplink
 
 static void network_stop_services(void) {
     ESP_LOGI(TAG, "Stopping network services");
@@ -47,7 +48,8 @@ static void network_stop_services(void) {
         tcp_ota_shutdown();
     }
 
-    network_services_running = false;
+    network_servers_running = false;
+    network_clients_running = false;
 }
 
 static esp_err_t network_adapter_init(void) {
@@ -115,36 +117,41 @@ static void network_adapter_on_event(EventBits_t bits) {
 
     inet_common_on_event(bits);
 
-    if (bits & (NETWORK_UPLINK_READY | INET_EVENT_AP_READY)) {
-
-        // Services start once, on whichever comes first, and keep running: they listen on any
-        // address, so the AP coming and going doesn't touch them
-        if (network_services_running) {
-            if ((bits & NETWORK_UPLINK_READY) && !supervisor_is_safe_mode_active()) {
-                mqtt_init();
-            }
-            return;
-        }
-
-        ESP_LOGI(TAG, "Uplink or AP ready, starting services");
+    // Servers start once, on whichever comes first, and keep running: they listen on any address,
+    // so the AP coming and going doesn't touch them
+    if ((bits & (NETWORK_UPLINK_READY | INET_EVENT_AP_READY)) && !network_servers_running) {
+        ESP_LOGI(TAG, "Uplink or AP ready, starting servers");
         tcp_ota_init();
         tcp_monitor_init();
 
         if (!supervisor_is_safe_mode_active()) {
             inet_common_mdns_init();
-            inet_common_sntp_init();
-            inet_common_mqtt_init();
             inet_common_http_init(config_get()->http_secure);
         }
 
-        network_services_running = true;
+        network_servers_running = true;
+    }
+
+    // Clients wait for the uplink: started on the AP alone MQTT runs out of retries and shuts
+    // itself down, racing with the uplink coming up
+    if ((bits & NETWORK_UPLINK_READY) && !supervisor_is_safe_mode_active()) {
+        if (network_clients_running) {
+            mqtt_init();
+            return;
+        }
+
+        ESP_LOGI(TAG, "Uplink ready, starting clients");
+        inet_common_sntp_init();
+        inet_common_mqtt_init();
+
+        network_clients_running = true;
     }
 }
 
 static void network_adapter_on_interval(supervisor_interval_stage_t stage) {
     inet_common_on_interval(stage);
 
-    if (stage == SUPERVISOR_INTERVAL_10M && network_services_running) {
+    if (stage == SUPERVISOR_INTERVAL_10M && network_clients_running) {
         mqtt_init();
     }
 }

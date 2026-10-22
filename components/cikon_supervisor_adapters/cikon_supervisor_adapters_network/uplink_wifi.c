@@ -1,7 +1,6 @@
 #include <string.h>
 
 #include "esp_event.h"
-#include "esp_log.h"
 #include "esp_netif_types.h"
 #include "esp_wifi_types_generic.h"
 
@@ -12,8 +11,6 @@
 #include "tele.h"
 #include "uplink.h"
 #include "wifi.h"
-
-#define TAG "cikon:uplink:wifi"
 
 static esp_event_handler_instance_t wifi_event_instance = NULL;
 static esp_event_handler_instance_t ip_event_instance = NULL;
@@ -55,11 +52,6 @@ static const char *uplink_wifi_get_or_generate_ap_ssid(void) {
 }
 
 static esp_err_t uplink_wifi_start(void) {
-
-    if (is_wifi_network_connected()) {
-        ESP_LOGW(TAG, "WiFi network already connected, skipping WiFi uplink start");
-        return ESP_ERR_INVALID_STATE;
-    }
 
     wifi_credentials_t creds = {.sta_ssid = config_get()->wifi_ssid,
                                 .sta_password = config_get()->wifi_pass,

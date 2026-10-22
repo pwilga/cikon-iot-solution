@@ -27,8 +27,11 @@ static esp_netif_t *sta_netif = NULL, *ap_netif = NULL;
 static esp_timer_handle_t sta_reconnect_timer = NULL;
 static uint8_t sta_reconnect_attempt = 0; // attempts made in the current burst
 static uint32_t sta_reconnect_backoff_ms = CONFIG_WIFI_STA_RETRY_INITIAL_MS;
+static bool sta_creds_changed = false; // wifi_creds changed, not handed to the driver yet
 
 static esp_timer_handle_t ap_idle_timer = NULL;
+static bool ap_auto_allowed = true; // STA hasn't had an IP since boot and the AP wasn't opened yet
+static bool ap_unused_since_auto_open = false; // AP opened on its own, nobody connected yet
 
 static esp_event_handler_instance_t instance_any_id = NULL;
 static esp_event_handler_instance_t instance_got_ip = NULL;
@@ -40,6 +43,27 @@ static EventGroupHandle_t wifi_event_group = NULL;
 // WIFI_EVENT_STA_DISCONNECTED, and the latter schedules the next attempt. If the request itself
 // is refused no event follows, so re-arm the timer to keep the chain going
 static void wifi_sta_reconnect(void *arg) {
+
+    // New credentials go to the driver here, right before connecting: this is the only place that
+    // starts a connection, so STA can't be in the middle of one (the driver refuses set_config
+    // then)
+    if (sta_creds_changed) {
+        wifi_config_t sta_config = {0};
+
+        strncpy((char *)sta_config.sta.ssid, wifi_creds.sta_ssid, sizeof(sta_config.sta.ssid) - 1);
+        strncpy((char *)sta_config.sta.password, wifi_creds.sta_password,
+                sizeof(sta_config.sta.password) - 1);
+
+        sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+
+        if (esp_wifi_set_config(WIFI_IF_STA, &sta_config) != ESP_OK) {
+            esp_timer_start_once(sta_reconnect_timer,
+                                 (uint64_t)CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS * 1000);
+            return;
+        }
+        sta_creds_changed = false;
+    }
+
     if (esp_wifi_connect() != ESP_OK) {
         esp_timer_start_once(sta_reconnect_timer,
                              (uint64_t)CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS * 1000);
@@ -56,7 +80,8 @@ static void wifi_sta_schedule_reconnect(void) {
     // Fresh disconnect: first attempt right away, no need to bounce through the timer
     if (sta_reconnect_attempt == 0) {
         sta_reconnect_attempt = 1;
-        ESP_LOGI(TAG_STA, "Connection attempt 1/%d", CONFIG_WIFI_STA_BURST_RETRY_COUNT);
+        ESP_LOGW(TAG_STA, "Connecting to '%s' (1/%d)", wifi_creds.sta_ssid,
+                 CONFIG_WIFI_STA_BURST_RETRY_COUNT);
         wifi_sta_reconnect(NULL);
         return;
     }
@@ -66,16 +91,30 @@ static void wifi_sta_schedule_reconnect(void) {
         uint32_t pause_ms = sta_reconnect_backoff_ms;
         sta_reconnect_backoff_ms = MIN(sta_reconnect_backoff_ms * 2, CONFIG_WIFI_STA_RETRY_MAX_MS);
         sta_reconnect_attempt = 1;
-        ESP_LOGI(TAG_STA, "Waiting %" PRIu32 " s before next group of connection attempts",
-                 pause_ms / 1000);
+        ESP_LOGW(TAG_STA,
+                 "Failed to connect to '%s' after %d retries, trying again in %" PRIu32 "s",
+                 wifi_creds.sta_ssid, CONFIG_WIFI_STA_BURST_RETRY_COUNT, pause_ms / 1000);
         esp_timer_start_once(sta_reconnect_timer, (uint64_t)pause_ms * 1000);
+
+        // First burst since boot failed and STA never had an IP: open the AP once, so the device
+        // can be reached to fix its credentials. Later failures don't open it - a router off for a
+        // day shouldn't keep an AP up all day
+        if (ap_auto_allowed) {
+            ap_auto_allowed = false;
+            if (!(xEventGroupGetBits(wifi_event_group) & WIFI_AP_STARTED_BIT)) {
+                ESP_LOGW(TAG_AP, "Opening AP - no STA connection since boot");
+                ap_unused_since_auto_open = true;
+                wifi_ap_enable();
+            }
+        }
         return;
     }
 
     // Within the burst
     sta_reconnect_attempt++;
-    ESP_LOGI(TAG_STA, "Next connection attempt %d/%d in %d s", sta_reconnect_attempt,
-             CONFIG_WIFI_STA_BURST_RETRY_COUNT, CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS / 1000);
+    ESP_LOGW(TAG_STA, "Retrying connection to '%s' (%d/%d) in %ds", wifi_creds.sta_ssid,
+             sta_reconnect_attempt, CONFIG_WIFI_STA_BURST_RETRY_COUNT,
+             CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS / 1000);
     esp_timer_start_once(sta_reconnect_timer,
                          (uint64_t)CONFIG_WIFI_STA_BURST_RETRY_DELAY_MS * 1000);
 }
@@ -88,16 +127,22 @@ static void wifi_sta_reconnect_reset(void) {
     sta_reconnect_backoff_ms = CONFIG_WIFI_STA_RETRY_INITIAL_MS;
 }
 
-// (Re)start the "N minutes without a client" countdown
-static void wifi_ap_idle_countdown_start(void) {
+// Once STA gets its IP the AP only has to last until the portal has seen the result
+#define WIFI_AP_TIMEOUT_AFTER_STA_IP_S 20
+
+// (Re)start the countdown to closing the AP. It runs only while STA has its IP - without it the AP
+// is the only way to reach the device, so it stays. Connected clients don't extend it
+static void wifi_ap_idle_countdown_start(uint32_t timeout_s, const char *reason) {
     esp_timer_stop(ap_idle_timer);
-    esp_timer_start_once(ap_idle_timer,
-                         (uint64_t)CONFIG_WIFI_AP_INACTIVITY_TIMEOUT_MINUTES * 60 * 1000000);
+    esp_timer_start_once(ap_idle_timer, (uint64_t)timeout_s * 1000000);
+    ESP_LOGI(TAG_AP, "AP closes in %" PRIu32 "s - %s", timeout_s, reason);
 }
 
-// Timer callback: the AP sat without a client for the whole countdown. Just a mode change, STA and
-// services are untouched
-static void wifi_ap_idle_timeout(void *arg) { wifi_ap_disable(); }
+// Timer callback: the countdown ran out. Just a mode change, STA and services are untouched
+static void wifi_ap_idle_timeout(void *arg) {
+    ESP_LOGI(TAG_AP, "AP countdown ran out, closing AP");
+    wifi_ap_disable();
+}
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                void *event_data) {
@@ -109,9 +154,17 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         case WIFI_EVENT_STA_DISCONNECTED:
 
             xEventGroupClearBits(wifi_event_group, WIFI_STA_CONNECTED_BIT);
+            // An unused auto-opened AP keeps its own limit - failed attempts mustn't stop it
+            if (!ap_unused_since_auto_open && esp_timer_is_active(ap_idle_timer)) {
+                esp_timer_stop(ap_idle_timer);
+                ESP_LOGI(TAG_AP, "AP stays on - STA lost its network");
+            }
 
             wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)event_data;
-            ESP_LOGI(TAG_STA, "Disconnected, reason: %d", disconn->reason);
+            // SSID from the event, not wifi_creds - after wifi_sta_connect() those already hold the
+            // new network
+            ESP_LOGW(TAG_STA, "Disconnected from '%.*s', reason: %d", disconn->ssid_len,
+                     disconn->ssid, disconn->reason);
 
             wifi_sta_schedule_reconnect();
 
@@ -120,13 +173,23 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
         case WIFI_EVENT_AP_START:
             xEventGroupSetBits(wifi_event_group, WIFI_AP_STARTED_BIT);
             xEventGroupClearBits(wifi_event_group, WIFI_AP_CLIENT_CONNECTED_BIT);
-            wifi_ap_idle_countdown_start();
+            bool sta_has_ip = xEventGroupGetBits(wifi_event_group) & WIFI_STA_CONNECTED_BIT;
+            if (sta_has_ip || ap_unused_since_auto_open) {
+                wifi_ap_idle_countdown_start(CONFIG_WIFI_AP_INACTIVITY_TIMEOUT_MINUTES * 60,
+                                             sta_has_ip ? "STA is connected"
+                                                        : "auto_allowed timeout");
+            } else {
+                ESP_LOGI(TAG_AP, "AP stays on until STA gets an IP");
+            }
             break;
 
         case WIFI_EVENT_AP_STOP:
-            ESP_LOGI(TAG_AP, "Access Point (AP) has been stopped.");
+            ESP_LOGI(TAG_AP, "Access Point has been stopped.");
             esp_timer_stop(ap_idle_timer);
-            xEventGroupClearBits(wifi_event_group, WIFI_AP_STARTED_BIT);
+            ap_unused_since_auto_open = false;
+            // No AP, no clients - STADISCONNECTED may come after the mode change and miss the bit
+            xEventGroupClearBits(wifi_event_group,
+                                 WIFI_AP_STARTED_BIT | WIFI_AP_CLIENT_CONNECTED_BIT);
             xEventGroupSetBits(wifi_event_group, WIFI_STOPPED_BIT);
             break;
 
@@ -136,15 +199,19 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
             break;
 
         case WIFI_EVENT_AP_STACONNECTED:
-            esp_timer_stop(ap_idle_timer);
             xEventGroupSetBits(wifi_event_group, WIFI_AP_CLIENT_CONNECTED_BIT);
+            // Someone uses the auto-opened AP: from now on it's like one turned on by hand
+            if (ap_unused_since_auto_open) {
+                ap_unused_since_auto_open = false;
+                esp_timer_stop(ap_idle_timer);
+                ESP_LOGI(TAG_AP, "AP kept on - client connected");
+            }
             break;
 
         case WIFI_EVENT_AP_STADISCONNECTED: {
             wifi_sta_list_t clients;
             if (esp_wifi_ap_get_sta_list(&clients) == ESP_OK && clients.num == 0) {
                 xEventGroupClearBits(wifi_event_group, WIFI_AP_CLIENT_CONNECTED_BIT);
-                wifi_ap_idle_countdown_start();
             }
             break;
         }
@@ -159,10 +226,23 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 
         xEventGroupSetBits(wifi_event_group, WIFI_STA_CONNECTED_BIT);
         wifi_sta_reconnect_reset();
+        ap_auto_allowed = false;
+
+        EventBits_t bits = xEventGroupGetBits(wifi_event_group);
+        if (bits & WIFI_AP_STARTED_BIT) {
+            // Nobody on the AP waits for the result - close it right away
+            if (!(bits & WIFI_AP_CLIENT_CONNECTED_BIT)) {
+                ESP_LOGI(TAG_AP, "Closing AP - STA got an IP, no client");
+                wifi_ap_disable();
+            } else {
+                wifi_ap_idle_countdown_start(WIFI_AP_TIMEOUT_AFTER_STA_IP_S, "STA got an IP");
+            }
+        }
     }
 }
 
 void wifi_unregister_event_handlers() {
+
     if (instance_got_ip) {
         esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip);
         instance_got_ip = NULL;
@@ -174,7 +254,6 @@ void wifi_unregister_event_handlers() {
     }
 }
 
-// Stops WiFi and destroys the interfaces (used by wifi_shutdown())
 static esp_err_t wifi_stop(void) {
 
     // Check if WiFi driver is running (handle both netif and minimal mode)
@@ -268,13 +347,6 @@ void wifi_shutdown() {
     ESP_LOGI(TAG, "WiFi subsystem shutdown complete");
 }
 
-bool is_wifi_network_connected(void) {
-    if (wifi_event_group == NULL) {
-        return false;
-    }
-    return xEventGroupGetBits(wifi_event_group) & (WIFI_STA_CONNECTED_BIT | WIFI_AP_STARTED_BIT);
-}
-
 static void wifi_configure(const wifi_credentials_t *creds) {
 
     if (creds) {
@@ -364,26 +436,17 @@ esp_err_t wifi_sta_connect(const char *ssid, const char *password) {
     wifi_creds.sta_ssid = ssid;
     wifi_creds.sta_password = password;
 
+    // The next attempt hands them to the driver (see wifi_sta_reconnect)
+    sta_creds_changed = true;
+
     wifi_sta_reconnect_reset();
 
-    // esp_wifi_connect() only uses the driver's own copy of the credentials
-    wifi_config_t sta_config = {0};
+    // Drops the current network and aborts an attempt in progress. The STA_DISCONNECTED that
+    // follows is handled right away (the event task has the higher priority) and starts attempt 1
+    esp_wifi_disconnect();
 
-    strncpy((char *)sta_config.sta.ssid, wifi_creds.sta_ssid, sizeof(sta_config.sta.ssid) - 1);
-    strncpy((char *)sta_config.sta.password, wifi_creds.sta_password,
-            sizeof(sta_config.sta.password) - 1);
-
-    sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-
-    ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &sta_config), TAG_STA,
-                        "set_config(STA) failed");
-
-    // Associated with a network: drop it, STA_DISCONNECTED then starts the attempts with the new
-    // credentials. Not associated: start them right away
-    wifi_ap_record_t ap_info;
-    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        esp_wifi_disconnect();
-    } else {
+    // Nothing to disconnect, so no event started the attempts - start them here
+    if (sta_reconnect_attempt == 0) {
         wifi_sta_schedule_reconnect();
     }
 
@@ -405,12 +468,19 @@ void wifi_ap_enable(void) {
     // Enabling an AP that already runs just extends it
     wifi_mode_t mode;
     if (esp_wifi_get_mode(&mode) == ESP_OK && mode == WIFI_MODE_APSTA) {
-        wifi_ap_idle_countdown_start();
+        if (xEventGroupGetBits(wifi_event_group) & WIFI_STA_CONNECTED_BIT) {
+            wifi_ap_idle_countdown_start(CONFIG_WIFI_AP_INACTIVITY_TIMEOUT_MINUTES * 60,
+                                         "extended, STA is connected");
+        } else if (ap_unused_since_auto_open) {
+            // Turned on by hand over an auto-opened AP: no limit while STA has no IP
+            ap_unused_since_auto_open = false;
+            esp_timer_stop(ap_idle_timer);
+        }
         ESP_LOGI(TAG_AP, "AP already running");
         return;
     }
 
-    // The inactivity countdown starts on WIFI_EVENT_AP_START
+    // The countdown starts on WIFI_EVENT_AP_START
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (err != ESP_OK) {
         ESP_LOGE(TAG_AP, "set_mode(APSTA) failed: %s", esp_err_to_name(err));
@@ -456,8 +526,12 @@ void wifi_get_interface_ip(char *buf, size_t buflen) {
     }
 }
 
+// Both skip the driver while STA isn't connected - esp_wifi_sta_get_ap_info() logs a warning then
+
 int8_t wifi_get_rssi(void) {
     wifi_ap_record_t ap;
+    if (!wifi_event_group || !(xEventGroupGetBits(wifi_event_group) & WIFI_STA_CONNECTED_BIT))
+        return 0;
     if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
         return ap.rssi;
     return 0;
@@ -465,6 +539,8 @@ int8_t wifi_get_rssi(void) {
 
 bool wifi_get_ssid(char *buf, size_t buflen) {
     wifi_ap_record_t ap;
+    if (!wifi_event_group || !(xEventGroupGetBits(wifi_event_group) & WIFI_STA_CONNECTED_BIT))
+        return false;
     if (esp_wifi_sta_get_ap_info(&ap) != ESP_OK)
         return false;
     snprintf(buf, buflen, "%s", (const char *)ap.ssid);
