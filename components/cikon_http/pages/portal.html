@@ -129,9 +129,6 @@ input::placeholder{color:var(--faint)}
   var POLL_MS=1000;              // GET /tele interval while "Connecting…"
   var CONNECT_TIMEOUT_MS=25000;  // give up → "Couldn't connect"
 
-  // ── MOCK: replace with real GET /scan → {saved, aps:[{ssid,rssi,auth}]} (auth 0 = open) ──
-  function mockScan(){return Promise.resolve({aps:[],saved:null})}
-
   // ── REAL: save credentials via POST /cmnd ──
   // true  → HTTP 200 (body is plain "OK", not parsed), or a network error after sending
   //         (the AP stays up but may hop to the new network's channel, so the phone can briefly drop).
@@ -164,7 +161,8 @@ input::placeholder{color:var(--faint)}
     return fetch(url,opts).then(function(r){clearTimeout(to);if(!r.ok)throw 0;return r.json()},function(e){clearTimeout(to);throw e});
   }
   // GET /tele (flat JSON) → name, chip. No answer → header keeps "Cikon device".
-  getJson('/tele',null,1500).then(function(t){
+  // Device serves requests one at a time and /scan blocks ~3 s, so /tele must finish first.
+  var teleP=getJson('/tele',null,1500).then(function(t){
     devName=t.name||'';
     $('sub').textContent=[t.name||'Cikon device',t.chip].filter(Boolean).join(' · ');
   }).catch(function(){});
@@ -174,7 +172,8 @@ input::placeholder{color:var(--faint)}
 
   function scan(){
     var b=$('rescan');b.classList.add('busy');b.lastChild.textContent='Scanning…';
-    mockScan().catch(function(){return {aps:[],saved:null}}).then(function(d){
+    // GET /scan → {saved, aps:[{ssid,rssi,auth}]} (auth 0 = open). ~3 s; repeat within 30 s returns cached result.
+    getJson('/scan',null,8000).catch(function(){return {aps:[],saved:null}}).then(function(d){
       S.aps=d.aps||[];S.saved=d.saved||null;
       b.classList.remove('busy');b.lastChild.textContent='Rescan';renderNets();update();
     });
@@ -272,7 +271,7 @@ input::placeholder{color:var(--faint)}
   function fail(why){$('fail-why').textContent=why;view('fail')}
   $('retry').onclick=function(){clearTimeout(pollT);view('form');renderNets();update()};
 
-  update();scan();
+  update();teleP.then(scan);
 })();
 </script>
 </body>

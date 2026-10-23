@@ -2,6 +2,7 @@
 #define WIFI_H
 
 #include "esp_err.h"
+#include "esp_wifi_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,6 +26,13 @@ esp_err_t wifi_start(const wifi_credentials_t *creds);
  * The strings must stay valid while WiFi runs (only the pointers are kept).
  */
 esp_err_t wifi_sta_connect(const char *ssid, const char *password);
+
+/**
+ * @brief Blocking scan for nearby networks (~3 s). Fills up to max records and returns how many:
+ * one per network name (the strongest access point), hidden networks left out.
+ * STA connection attempts pause during the scan; a connected STA stays connected.
+ */
+uint16_t wifi_scan(wifi_ap_record_t *records, uint16_t max);
 
 /**
  * @brief Bring up the access point next to the running STA (WIFI_MODE_APSTA).

@@ -75,6 +75,7 @@ static esp_err_t network_adapter_init(void) {
 
 #if CONFIG_NETWORK_UPLINK_WIFI
     cmnd_register_group(network_ap_commands);
+    network_ap_http_register();
 #endif
 
     register_restart_callback(inet_common_on_restart);

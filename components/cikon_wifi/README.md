@@ -9,6 +9,7 @@ The component knows nothing about the app config: credentials are passed in by t
 |---|---|
 | `wifi_start(creds)` | Init the driver, create interfaces, start STA and connect to `creds->sta_ssid`. Stores the AP SSID for later. |
 | `wifi_sta_connect(ssid, pass)` | Switch STA to another network at runtime, no restart. The first attempt starts right away. |
+| `wifi_scan(records, max)` | Blocking scan (~3 s), returns the number of networks found - one record per name (the strongest access point), hidden networks left out. STA attempts pause meanwhile, a connected STA stays connected. |
 | `wifi_ap_enable()` / `wifi_ap_disable()` | Add / remove the AP next to STA (`WIFI_MODE_APSTA` ↔ `WIFI_MODE_STA`). |
 | `wifi_shutdown()` | Stop WiFi, destroy interfaces, deinit the driver. |
 | `wifi_get_interface_ip()`, `wifi_get_rssi()`, `wifi_get_ssid()` | Status for telemetry. RSSI and SSID only while STA has an IP. |
@@ -32,8 +33,9 @@ channel, so a STA connecting to another channel briefly drops AP clients.
 ### When the AP opens
 
 - **By hand:** `wifi_ap_enable()` (command, button).
-- **Automatically, once per boot:** when the first burst after boot fails and STA has never had an IP.
-  Later failures (e.g. the router off for a day) don't open it again.
+- **Automatically, once per boot:** when the first connection attempt after boot fails and STA has
+  never had an IP. Later failures (e.g. the router off for a day) don't open it again.
+- **Right away, with no STA network configured:** it stays on like one opened by hand.
 
 ### When the AP closes
 
@@ -42,12 +44,11 @@ channel, so a STA connecting to another channel briefly drops AP clients.
 | STA has no IP, AP opened by hand | stays on |
 | STA has no IP, AP opened automatically, nobody connected | closes after `WIFI_AP_INACTIVITY_TIMEOUT_MINUTES` |
 | a client connects to an automatically opened AP | treated as opened by hand from then on |
-| AP starts (or is enabled again) while STA has an IP | closes after `WIFI_AP_INACTIVITY_TIMEOUT_MINUTES` |
+| STA has an IP, nobody connected | closes after `WIFI_AP_INACTIVITY_TIMEOUT_MINUTES` |
+| STA has an IP, a client is connected | stays on; the countdown starts again when the last client leaves |
 | STA gets an IP, no client on the AP | closes right away |
-| STA gets an IP, a client is connected | closes after 20 s, or earlier on `wifi_ap_disable()` |
+| STA gets an IP, a client is connected | closes after 20 s whatever clients do, or earlier on `wifi_ap_disable()` |
 | STA loses its IP | stays on (except an unused automatically opened AP, which keeps its limit) |
-
-Connected clients never extend the time left.
 
 ## Configuration (Kconfig)
 

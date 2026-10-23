@@ -3,6 +3,6 @@ idf_component_register(
         "wifi.c"
     INCLUDE_DIRS
         "include"
-    PRIV_REQUIRES
+    REQUIRES
         esp_wifi
 )

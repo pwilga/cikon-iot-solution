@@ -12,8 +12,13 @@
 
 #define TAG "cikon:http"
 #define WWW_ROOT CONFIG_VFS_LITTLEFS_MOUNT_POINT "/www"
+#define HTTP_MAX_JSON_ENDPOINTS 8
 
 static httpd_handle_t s_server = NULL;
+
+// JSON endpoints outlive the server: registered once, (re)applied on every http_init()
+static httpd_uri_t s_json_endpoints[HTTP_MAX_JSON_ENDPOINTS];
+static uint8_t s_json_endpoint_count = 0;
 static bool s_secure = false;
 static char s_path[sizeof(WWW_ROOT) + CONFIG_HTTPD_MAX_URI_LEN];
 static char gz_path[sizeof(s_path) + 4]; /* + ".gz\0" */
@@ -195,6 +200,10 @@ void http_init(const http_config_t *cfg) {
     esp_log_level_set("httpd_uri", ESP_LOG_ERROR);
     ESP_LOGI(TAG, "Started on port %d (%s)", cfg->port, cfg->secure ? "https" : "http");
     register_common_handlers();
+
+    for (uint8_t i = 0; i < s_json_endpoint_count; i++) {
+        httpd_register_uri_handler(s_server, &s_json_endpoints[i]);
+    }
 }
 
 void http_shutdown(void) {
@@ -210,21 +219,38 @@ void http_shutdown(void) {
     ESP_LOGI(TAG, "Stopped");
 }
 
-void http_register_json_get(const char *uri, http_json_get_fn_t fn) {
-    if (!s_server) {
-        ESP_LOGE(TAG, "http_init() must be called first");
-        return;
+// Remembers the endpoint (once per uri + method) and registers it right away if the server runs
+static void http_register_json(const httpd_uri_t *endpoint) {
+    bool already_listed = false;
+    for (uint8_t i = 0; i < s_json_endpoint_count; i++) {
+        if (s_json_endpoints[i].method == endpoint->method &&
+            strcmp(s_json_endpoints[i].uri, endpoint->uri) == 0) {
+            already_listed = true;
+            break;
+        }
     }
-    httpd_uri_t ep = {.uri = uri, .method = HTTP_GET, .handler = json_get_handler, .user_ctx = fn};
-    httpd_register_uri_handler(s_server, &ep);
+
+    if (!already_listed) {
+        if (s_json_endpoint_count < HTTP_MAX_JSON_ENDPOINTS) {
+            s_json_endpoints[s_json_endpoint_count++] = *endpoint;
+        } else {
+            ESP_LOGE(TAG, "Too many JSON endpoints, %s not kept across restarts", endpoint->uri);
+        }
+    }
+
+    if (s_server) {
+        httpd_register_uri_handler(s_server, endpoint);
+    }
+}
+
+void http_register_json_get(const char *uri, http_json_get_fn_t fn) {
+    httpd_uri_t endpoint = {
+        .uri = uri, .method = HTTP_GET, .handler = json_get_handler, .user_ctx = fn};
+    http_register_json(&endpoint);
 }
 
 void http_register_json_post(const char *uri, http_json_post_fn_t fn) {
-    if (!s_server) {
-        ESP_LOGE(TAG, "http_init() must be called first");
-        return;
-    }
-    httpd_uri_t ep = {
+    httpd_uri_t endpoint = {
         .uri = uri, .method = HTTP_POST, .handler = json_post_handler, .user_ctx = fn};
-    httpd_register_uri_handler(s_server, &ep);
+    http_register_json(&endpoint);
 }
