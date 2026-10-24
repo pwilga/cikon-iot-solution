@@ -598,10 +598,7 @@ void wifi_ap_disable(void) {
     esp_err_t err = esp_wifi_set_mode(WIFI_MODE_STA);
     if (err != ESP_OK) {
         ESP_LOGE(TAG_AP, "set_mode(STA) failed: %s", esp_err_to_name(err));
-        return;
     }
-
-    ESP_LOGI(TAG_AP, "Access Point disabled, STA only");
 }
 
 void wifi_get_interface_ip(char *buf, size_t buflen) {

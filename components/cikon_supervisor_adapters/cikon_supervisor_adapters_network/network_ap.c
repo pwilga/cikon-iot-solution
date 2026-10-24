@@ -53,7 +53,7 @@ const command_entry_t network_ap_commands[] = {
     {NULL, NULL, NULL}};
 
 // GET /scan for the WiFi setup portal: {"saved": "<ssid>", "aps": [{"ssid", "rssi", "auth"}]}
-// auth 0 = open network. The portal itself removes duplicates and sorts by rssi
+// Only networks STA can join (WPA2 or better). The portal itself sorts by rssi
 static void network_ap_scan_json(cJSON *root) {
     int64_t now_us = esp_timer_get_time();
     int64_t age_s = (now_us - scan_time_us) / 1000000;
@@ -64,6 +64,10 @@ static void network_ap_scan_json(cJSON *root) {
 
         scan_entry_count = 0;
         for (uint16_t i = 0; i < count; i++) {
+            // STA accepts WPA2 at least - weaker networks would only fail to connect
+            if (records[i].authmode < WIFI_AUTH_WPA2_PSK) {
+                continue;
+            }
             network_ap_scan_entry_t *entry = &scan_entries[scan_entry_count++];
             strlcpy(entry->ssid, (const char *)records[i].ssid, sizeof(entry->ssid));
             entry->rssi = records[i].rssi;
