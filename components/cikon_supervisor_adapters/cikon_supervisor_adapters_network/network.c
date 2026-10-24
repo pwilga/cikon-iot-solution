@@ -120,7 +120,7 @@ static void network_adapter_on_event(EventBits_t bits) {
 
     // Servers start once, on whichever comes first, and keep running: they listen on any address,
     // so the AP coming and going doesn't touch them
-    if ((bits & (NETWORK_UPLINK_READY | INET_EVENT_AP_READY)) && !network_servers_running) {
+    if ((bits & (NETWORK_UPLINK_READY | NETWORK_AP_READY)) && !network_servers_running) {
         ESP_LOGI(TAG, "Uplink or AP ready, starting servers");
         tcp_ota_init();
         tcp_monitor_init();

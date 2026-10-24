@@ -233,11 +233,11 @@ static void led_indicator_adapter_on_event(EventBits_t bits) {
     //     led_indicator_start(led_handle, BLINK_PLATFORM_INITIALIZED);
     // }
 
-    if (bits & INET_EVENT_STA_READY) {
+    if (bits & NETWORK_UPLINK_READY) {
         led_indicator_start(led_handle, BLINK_STA_READY);
     }
 
-    if (bits & INET_EVENT_STA_LOST) {
+    if (bits & NETWORK_UPLINK_LOST) {
         led_indicator_stop(led_handle, BLINK_INTERNET_READY);
         led_indicator_stop(led_handle, BLINK_STA_READY);
     }

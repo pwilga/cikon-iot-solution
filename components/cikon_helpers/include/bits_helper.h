@@ -21,11 +21,9 @@
 #define SUPERVISOR_EVENT_CMND_COMPLETED BIT0
 #define SUPERVISOR_EVENT_PLATFORM_INITIALIZED BIT1
 
-// BIT2-4: Available
+// BIT2-6: Available
 
-#define INET_EVENT_STA_READY BIT5 // WiFi STA got IP
-#define INET_EVENT_STA_LOST BIT6  // WiFi STA disconnected
-#define INET_EVENT_AP_READY BIT7
+#define NETWORK_AP_READY BIT7       // Network: WiFi access point started
 #define NETWORK_INTERNET_READY BIT8 // Network: internet reachable (TCP to 8.8.8.8:53)
 #define NETWORK_INTERNET_LOST BIT9  // Network: internet no longer reachable
 #define INET_ETH_READY BIT10        // Ethernet got IP

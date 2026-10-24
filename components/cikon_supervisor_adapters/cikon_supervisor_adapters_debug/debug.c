@@ -168,14 +168,14 @@ static void debug_adapter_on_event(EventBits_t bits) {
     }
 
     // Inet adapter events
-    if (bits & INET_EVENT_STA_READY) {
-        ESP_LOGI(TAG, "  -> INET_EVENT_STA_READY");
+    if (bits & NETWORK_UPLINK_READY) {
+        ESP_LOGI(TAG, "  -> NETWORK_UPLINK_READY");
     }
-    if (bits & INET_EVENT_AP_READY) {
-        ESP_LOGI(TAG, "  -> INET_EVENT_AP_READY");
+    if (bits & NETWORK_AP_READY) {
+        ESP_LOGI(TAG, "  -> NETWORK_AP_READY");
     }
-    if (bits & INET_EVENT_STA_LOST) {
-        ESP_LOGI(TAG, "  -> INET_EVENT_STA_LOST");
+    if (bits & NETWORK_UPLINK_LOST) {
+        ESP_LOGI(TAG, "  -> NETWORK_UPLINK_LOST");
     }
     if (bits & NETWORK_INTERNET_READY) {
         ESP_LOGI(TAG, "  -> NETWORK_INTERNET_READY");

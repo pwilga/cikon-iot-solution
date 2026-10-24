@@ -26,14 +26,14 @@ static void uplink_wifi_event_handler(void *arg, esp_event_base_t event_base, in
                                       void *event_data) {
 
     if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
-        supervisor_notify_event(INET_EVENT_STA_READY | NETWORK_UPLINK_READY);
+        supervisor_notify_event(NETWORK_UPLINK_READY);
     } else if (event_base == WIFI_EVENT) {
         switch (event_id) {
         case WIFI_EVENT_STA_DISCONNECTED:
-            supervisor_notify_event(INET_EVENT_STA_LOST | NETWORK_UPLINK_LOST);
+            supervisor_notify_event(NETWORK_UPLINK_LOST);
             break;
         case WIFI_EVENT_AP_START: {
-            supervisor_notify_event(INET_EVENT_AP_READY);
+            supervisor_notify_event(NETWORK_AP_READY);
 
             // Phones check the internet on their own test address when they join: DNS sends it to
             // the device, and the missing page there redirects to the portal, which they then open

@@ -218,7 +218,7 @@ static void on_backbone_ready(void) {
 }
 
 static void thread_border_router_adapter_on_event(EventBits_t bits) {
-    if (bits & (INET_ETH_READY | INET_EVENT_STA_READY)) {
+    if (bits & (INET_ETH_READY | NETWORK_UPLINK_READY)) {
         on_backbone_ready();
     }
 }
