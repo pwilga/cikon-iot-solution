@@ -3,6 +3,8 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "lwip/tcpip.h"
+#include "lwip/udp.h"
 
 #include "config_manager.h"
 #include "http_server.h"
@@ -19,6 +21,12 @@
 #define NETWORK_AP_SCAN_MAX 20     // networks listed by GET /scan
 #define NETWORK_AP_SCAN_CACHE_S 30 // GET /scan within this time returns the last results
 
+#define NETWORK_AP_DNS_PORT 53
+#define NETWORK_AP_DNS_MAX_LEN 512   // plain DNS over UDP never goes above it
+#define NETWORK_AP_DNS_HEADER_LEN 12 // id, flags, 4 counters
+#define NETWORK_AP_DNS_ANSWER_LEN 16 // name pointer, type, class, TTL, length, IPv4
+#define NETWORK_AP_DNS_TTL_S 60
+
 // Only what the portal needs from wifi_ap_record_t (35 B instead of ~90 B per network)
 typedef struct {
     char ssid[33];
@@ -31,6 +39,12 @@ typedef struct {
 static network_ap_scan_entry_t scan_entries[NETWORK_AP_SCAN_MAX];
 static uint8_t scan_entry_count = 0;
 static int64_t scan_time_us = 0; // 0 = no scan yet
+
+// DNS runs on the raw lwIP API: no task, no socket (the socket limit is already nearly used up).
+// The pcb and the packet buffer are only touched in the lwIP thread
+static struct udp_pcb *dns_pcb = NULL;
+static esp_ip4_addr_t dns_ap_ip;
+static uint8_t dns_packet[NETWORK_AP_DNS_MAX_LEN];
 
 static void network_ap_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
@@ -91,5 +105,117 @@ static void network_ap_scan_json(cJSON *root) {
 }
 
 void network_ap_http_register(void) { http_register_json_get("/scan", network_ap_scan_json); }
+
+// One query in, one reply out: an A question gets the AP address, any other (AAAA, HTTPS) an empty
+// answer, so the phone stays on IPv4. Runs in the lwIP thread
+static void network_ap_dns_recv(void *arg, struct udp_pcb *pcb, struct pbuf *p,
+                                const ip_addr_t *addr, u16_t port) {
+
+    // Room for the answer stays at the end of the buffer
+    uint16_t len =
+        pbuf_copy_partial(p, dns_packet, sizeof(dns_packet) - NETWORK_AP_DNS_ANSWER_LEN, 0);
+    pbuf_free(p);
+
+    // Standard query (QR and opcode 0) with exactly one question
+    if (len < NETWORK_AP_DNS_HEADER_LEN || (dns_packet[2] & 0xF8) != 0 || dns_packet[4] != 0 ||
+        dns_packet[5] != 1) {
+        return;
+    }
+
+    // Skip the question name: length-prefixed labels up to a zero byte
+    uint16_t pos = NETWORK_AP_DNS_HEADER_LEN;
+    while (pos < len && dns_packet[pos] != 0) {
+        if (dns_packet[pos] & 0xC0) {
+            return; // compression pointer, never used in a question
+        }
+        pos += dns_packet[pos] + 1;
+    }
+
+    // Zero byte, type and class must fit
+    if (pos + 5 > len) {
+        return;
+    }
+
+    bool type_a = dns_packet[pos + 1] == 0 && dns_packet[pos + 2] == 1 &&
+                  dns_packet[pos + 3] == 0 && dns_packet[pos + 4] == 1;
+    uint16_t reply_len = pos + 5; // what follows the question (EDNS) is dropped
+
+    dns_packet[2] |= 0x80; // response, keeps "recursion desired"
+    dns_packet[3] = 0x80;  // recursion available, no error
+    dns_packet[6] = 0;
+    dns_packet[7] = type_a ? 1 : 0;
+    memset(&dns_packet[8], 0, 4); // no authority, no additional records
+
+    if (type_a) {
+        uint8_t *answer = &dns_packet[reply_len];
+        const uint8_t answer_head[] = {0xC0, NETWORK_AP_DNS_HEADER_LEN, // name = the question's
+                                       0,    1,                         // type A
+                                       0,    1,                         // class IN
+                                       0,    0,
+                                       0,    NETWORK_AP_DNS_TTL_S, // TTL
+                                       0,    4};                   // IPv4 length
+        memcpy(answer, answer_head, sizeof(answer_head));
+        memcpy(answer + sizeof(answer_head), &dns_ap_ip.addr, 4); // already in network order
+        reply_len += NETWORK_AP_DNS_ANSWER_LEN;
+    }
+
+    struct pbuf *reply = pbuf_alloc(PBUF_TRANSPORT, reply_len, PBUF_RAM);
+    if (reply == NULL) {
+        return;
+    }
+    pbuf_take(reply, dns_packet, reply_len);
+    udp_sendto(pcb, reply, addr, port);
+    pbuf_free(reply);
+}
+
+static void network_ap_dns_open(void *arg) {
+
+    if (dns_pcb) {
+        return;
+    }
+
+    dns_pcb = udp_new();
+    if (dns_pcb == NULL) {
+        ESP_LOGE(TAG, "DNS: no memory for the UDP pcb");
+        return;
+    }
+
+    ip_addr_t bind_ip = IPADDR4_INIT(dns_ap_ip.addr);
+    if (udp_bind(dns_pcb, &bind_ip, NETWORK_AP_DNS_PORT) != ERR_OK) {
+        ESP_LOGE(TAG, "DNS: bind to port %d failed", NETWORK_AP_DNS_PORT);
+        udp_remove(dns_pcb);
+        dns_pcb = NULL;
+        return;
+    }
+
+    udp_recv(dns_pcb, network_ap_dns_recv, NULL);
+    ESP_LOGI(TAG, "DNS started, every name points to " IPSTR, IP2STR(&dns_ap_ip));
+}
+
+static void network_ap_dns_close(void *arg) {
+
+    if (dns_pcb == NULL) {
+        return;
+    }
+
+    udp_remove(dns_pcb);
+    dns_pcb = NULL;
+    ESP_LOGI(TAG, "DNS stopped");
+}
+
+// lwIP calls go through its own thread: start and stop queue up there in order, so a quick
+// ap off / ap on can't race
+void network_ap_dns_start(esp_ip4_addr_t ap_ip) {
+    dns_ap_ip = ap_ip;
+    if (tcpip_callback(network_ap_dns_open, NULL) != ERR_OK) {
+        ESP_LOGE(TAG, "DNS: start not queued");
+    }
+}
+
+void network_ap_dns_stop(void) {
+    if (tcpip_callback(network_ap_dns_close, NULL) != ERR_OK) {
+        ESP_LOGE(TAG, "DNS: stop not queued");
+    }
+}
 
 #endif

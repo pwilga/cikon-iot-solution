@@ -1,11 +1,14 @@
 #include <string.h>
 
 #include "esp_event.h"
+#include "esp_netif.h"
 #include "esp_netif_types.h"
 #include "esp_wifi_types_generic.h"
 
 #include "bits_helper.h"
 #include "config_manager.h"
+#include "http_server.h"
+#include "network_ap.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
@@ -14,6 +17,8 @@
 
 static esp_event_handler_instance_t wifi_event_instance = NULL;
 static esp_event_handler_instance_t ip_event_instance = NULL;
+
+static char portal_url[40]; // "http://<AP IP>/portal.html", kept by the HTTP server as a pointer
 
 static void uplink_wifi_on_restart(void) { wifi_unregister_event_handlers(); }
 
@@ -27,11 +32,22 @@ static void uplink_wifi_event_handler(void *arg, esp_event_base_t event_base, in
         case WIFI_EVENT_STA_DISCONNECTED:
             supervisor_notify_event(INET_EVENT_STA_LOST | NETWORK_UPLINK_LOST);
             break;
-        case WIFI_EVENT_AP_START:
+        case WIFI_EVENT_AP_START: {
             supervisor_notify_event(INET_EVENT_AP_READY);
+
+            // Phones check the internet on their own test address when they join: DNS sends it to
+            // the device, and the missing page there redirects to the portal, which they then open
+            esp_netif_ip_info_t ap_ip_info;
+            esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("WIFI_AP_DEF"), &ap_ip_info);
+            network_ap_dns_start(ap_ip_info.ip);
+            snprintf(portal_url, sizeof(portal_url), "http://" IPSTR "/portal.html",
+                     IP2STR(&ap_ip_info.ip));
+            http_set_not_found_redirect(portal_url);
             break;
+        }
         case WIFI_EVENT_AP_STOP:
-            // AP runs next to STA, nothing to stop
+            network_ap_dns_stop();
+            http_set_not_found_redirect(NULL);
             break;
         }
     }
@@ -81,6 +97,10 @@ static esp_err_t uplink_wifi_stop(void) {
     }
 
     unregister_restart_callback(uplink_wifi_on_restart);
+
+    // The handler is gone, so AP_STOP from the shutdown below wouldn't reach it
+    network_ap_dns_stop();
+    http_set_not_found_redirect(NULL);
 
     wifi_shutdown();
 

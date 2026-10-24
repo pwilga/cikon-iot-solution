@@ -19,6 +19,7 @@ static httpd_handle_t s_server = NULL;
 // JSON endpoints outlive the server: registered once, (re)applied on every http_init()
 static httpd_uri_t s_json_endpoints[HTTP_MAX_JSON_ENDPOINTS];
 static uint8_t s_json_endpoint_count = 0;
+static const char *s_not_found_redirect = NULL; // NULL = missing files get 404
 static bool s_secure = false;
 static char s_path[sizeof(WWW_ROOT) + CONFIG_HTTPD_MAX_URI_LEN];
 static char gz_path[sizeof(s_path) + 4]; /* + ".gz\0" */
@@ -69,6 +70,19 @@ static esp_err_t static_file_handler(httpd_req_t *req, httpd_err_code_t err) {
         }
     }
     if (!f) {
+        // Read once: it may be switched off from another task meanwhile
+        const char *redirect = s_not_found_redirect;
+        if (redirect) {
+            // Path part of a full URL - a missing target must not redirect to itself forever
+            const char *scheme_end = strstr(redirect, "://");
+            const char *target_path = scheme_end ? strchr(scheme_end + 3, '/') : redirect;
+            if (target_path && strcmp(req->uri, target_path) != 0) {
+                http_log("GET", 302, s_path, 0);
+                httpd_resp_set_status(req, "302 Found");
+                httpd_resp_set_hdr(req, "Location", redirect);
+                return httpd_resp_send(req, NULL, 0);
+            }
+        }
         http_log("GET", 404, s_path, 0);
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, NULL);
         return ESP_FAIL;
@@ -254,3 +268,5 @@ void http_register_json_post(const char *uri, http_json_post_fn_t fn) {
         .uri = uri, .method = HTTP_POST, .handler = json_post_handler, .user_ctx = fn};
     http_register_json(&endpoint);
 }
+
+void http_set_not_found_redirect(const char *location) { s_not_found_redirect = location; }

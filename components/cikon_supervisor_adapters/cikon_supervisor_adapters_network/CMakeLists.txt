@@ -10,4 +10,5 @@ idf_component_register(
     PRIV_REQUIRES
         esp_wifi
         esp_netif_stack
+        lwip
 )
