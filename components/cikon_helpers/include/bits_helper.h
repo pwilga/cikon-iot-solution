@@ -26,10 +26,10 @@
 #define INET_EVENT_STA_READY BIT5 // WiFi STA got IP
 #define INET_EVENT_STA_LOST BIT6  // WiFi STA disconnected
 #define INET_EVENT_AP_READY BIT7
-#define INET_INTERNET_READY BIT8
-#define INET_INTERNET_LOST BIT9
-#define INET_ETH_READY BIT10 // Ethernet got IP
-#define INET_ETH_LOST BIT11  // Ethernet link down
+#define NETWORK_INTERNET_READY BIT8 // Network: internet reachable (TCP to 8.8.8.8:53)
+#define NETWORK_INTERNET_LOST BIT9  // Network: internet no longer reachable
+#define INET_ETH_READY BIT10        // Ethernet got IP
+#define INET_ETH_LOST BIT11         // Ethernet link down
 
 #define THREAD_BORDER_ROUTER_READY BIT12 // Thread border router initialized
 #define THREAD_DEVICE_READY BIT13        // Thread device joined network

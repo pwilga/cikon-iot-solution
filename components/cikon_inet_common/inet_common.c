@@ -314,7 +314,7 @@ void inet_common_poll_internet_reachability(void) {
 
     bool current_state = is_internet_reachable();
     if (current_state != last_internet_reachable) {
-        supervisor_notify_event(current_state ? INET_INTERNET_READY : INET_INTERNET_LOST);
+        supervisor_notify_event(current_state ? NETWORK_INTERNET_READY : NETWORK_INTERNET_LOST);
         last_internet_reachable = current_state;
     }
 }

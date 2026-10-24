@@ -177,11 +177,11 @@ static void debug_adapter_on_event(EventBits_t bits) {
     if (bits & INET_EVENT_STA_LOST) {
         ESP_LOGI(TAG, "  -> INET_EVENT_STA_LOST");
     }
-    if (bits & INET_INTERNET_READY) {
-        ESP_LOGI(TAG, "  -> INET_INTERNET_READY");
+    if (bits & NETWORK_INTERNET_READY) {
+        ESP_LOGI(TAG, "  -> NETWORK_INTERNET_READY");
     }
-    if (bits & INET_INTERNET_LOST) {
-        ESP_LOGI(TAG, "  -> INET_INTERNET_LOST");
+    if (bits & NETWORK_INTERNET_LOST) {
+        ESP_LOGI(TAG, "  -> NETWORK_INTERNET_LOST");
     }
 
     // Thread adapter events
