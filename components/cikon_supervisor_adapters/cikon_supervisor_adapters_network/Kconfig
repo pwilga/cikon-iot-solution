@@ -8,4 +8,11 @@ menu "Cikon IoT Supervisor Network Adapter"
         help
             Bring the device onto the network over WiFi (STA, with AP mode for local access).
 
+    config NETWORK_UPLINK_ETHERNET
+        bool "Ethernet uplink"
+        default n
+        help
+            Bring the device onto the network over Ethernet (hardware selected in cikon_ethernet).
+            Takes precedence over WiFi when both are enabled - only one uplink starts.
+
 endmenu

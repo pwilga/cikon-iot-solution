@@ -18,3 +18,7 @@ typedef struct {
 #if CONFIG_NETWORK_UPLINK_WIFI
 extern const uplink_t uplink_wifi;
 #endif
+
+#if CONFIG_NETWORK_UPLINK_ETHERNET
+extern const uplink_t uplink_ethernet;
+#endif

@@ -14,7 +14,6 @@
 
 // Local service access point next to the uplink. Not an uplink itself: it only adds an interface
 // the already running services answer on.
-#if CONFIG_NETWORK_UPLINK_WIFI
 
 #define TAG "cikon:network:ap"
 
@@ -217,5 +216,3 @@ void network_ap_dns_stop(void) {
         ESP_LOGE(TAG, "DNS: stop not queued");
     }
 }
-
-#endif

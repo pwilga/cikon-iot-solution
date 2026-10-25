@@ -1,6 +1,6 @@
 name: cikon_supervisor_adapters_network
 version: "1.0.0"
-description: "Supervisor network adapter - uplink (WiFi) + MQTT, HTTP, SNTP, mDNS, OTA services"
+description: "Supervisor network adapter - uplink (WiFi, Ethernet) + MQTT, HTTP, SNTP, mDNS, OTA services"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
@@ -32,6 +32,12 @@ dependencies:
   cikon_wifi:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_wifi
+  # Ethernet drivers come from the component registry - pulled only with the Ethernet uplink
+  cikon_ethernet:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_ethernet
+    matches:
+      - if: "$CONFIG{NETWORK_UPLINK_ETHERNET} == True"
   cikon_tcp_ota:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_tcp_ota
