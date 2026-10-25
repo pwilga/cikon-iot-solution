@@ -1,3 +1,4 @@
+#include "cJSON.h"
 #include "esp_eth.h"   // IWYU pragma: keep
 #include "esp_event.h" // IWYU pragma: keep
 #include "esp_log.h"
