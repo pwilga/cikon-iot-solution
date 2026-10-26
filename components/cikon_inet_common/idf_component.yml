@@ -1,6 +1,6 @@
 name: cikon_inet_common
 version: "1.0.0"
-description: "Cikon IoT Solution - Common helpers for network adapters (network, ethernet)"
+description: "Cikon IoT Solution - Common helpers for the network adapter"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:

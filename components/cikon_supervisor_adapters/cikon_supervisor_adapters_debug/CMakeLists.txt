@@ -7,4 +7,6 @@ idf_component_register(
         spi_flash
         app_update
         espcoredump
+        esp_netif
+        lwip
 )

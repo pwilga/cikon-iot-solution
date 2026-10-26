@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,11 +8,14 @@
 #include "esp_core_dump.h"
 #include "esp_flash.h"
 #include "esp_log.h"
+#include "esp_netif.h"
+#include "esp_netif_net_stack.h"
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/idf_additions.h"
+#include "lwip/netif.h"
 
 #include "bits_helper.h"
 #include "config_manager.h"
@@ -32,10 +36,8 @@ static char failed_ota_version[32] = "unknown";
 __attribute__((weak)) void wifi_log_event_group_bits(void) {}
 
 __attribute__((weak)) bool get_netif_ip(const char *if_key, char *buf, size_t len) { return false; }
-__attribute__((weak)) void mesh_log_ap_clients(void) {}
 
 __attribute__((weak)) void mqtt_log_event_group_bits(void) {}
-__attribute__((weak)) void mesh_log_topology(void) {}
 __attribute__((weak)) void thread_log_network_info(void) {}
 
 // Helper for random float generation
@@ -193,6 +195,37 @@ static void debug_adapter_on_event(EventBits_t bits) {
     }
 }
 
+#if CONFIG_LWIP_IPV6
+// IPv6 addresses of the Ethernet netif with their lwIP state, printed right below "ETH IP". Read
+// without the lwIP lock - for a log line a stale state at worst. Silent without IPv6 on Ethernet
+static void debug_log_eth_ip6(void) {
+    esp_netif_t *esp_netif = esp_netif_get_handle_from_ifkey("ETH_DEF");
+    struct netif *netif = esp_netif ? esp_netif_get_netif_impl(esp_netif) : NULL;
+    if (netif == NULL) {
+        return;
+    }
+
+    char addr[IP6ADDR_STRLEN_MAX];
+
+    for (int i = 0; i < LWIP_IPV6_NUM_ADDRESSES; i++) {
+        u8_t state = netif_ip6_addr_state(netif, i);
+        if (ip6_addr_isinvalid(state)) {
+            continue;
+        }
+        const char *state_str = ip6_addr_istentative(state)    ? "tentative"
+                                : ip6_addr_isduplicated(state) ? "duplicated"
+                                : ip6_addr_ispreferred(state)  ? "preferred"
+                                : ip6_addr_isdeprecated(state) ? "deprecated"
+                                                               : "other";
+        ip6addr_ntoa_r(ip_2_ip6(&netif->ip6_addr[i]), addr, sizeof(addr));
+        for (char *c = addr; *c; c++) {
+            *c = tolower((unsigned char)*c); // lwIP prints hex in upper case
+        }
+        ESP_LOGI(TAG, "ETH IPv6: %s (%s)", addr, state_str);
+    }
+}
+#endif
+
 static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
     if (!initialized) {
         return;
@@ -230,6 +263,9 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         if (get_netif_ip("ETH_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "ETH IP: %s", ip);
         }
+#if CONFIG_LWIP_IPV6
+        debug_log_eth_ip6();
+#endif
 
         // Alert continuously if failed OTA detected (passive reporting)
         if (failed_ota_partition != NULL) {
@@ -245,8 +281,6 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 
     if (stage == SUPERVISOR_INTERVAL_10S) {
-        mesh_log_topology();
-        mesh_log_ap_clients();
         thread_log_network_info();
     }
 }

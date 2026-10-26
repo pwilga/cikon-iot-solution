@@ -85,33 +85,35 @@ static void handle_ota(const int client_sock) {
     // Mark that update is in progress (cannot be interrupted)
     ota_update_in_progress = true;
 
+    // Every header part must arrive whole - a client that isn't an OTA uploader (port scan,
+    // browser) would otherwise leave firmware_size at 0 and the progress calculation divides by it
     OTA_LOG_STEP(0); // Magic header
-    if (read_all(client_sock, rx_buffer) == sizeof(magic_bytes)) {
-        ESP_GOTO_ON_FALSE(!memcmp(rx_buffer, magic_bytes, sizeof(magic_bytes)), ESP_ERR_INVALID_ARG,
-                          cleanup, TAG, "Invalid OTA magic header");
-        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
-    }
+    ESP_GOTO_ON_FALSE(read_all(client_sock, rx_buffer) == sizeof(magic_bytes), ESP_ERR_INVALID_SIZE,
+                      cleanup, TAG, "No OTA magic header");
+    ESP_GOTO_ON_FALSE(!memcmp(rx_buffer, magic_bytes, sizeof(magic_bytes)), ESP_ERR_INVALID_ARG,
+                      cleanup, TAG, "Invalid OTA magic header");
+    ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     vTaskDelay(1);
 
     OTA_LOG_STEP(1); // Version, Size, MD5
-    if (read_all(client_sock, rx_buffer) == sizeof(sw_version)) {
-        memcpy(sw_version, rx_buffer, sizeof(sw_version));
-        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
-    }
+    ESP_GOTO_ON_FALSE(read_all(client_sock, rx_buffer) == sizeof(sw_version), ESP_ERR_INVALID_SIZE,
+                      cleanup, TAG, "No firmware version");
+    memcpy(sw_version, rx_buffer, sizeof(sw_version));
+    ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     vTaskDelay(1);
 
-    if (read_all(client_sock, rx_buffer) == sizeof(uint32_t)) {
-        firmware_size = ((uint32_t)rx_buffer[0] << 24) | ((uint32_t)rx_buffer[1] << 16) |
-                        ((uint32_t)rx_buffer[2] << 8) | ((uint32_t)rx_buffer[3]);
-
-        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
-    }
+    ESP_GOTO_ON_FALSE(read_all(client_sock, rx_buffer) == sizeof(uint32_t), ESP_ERR_INVALID_SIZE,
+                      cleanup, TAG, "No firmware size");
+    firmware_size = ((uint32_t)rx_buffer[0] << 24) | ((uint32_t)rx_buffer[1] << 16) |
+                    ((uint32_t)rx_buffer[2] << 8) | ((uint32_t)rx_buffer[3]);
+    ESP_GOTO_ON_FALSE(firmware_size > 0, ESP_ERR_INVALID_SIZE, cleanup, TAG, "Firmware size is 0");
+    ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     vTaskDelay(1);
 
-    if (read_all(client_sock, rx_buffer) == sizeof(md5_expected)) {
-        memcpy(md5_expected, rx_buffer, sizeof(md5_expected));
-        ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
-    }
+    ESP_GOTO_ON_FALSE(read_all(client_sock, rx_buffer) == sizeof(md5_expected),
+                      ESP_ERR_INVALID_SIZE, cleanup, TAG, "No firmware MD5");
+    memcpy(md5_expected, rx_buffer, sizeof(md5_expected));
+    ESP_GOTO_ON_FALSE(send_ack(client_sock), ESP_FAIL, cleanup, TAG, "ACK failed");
     vTaskDelay(1);
 
     OTA_LOG_STEP(2);

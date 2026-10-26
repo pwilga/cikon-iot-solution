@@ -18,6 +18,8 @@
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
+#include "lwip/nd6.h"
+#include "lwip/tcpip.h"
 #include "openthread/border_routing.h"
 #include "openthread/dataset_ftd.h"
 #include "openthread/thread.h"
@@ -35,6 +37,8 @@ static esp_event_handler_instance_t s_ip6_handler =
     NULL; // one-shot: fires once backbone IPv6 link-local is up, then unregisters itself
 static esp_event_handler_instance_t s_role_handler =
     NULL; // one-shot: fires once Thread attaches as Leader/Router, then unregisters itself
+static esp_event_handler_instance_t s_ip6_back_handler =
+    NULL; // stays: backbone IPv6 address back after an outage
 static esp_netif_t *s_backbone_netif = NULL;
 
 static bool initialized = false;
@@ -200,8 +204,39 @@ static void on_backbone_ip6(void *arg, esp_event_base_t base, int32_t id, void *
     xTaskCreate(border_router_start_task, "br_start", 6144, NULL, 5, NULL);
 }
 
+static void clear_ip6_route_cache(void *arg) { nd6_clear_destination_cache(); }
+
+// Global IPv6 address back on the backbone = its on-link prefix is known again. Hosts that sent
+// traffic into Thread before that got cached as "via the default router", and lwIP keeps that
+// after the prefix returns - their replies stay misrouted until the cache is cleared
+static void on_backbone_ip6_back(void *arg, esp_event_base_t base, int32_t id, void *data) {
+    ip_event_got_ip6_t *evt = (ip_event_got_ip6_t *)data;
+    if (evt->esp_netif != s_backbone_netif ||
+        esp_netif_ip6_get_addr_type(&evt->ip6_info.ip) == ESP_IP6_ADDR_IS_LINK_LOCAL) {
+        return;
+    }
+    tcpip_callback(clear_ip6_route_cache, NULL);
+    ESP_LOGI(TAG, "Backbone IPv6 address back, IPv6 route cache cleared");
+}
+
 static void on_backbone_ready(void) {
-    if (initialized || !s_ot_started) {
+    if (initialized) {
+        if (s_ip6_back_handler == NULL) {
+            esp_event_handler_instance_register(IP_EVENT, IP_EVENT_GOT_IP6, on_backbone_ip6_back,
+                                                NULL, &s_ip6_back_handler);
+        }
+
+        // The uplink came back: after a longer outage its IPv6 link-local is gone and nothing else
+        // recreates it - border routing (RS/RA) and routes into Thread would stay dead
+        esp_ip6_addr_t link_local;
+        if (esp_netif_get_ip6_linklocal(s_backbone_netif, &link_local) != ESP_OK) {
+            ESP_LOGW(TAG, "Backbone lost its IPv6 link-local, recreating");
+            esp_netif_create_ip6_linklocal(s_backbone_netif);
+        }
+        return;
+    }
+
+    if (!s_ot_started) {
         return;
     }
 
@@ -218,7 +253,7 @@ static void on_backbone_ready(void) {
 }
 
 static void thread_border_router_adapter_on_event(EventBits_t bits) {
-    if (bits & (INET_ETH_READY | NETWORK_UPLINK_READY)) {
+    if (bits & NETWORK_UPLINK_READY) {
         on_backbone_ready();
     }
 }

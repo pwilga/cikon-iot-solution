@@ -26,8 +26,8 @@
 #define NETWORK_AP_READY BIT7       // Network: WiFi access point started
 #define NETWORK_INTERNET_READY BIT8 // Network: internet reachable (TCP to 8.8.8.8:53)
 #define NETWORK_INTERNET_LOST BIT9  // Network: internet no longer reachable
-#define INET_ETH_READY BIT10        // Ethernet got IP
-#define INET_ETH_LOST BIT11         // Ethernet link down
+
+// BIT10-11: Available
 
 #define THREAD_BORDER_ROUTER_READY BIT12 // Thread border router initialized
 #define THREAD_DEVICE_READY BIT13        // Thread device joined network

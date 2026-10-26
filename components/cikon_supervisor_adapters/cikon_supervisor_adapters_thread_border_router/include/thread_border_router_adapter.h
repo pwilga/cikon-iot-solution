@@ -10,8 +10,8 @@ extern "C" {
  * @brief Thread Border Router platform adapter instance
  *
  * Bridges Thread (802.15.4) network to backbone (Ethernet or WiFi).
- * Starts OpenThread stack after any backbone IP is available (INET_ETH_READY or
- * NETWORK_UPLINK_READY). RCP connected via UART to external ESP32-H2/C6.
+ * Starts OpenThread stack once the backbone uplink has IP (NETWORK_UPLINK_READY).
+ * RCP connected via UART to external ESP32-H2/C6.
  */
 extern supervisor_platform_adapter_t thread_border_router_adapter;
 

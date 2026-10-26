@@ -3,6 +3,7 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_REQUIRES
         esp_netif
+        lwip
         openthread
         esp_driver_uart
 )
