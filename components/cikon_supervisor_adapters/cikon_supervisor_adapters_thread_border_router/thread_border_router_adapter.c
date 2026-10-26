@@ -60,7 +60,7 @@ static esp_err_t thread_border_router_adapter_init(void) {
     ESP_LOGI(TAG, "Thread BR Web GUI handler registered");
 #endif
 
-    // esp_netif_init() already called by ethernet/wifi adapter before us
+    // esp_netif_init() already called by the network adapter (uplink) before us
 #if CONFIG_OPENTHREAD_CLI
     {
         static char repl_prompt[22]; // "(br) " (5) + dev_name (max 15) + ">" (1) + '\0' (1)

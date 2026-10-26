@@ -196,10 +196,10 @@ static void debug_adapter_on_event(EventBits_t bits) {
 }
 
 #if CONFIG_LWIP_IPV6
-// IPv6 addresses of the Ethernet netif with their lwIP state, printed right below "ETH IP". Read
-// without the lwIP lock - for a log line a stale state at worst. Silent without IPv6 on Ethernet
-static void debug_log_eth_ip6(void) {
-    esp_netif_t *esp_netif = esp_netif_get_handle_from_ifkey("ETH_DEF");
+// IPv6 addresses of a netif with their lwIP state, printed right below its IPv4 line. Read
+// without the lwIP lock - for a log line a stale state at worst. Silent without IPv6 on the netif
+static void debug_log_netif_ip6(const char *if_key, const char *label) {
+    esp_netif_t *esp_netif = esp_netif_get_handle_from_ifkey(if_key);
     struct netif *netif = esp_netif ? esp_netif_get_netif_impl(esp_netif) : NULL;
     if (netif == NULL) {
         return;
@@ -221,7 +221,7 @@ static void debug_log_eth_ip6(void) {
         for (char *c = addr; *c; c++) {
             *c = tolower((unsigned char)*c); // lwIP prints hex in upper case
         }
-        ESP_LOGI(TAG, "ETH IPv6: %s (%s)", addr, state_str);
+        ESP_LOGI(TAG, "%s IPv6: %s (%s)", label, addr, state_str);
     }
 }
 #endif
@@ -257,6 +257,9 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         if (get_netif_ip("WIFI_STA_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "STA IP: %s", ip);
         }
+#if CONFIG_LWIP_IPV6
+        debug_log_netif_ip6("WIFI_STA_DEF", "STA");
+#endif
         if (get_netif_ip("WIFI_AP_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "AP IP: %s", ip);
         }
@@ -264,7 +267,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
             ESP_LOGI(TAG, "ETH IP: %s", ip);
         }
 #if CONFIG_LWIP_IPV6
-        debug_log_eth_ip6();
+        debug_log_netif_ip6("ETH_DEF", "ETH");
 #endif
 
         // Alert continuously if failed OTA detected (passive reporting)
