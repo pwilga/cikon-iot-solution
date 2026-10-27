@@ -180,8 +180,10 @@ static void network_ap_dns_open(void *arg) {
     }
 
     ip_addr_t bind_ip = IPADDR4_INIT(dns_ap_ip.addr);
-    if (udp_bind(dns_pcb, &bind_ip, NETWORK_AP_DNS_PORT) != ERR_OK) {
-        ESP_LOGE(TAG, "DNS: bind to port %d failed", NETWORK_AP_DNS_PORT);
+    err_t err = udp_bind(dns_pcb, &bind_ip, NETWORK_AP_DNS_PORT);
+    if (err != ERR_OK) {
+        ESP_LOGE(TAG, "DNS: bind to port %d failed: %s", NETWORK_AP_DNS_PORT,
+                 strerror(err_to_errno(err)));
         udp_remove(dns_pcb);
         dns_pcb = NULL;
         return;

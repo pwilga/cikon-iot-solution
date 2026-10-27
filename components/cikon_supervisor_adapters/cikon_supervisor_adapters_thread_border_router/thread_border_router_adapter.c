@@ -46,6 +46,61 @@ static bool s_ot_started = false;
 
 static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
 
+// Thread starts without waiting for the backbone, border routing joins later
+static void thread_start_task(void *arg) {
+
+    esp_openthread_lock_acquire(portMAX_DELAY);
+
+    otOperationalDatasetTlvs dataset;
+    bool dataset_ready = false;
+
+    if (CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET[0] != '\0') {
+        if (thread_dataset_parse_hex(CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET, &dataset)) {
+            ESP_LOGI(TAG, "Using provisioned dataset");
+            dataset_ready = true;
+        } else {
+            ESP_LOGW(TAG, "Provisioned dataset parse failed, falling back to NVS/new");
+        }
+    }
+
+    if (!dataset_ready) {
+        if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
+            ESP_LOGI(TAG, "Using dataset from NVS");
+        } else {
+            otOperationalDataset config_dataset;
+            if (otDatasetCreateNewNetwork(esp_openthread_get_instance(), &config_dataset) !=
+                OT_ERROR_NONE) {
+                ESP_LOGE(TAG, "Failed to create new Thread dataset");
+                esp_openthread_lock_release();
+                goto done;
+            }
+
+            memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
+                   strlen(CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME) + 1);
+            config_dataset.mComponents.mIsNetworkNamePresent = true;
+
+            config_dataset.mChannel = CONFIG_THREAD_BORDER_ROUTER_CHANNEL;
+            config_dataset.mComponents.mIsChannelPresent = true;
+
+#if CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL > 0
+            config_dataset.mWakeupChannel = CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL;
+            config_dataset.mComponents.mIsWakeupChannelPresent = true;
+#endif
+
+            otDatasetConvertToTlvs(&config_dataset, &dataset);
+            ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d",
+                     CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME, CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
+        }
+    }
+
+    esp_openthread_auto_start(&dataset);
+    esp_openthread_lock_release();
+    ESP_LOGI(TAG, "Thread network started");
+
+done:
+    vTaskDelete(NULL);
+}
+
 static esp_err_t thread_border_router_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -79,6 +134,8 @@ static esp_err_t thread_border_router_adapter_init(void) {
 #if CONFIG_OPENTHREAD_CLI
     thread_cli_commands_init();
 #endif
+
+    xTaskCreate(thread_start_task, "thread_start", 6144, NULL, 5, NULL);
 
     ESP_LOGI(TAG, "OpenThread stack started, waiting for backbone IP");
     return ESP_OK;
@@ -131,59 +188,18 @@ static void border_router_start_task(void *arg) {
     esp_openthread_lock_acquire(portMAX_DELAY);
 
     esp_openthread_set_backbone_netif(s_backbone_netif);
-    if (esp_openthread_border_router_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Border router init failed");
-        esp_openthread_lock_release();
+    esp_err_t err = esp_openthread_border_router_init();
+    esp_openthread_lock_release();
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Border router init failed: %s", esp_err_to_name(err));
         goto done;
     }
 
-    otOperationalDatasetTlvs dataset;
-    bool dataset_ready = false;
-
-#ifdef CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET
-    if (thread_dataset_parse_hex(CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET, &dataset)) {
-        ESP_LOGI(TAG, "Using provisioned dataset");
-        dataset_ready = true;
-    } else {
-        ESP_LOGW(TAG, "Provisioned dataset parse failed, falling back to NVS/new");
-    }
-#endif
-
-    if (!dataset_ready) {
-        if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
-            ESP_LOGI(TAG, "Using dataset from NVS");
-        } else {
-            otOperationalDataset config_dataset;
-            if (otDatasetCreateNewNetwork(esp_openthread_get_instance(), &config_dataset) !=
-                OT_ERROR_NONE) {
-                ESP_LOGE(TAG, "Failed to create new Thread dataset");
-                esp_openthread_lock_release();
-                goto done;
-            }
-
-            memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
-                   strlen(CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME) + 1);
-            config_dataset.mComponents.mIsNetworkNamePresent = true;
-
-            config_dataset.mChannel = CONFIG_THREAD_BORDER_ROUTER_CHANNEL;
-            config_dataset.mComponents.mIsChannelPresent = true;
-
-#if CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL > 0
-            config_dataset.mWakeupChannel = CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL;
-            config_dataset.mComponents.mIsWakeupChannelPresent = true;
-#endif
-
-            otDatasetConvertToTlvs(&config_dataset, &dataset);
-            ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d",
-                     CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME, CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
-        }
-    }
-
-    esp_openthread_auto_start(&dataset);
-    esp_openthread_lock_release();
-
     esp_event_handler_instance_register(OPENTHREAD_EVENT, OPENTHREAD_EVENT_ROLE_CHANGED,
                                         on_thread_role_changed, NULL, &s_role_handler);
+    // Thread may already be leader/router by now - then no role change comes, refresh right away
+    on_thread_role_changed(NULL, NULL, 0, NULL);
 
     initialized = true;
     supervisor_notify_event(THREAD_BORDER_ROUTER_READY);
