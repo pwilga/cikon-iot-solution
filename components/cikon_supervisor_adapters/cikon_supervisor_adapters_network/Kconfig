@@ -13,6 +13,24 @@ menu "Cikon IoT Supervisor Network Adapter"
         default n
         help
             Bring the device onto the network over Ethernet (hardware selected in cikon_ethernet).
-            Takes precedence over WiFi when both are enabled - only one uplink starts.
+            Takes precedence over Thread and WiFi when several are enabled - only one uplink starts.
+
+    config NETWORK_UPLINK_THREAD
+        bool "Thread uplink"
+        default n
+        depends on SOC_IEEE802154_SUPPORTED && !ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+        help
+            Bring the device onto the network over Thread (FTD/MED, joins an existing network).
+            Takes precedence over WiFi when both are enabled. Requires OPENTHREAD_DNS64_CLIENT.
+
+    if NETWORK_UPLINK_THREAD
+        config THREAD_DEVICE_PROVISIONED_DATASET
+            string "Provisioned dataset hex (from 'ot dataset active -x', empty = use NVS)"
+            default ""
+            help
+                Full dataset backup from the Thread network leader.
+                Get value by running on any joined device: ot dataset active -x
+                Used when NVS is empty (e.g. after factory reset or first boot).
+    endif
 
 endmenu

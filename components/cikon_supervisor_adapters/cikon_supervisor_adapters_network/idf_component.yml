@@ -1,6 +1,6 @@
 name: cikon_supervisor_adapters_network
 version: "1.0.0"
-description: "Supervisor network adapter - uplink (WiFi, Ethernet) + MQTT, HTTP, SNTP, mDNS, OTA services"
+description: "Supervisor network adapter - uplink (WiFi, Ethernet, Thread) + MQTT, HTTP, SNTP, mDNS, OTA services"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
@@ -38,6 +38,11 @@ dependencies:
     path: components/cikon_ethernet
     matches:
       - if: "$CONFIG{NETWORK_UPLINK_ETHERNET} == True"
+  cikon_thread_common:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_thread_common
+    matches:
+      - if: "$CONFIG{NETWORK_UPLINK_THREAD} == True"
   cikon_tcp_ota:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_tcp_ota

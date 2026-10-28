@@ -22,3 +22,7 @@ extern const uplink_t uplink_wifi;
 #if CONFIG_NETWORK_UPLINK_ETHERNET
 extern const uplink_t uplink_ethernet;
 #endif
+
+#if CONFIG_NETWORK_UPLINK_THREAD
+extern const uplink_t uplink_thread;
+#endif

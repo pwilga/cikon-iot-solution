@@ -16,3 +16,4 @@ dependencies:
     matches:
       - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_DEVICE} == True"
       - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER} == True"
+      - if: "$CONFIG{NETWORK_UPLINK_THREAD} == True"

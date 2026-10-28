@@ -32,7 +32,7 @@ typedef enum {
 /**
  * @brief Platform adapter interface for supervisor
  *
- * Allows supervisor to work with different platforms (inet, zigbee, thread, matter)
+ * Allows supervisor to work with different platforms (network, zigbee, thread, matter)
  * without knowing platform-specific details. Each platform implements this interface.
  */
 typedef struct {
@@ -42,7 +42,7 @@ typedef struct {
     /**
      * @brief Enable this adapter in safe mode
      * If false (default), adapter is skipped when safe mode is active.
-     * Only critical adapters (inet) should set this to true.
+     * Only critical adapters (network) should set this to true.
      */
     bool enable_in_safe_mode;
 

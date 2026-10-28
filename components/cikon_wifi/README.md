@@ -54,7 +54,7 @@ channel, so a STA connecting to another channel briefly drops AP clients.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `WIFI_AP_INACTIVITY_TIMEOUT_MINUTES` | 1 | AP lifetime, see the table above |
+| `WIFI_AP_INACTIVITY_TIMEOUT_MINUTES` | 10 | AP lifetime, see the table above |
 | `WIFI_STA_BURST_RETRY_COUNT` | 5 | attempts per burst |
 | `WIFI_STA_BURST_RETRY_DELAY_MS` | 10000 | delay between attempts in a burst |
 | `WIFI_STA_RETRY_INITIAL_MS` | 60000 | first pause after a failed burst |

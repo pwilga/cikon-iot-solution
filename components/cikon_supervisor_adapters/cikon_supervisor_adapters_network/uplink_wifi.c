@@ -20,17 +20,23 @@ static esp_event_handler_instance_t ip_event_instance = NULL;
 
 static char portal_url[40]; // "http://<AP IP>/portal.html", kept by the HTTP server as a pointer
 
+static bool sta_has_ip = false; // LOST goes once per outage, not on every failed retry
+
 static void uplink_wifi_on_restart(void) { wifi_unregister_event_handlers(); }
 
 static void uplink_wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                       void *event_data) {
 
     if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
+        sta_has_ip = true;
         supervisor_notify_event(NETWORK_UPLINK_READY);
     } else if (event_base == WIFI_EVENT) {
         switch (event_id) {
         case WIFI_EVENT_STA_DISCONNECTED:
-            supervisor_notify_event(NETWORK_UPLINK_LOST);
+            if (sta_has_ip) {
+                sta_has_ip = false;
+                supervisor_notify_event(NETWORK_UPLINK_LOST);
+            }
             break;
         case WIFI_EVENT_AP_START: {
             supervisor_notify_event(NETWORK_AP_READY);
@@ -103,6 +109,7 @@ static esp_err_t uplink_wifi_stop(void) {
     http_set_not_found_redirect(NULL);
 
     wifi_shutdown();
+    sta_has_ip = false;
 
     return ESP_OK;
 }

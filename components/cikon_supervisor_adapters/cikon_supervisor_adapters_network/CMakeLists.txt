@@ -9,6 +9,10 @@ if(CONFIG_NETWORK_UPLINK_ETHERNET)
     list(APPEND srcs "uplink_ethernet.c")
 endif()
 
+if(CONFIG_NETWORK_UPLINK_THREAD)
+    list(APPEND srcs "uplink_thread.c")
+endif()
+
 idf_component_register(
     SRCS
         ${srcs}
@@ -21,4 +25,5 @@ idf_component_register(
         esp_wifi
         esp_netif_stack
         lwip
+        openthread
 )

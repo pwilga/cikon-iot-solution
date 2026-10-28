@@ -169,7 +169,7 @@ static void debug_adapter_on_event(EventBits_t bits) {
         ESP_LOGI(TAG, "  -> SUPERVISOR_EVENT_PLATFORM_INITIALIZED");
     }
 
-    // Inet adapter events
+    // Network adapter events
     if (bits & NETWORK_UPLINK_READY) {
         ESP_LOGI(TAG, "  -> NETWORK_UPLINK_READY");
     }

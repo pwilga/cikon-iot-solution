@@ -17,10 +17,13 @@
 
 #define TAG "cikon:adapter:network"
 
-// Only the first one starts - Ethernet goes before WiFi
+// Only the first one starts - Ethernet, then Thread, then WiFi
 static const uplink_t *const uplinks[] = {
 #if CONFIG_NETWORK_UPLINK_ETHERNET
     &uplink_ethernet,
+#endif
+#if CONFIG_NETWORK_UPLINK_THREAD
+    &uplink_thread,
 #endif
 #if CONFIG_NETWORK_UPLINK_WIFI
     &uplink_wifi,

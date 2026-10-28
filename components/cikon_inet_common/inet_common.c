@@ -30,6 +30,15 @@
 #include "tcp_monitor.h"
 #include "tcp_ota.h"
 
+#if CONFIG_OPENTHREAD_ENABLED
+#include "esp_openthread.h"
+#include "esp_openthread_dns64.h"
+#include "esp_openthread_lock.h"
+#include "esp_openthread_netif_glue.h"
+#include "openthread/srp_client.h"
+#include "openthread/thread.h"
+#endif
+
 #define TAG "cikon:inet_common"
 
 static char s_device_url[64];
@@ -306,7 +315,91 @@ const char *inet_common_get_device_url(void) {
     return s_device_url;
 }
 
-bool is_internet_reachable(void) { return is_tcp_port_reachable("8.8.8.8", 53); }
+#if CONFIG_OPENTHREAD_SRP_CLIENT || CONFIG_OPENTHREAD_DNS64_CLIENT
+// Thread is the way out (Thread device, not a border router) - the same check IDF's DNS64 hook uses
+static bool thread_is_default_netif(void) {
+    esp_netif_t *thread_netif = esp_openthread_get_netif();
+    return thread_netif && esp_netif_get_default_netif() == thread_netif;
+}
+#endif
+
+#if CONFIG_OPENTHREAD_SRP_CLIENT
+static otSrpClientService s_srp_http_service;
+
+static void srp_client_callback(otError error, const otSrpClientHostInfo *hostInfo,
+                                const otSrpClientService *services,
+                                const otSrpClientService *removedServices, void *context) {
+    (void)hostInfo;
+    (void)services;
+    (void)removedServices;
+    (void)context;
+    if (error == OT_ERROR_NONE) {
+        ESP_LOGI(TAG, "SRP: registered OK");
+    } else if (error == OT_ERROR_DUPLICATED) {
+        // SRP key mismatch — NVS was likely erased. Remove the stale host entry on the OBR.
+        // To clear all SRP registrations on OBR: ot srp server disable && ot srp server enable
+        ESP_LOGE(TAG, "SRP: name conflict for %s — remove stale host on OBR",
+                 inet_common_get_hostname());
+    } else {
+        ESP_LOGW(TAG, "SRP error: %s", otThreadErrorToString(error));
+    }
+}
+
+static void srp_host_init(void) {
+    const char *hostname = inet_common_get_hostname();
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otInstance *instance = esp_openthread_get_instance();
+    otSrpClientSetCallback(instance, srp_client_callback, NULL);
+    otError err = otSrpClientSetHostName(instance, hostname);
+    if (err != OT_ERROR_NONE) {
+        ESP_LOGE(TAG, "SRP set hostname: %s", otThreadErrorToString(err));
+        esp_openthread_lock_release();
+        return;
+    }
+    err = otSrpClientEnableAutoHostAddress(instance);
+    if (err != OT_ERROR_NONE) {
+        ESP_LOGW(TAG, "SRP auto host addr: %s", otThreadErrorToString(err));
+    }
+    otSrpClientEnableAutoStartMode(instance, NULL, NULL);
+    ESP_LOGI(TAG, "SRP host: %s, lease: %lus", hostname,
+             (unsigned long)otSrpClientGetLeaseInterval(instance));
+    esp_openthread_lock_release();
+}
+
+static void srp_add_service(otSrpClientService *svc, const char *type, uint16_t port) {
+    memset(svc, 0, sizeof(*svc));
+    svc->mName = type;
+    svc->mInstanceName = inet_common_get_hostname();
+    svc->mPort = port;
+    esp_openthread_lock_acquire(portMAX_DELAY);
+    otError err = otSrpClientAddService(esp_openthread_get_instance(), svc);
+    esp_openthread_lock_release();
+    if (err != OT_ERROR_NONE && err != OT_ERROR_ALREADY) {
+        ESP_LOGE(TAG, "SRP add %s: %s", type, otThreadErrorToString(err));
+    } else {
+        ESP_LOGI(TAG, "SRP: %s port %d", type, port);
+    }
+}
+#endif
+
+bool is_internet_reachable(void) {
+#if CONFIG_OPENTHREAD_DNS64_CLIENT
+    // Same as `ot ping 8.8.8.8`: Thread has no IPv4, the BR's NAT64 prefix gets glued to the
+    // address
+    if (thread_is_default_netif()) {
+        ip6_addr_t nat64;
+        if (esp_openthread_get_nat64_prefix(&nat64) != ESP_OK) {
+            return false;
+        }
+        nat64.addr[3] = ipaddr_addr("8.8.8.8");
+
+        char nat64_address[IP6ADDR_STRLEN_MAX];
+        ip6addr_ntoa_r(&nat64, nat64_address, sizeof(nat64_address));
+        return is_tcp_port_reachable(nat64_address, 53);
+    }
+#endif
+    return is_tcp_port_reachable("8.8.8.8", 53);
+}
 
 void inet_common_poll_internet_reachability(void) {
 
@@ -320,30 +413,42 @@ void inet_common_poll_internet_reachability(void) {
 }
 
 bool is_tcp_port_reachable(const char *host, uint16_t port) {
-    struct sockaddr_in addr;
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) {
-        return false;
-    }
-
+    struct sockaddr_storage addr;
     memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
+
+    struct sockaddr_in *addr4 = (struct sockaddr_in *)&addr;
+    struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addr;
+    socklen_t addr_len;
 
     // Resolve the host name may take time !. For real non blocking connect use ip address.
-    if (inet_aton(host, &addr.sin_addr) == 0) {
+    if (inet_aton(host, &addr4->sin_addr) != 0) {
+        addr4->sin_family = AF_INET;
+        addr4->sin_port = htons(port);
+        addr_len = sizeof(*addr4);
+    } else if (inet_pton(AF_INET6, host, &addr6->sin6_addr) == 1) {
+        addr6->sin6_family = AF_INET6;
+        addr6->sin6_port = htons(port);
+        addr_len = sizeof(*addr6);
+    } else {
         struct hostent *he = gethostbyname(host);
         if (!he) {
-            close(sock);
             return false;
         }
-        memcpy(&addr.sin_addr, he->h_addr, he->h_length);
+        memcpy(&addr4->sin_addr, he->h_addr, he->h_length);
+        addr4->sin_family = AF_INET;
+        addr4->sin_port = htons(port);
+        addr_len = sizeof(*addr4);
+    }
+
+    int sock = socket(addr.ss_family, SOCK_STREAM, 0);
+    if (sock < 0) {
+        return false;
     }
 
     int flags = fcntl(sock, F_GETFL, 0);
     fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
-    int res = connect(sock, (struct sockaddr *)&addr, sizeof(addr));
+    int res = connect(sock, (struct sockaddr *)&addr, addr_len);
     if (res == 0) {
         close(sock);
         return true;
@@ -407,6 +512,19 @@ void inet_common_mdns_init(void) {
     if (s_mdns_ready) {
         return; // already up — no-op, keeps existing hostname/instance intact
     }
+
+#if CONFIG_OPENTHREAD_SRP_CLIENT
+    // Over Thread the name is registered with the border router (SRP), which announces it on the
+    // LAN - mDNS has no interface to run on there
+    if (thread_is_default_netif()) {
+        srp_host_init();
+        bool secure = config_get()->http_secure;
+        uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
+        srp_add_service(&s_srp_http_service, secure ? "_https._tcp" : "_http._tcp", port);
+        s_mdns_ready = true;
+        return;
+    }
+#endif
 
     const char *hostname = inet_common_get_hostname();
     const char *instance = config_get()->mdns_instance;

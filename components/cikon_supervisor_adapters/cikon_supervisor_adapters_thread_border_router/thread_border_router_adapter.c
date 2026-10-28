@@ -107,9 +107,8 @@ static esp_err_t thread_border_router_adapter_init(void) {
     }
 
 #if CONFIG_THREAD_BORDER_ROUTER_WEB
-    // esp_br_web_start() registers an mDNS hostname-changed callback and aborts if mDNS
-    // isn't running yet. The inet adapter also brings mDNS up (on IP), but that happens
-    // after us — ensure it here. inet_common_mdns_init() is idempotent.
+    // esp_br_web_start() aborts if mDNS isn't running yet, and the network adapter starts it only
+    // with the uplink - so start it here (inet_common_mdns_init() is idempotent)
     inet_common_mdns_init();
     esp_br_web_start(CONFIG_VFS_SPIFFS_MOUNT_POINT);
     ESP_LOGI(TAG, "Thread BR Web GUI handler registered");

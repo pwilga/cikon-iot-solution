@@ -5,7 +5,7 @@
  * This header provides type definitions for different platform integrations
  * (Home Assistant, Zigbee, Matter, etc.) that can be embedded in supervisor adapters.
  * Adapters define static metadata structures, and platform-specific adapters
- * (e.g., inet for HA, zigbee for Zigbee) iterate and register them at runtime.
+ * (e.g., network for HA, zigbee for Zigbee) iterate and register them at runtime.
  */
 #pragma once
 
@@ -27,7 +27,7 @@ typedef struct cJSON cJSON;
 
 // Entity types
 typedef enum {
-    HA_ENTITY_NONE = 0,  // Sentinel for end of entity array
+    HA_ENTITY_NONE = 0, // Sentinel for end of entity array
     HA_SENSOR,
     HA_SWITCH,
     HA_BUTTON,

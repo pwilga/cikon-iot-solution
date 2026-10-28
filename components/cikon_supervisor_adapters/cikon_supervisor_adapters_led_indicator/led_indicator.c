@@ -72,7 +72,7 @@ const blink_step_t pattern_ack[] = {
 // Blink type enumeration (priority order)
 typedef enum {
     BLINK_INTERNET_READY = 0,
-    BLINK_STA_READY,
+    BLINK_UPLINK_READY,
     BLINK_PLATFORM_INITIALIZED,
     BLINK_BOOT,
     BLINK_ACK, // Preemptive acknowledgment flash
@@ -82,7 +82,7 @@ typedef enum {
 // Blink list (order = priority, lower index = higher priority)
 static blink_step_t const *led_blink_lists[] = {
     [BLINK_INTERNET_READY] = pattern_short_pulse,
-    [BLINK_STA_READY] = pattern_slow_pulse,
+    [BLINK_UPLINK_READY] = pattern_slow_pulse,
     [BLINK_PLATFORM_INITIALIZED] = pattern_rainbow,
     [BLINK_BOOT] = pattern_fast_blinking,
     [BLINK_ACK] = pattern_ack,
@@ -234,12 +234,12 @@ static void led_indicator_adapter_on_event(EventBits_t bits) {
     // }
 
     if (bits & NETWORK_UPLINK_READY) {
-        led_indicator_start(led_handle, BLINK_STA_READY);
+        led_indicator_start(led_handle, BLINK_UPLINK_READY);
     }
 
     if (bits & NETWORK_UPLINK_LOST) {
         led_indicator_stop(led_handle, BLINK_INTERNET_READY);
-        led_indicator_stop(led_handle, BLINK_STA_READY);
+        led_indicator_stop(led_handle, BLINK_UPLINK_READY);
     }
 
     if (bits & NETWORK_INTERNET_READY) {
@@ -257,7 +257,7 @@ static void led_indicator_adapter_on_event(EventBits_t bits) {
 }
 
 static const command_entry_t led_indicator_commands[] = {
-    {"effect", "Set LED effect (0=inet_ready, 1=sta_ready, 2=platform_init, 3=boot, 4=ack)",
+    {"effect", "Set LED effect (0=internet_ready, 1=uplink_ready, 2=platform_init, 3=boot, 4=ack)",
      cmnd_led_indicator_effect},
     {NULL, NULL, NULL}};
 

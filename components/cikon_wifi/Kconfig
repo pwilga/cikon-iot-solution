@@ -1,7 +1,7 @@
 menu "Cikon IoT WiFi Configuration"
     config WIFI_AP_INACTIVITY_TIMEOUT_MINUTES
         int "WiFi AP inactivity timeout (minutes)"
-        default 1
+        default 10
         range 1 60
         help
             Timeout in minutes before disabling AP if no clients are connected.
