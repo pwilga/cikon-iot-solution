@@ -448,6 +448,12 @@ bool is_tcp_port_reachable(const char *host, uint16_t port) {
     int flags = fcntl(sock, F_GETFL, 0);
     fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
+#if CONFIG_LWIP_SO_LINGER
+    // Close with RST, not FIN - a NAT64 on the way (Thread BR) drops its session right away
+    struct linger lin = {.l_onoff = 1, .l_linger = 0};
+    setsockopt(sock, SOL_SOCKET, SO_LINGER, &lin, sizeof(lin));
+#endif
+
     int res = connect(sock, (struct sockaddr *)&addr, addr_len);
     if (res == 0) {
         close(sock);
