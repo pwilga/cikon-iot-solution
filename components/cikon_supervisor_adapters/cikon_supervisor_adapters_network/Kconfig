@@ -2,9 +2,8 @@ menu "Cikon IoT Supervisor Network Adapter"
     depends on ENABLE_SUPERVISOR_NETWORK
 
     config NETWORK_UPLINK_WIFI
-        bool "WiFi uplink"
-        default y
-        depends on SOC_WIFI_SUPPORTED
+        bool "WiFi uplink" if SOC_WIFI_SUPPORTED
+        default y if SOC_WIFI_SUPPORTED
         help
             Bring the device onto the network over WiFi (STA, with AP mode for local access).
 
@@ -18,10 +17,10 @@ menu "Cikon IoT Supervisor Network Adapter"
     config NETWORK_UPLINK_THREAD
         bool "Thread uplink"
         default n
-        depends on SOC_IEEE802154_SUPPORTED && !ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
         help
             Bring the device onto the network over Thread (FTD/MED, joins an existing network).
             Takes precedence over WiFi when both are enabled. Requires OPENTHREAD_DNS64_CLIENT.
+            Not for the border router (it runs Thread itself).
 
     if NETWORK_UPLINK_THREAD
         config THREAD_DEVICE_PROVISIONED_DATASET

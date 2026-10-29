@@ -32,6 +32,8 @@ dependencies:
   cikon_wifi:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_wifi
+    matches:
+      - if: "$CONFIG{NETWORK_UPLINK_WIFI} == True"
   # Ethernet drivers come from the component registry - pulled only with the Ethernet uplink
   cikon_ethernet:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
