@@ -40,6 +40,7 @@
 #endif
 
 #define TAG "cikon:inet_common"
+#define INTERNET_CHECK_SRC_PORT 49152
 
 static char s_device_url[64];
 static bool s_mdns_ready = false;
@@ -449,9 +450,23 @@ bool is_tcp_port_reachable(const char *host, uint16_t port) {
     fcntl(sock, F_SETFL, flags | O_NONBLOCK);
 
 #if CONFIG_LWIP_SO_LINGER
-    // Close with RST, not FIN - a NAT64 on the way (Thread BR) drops its session right away
+    // Same source port every time - a NAT64 on the way (Thread BR) keeps reusing one session
+    // instead of opening a new one per check. Closing with RST frees the port right away
     struct linger lin = {.l_onoff = 1, .l_linger = 0};
     setsockopt(sock, SOL_SOCKET, SO_LINGER, &lin, sizeof(lin));
+
+    struct sockaddr_storage local;
+    memset(&local, 0, sizeof(local));
+    local.ss_family = addr.ss_family;
+    if (addr.ss_family == AF_INET6) {
+        ((struct sockaddr_in6 *)&local)->sin6_port = htons(INTERNET_CHECK_SRC_PORT);
+    } else {
+        ((struct sockaddr_in *)&local)->sin_port = htons(INTERNET_CHECK_SRC_PORT);
+    }
+    if (bind(sock, (struct sockaddr *)&local, addr_len) != 0) {
+        ESP_LOGW(TAG, "Internet check: bind to port %d failed: %s", INTERNET_CHECK_SRC_PORT,
+                 strerror(errno));
+    }
 #endif
 
     int res = connect(sock, (struct sockaddr *)&addr, addr_len);
