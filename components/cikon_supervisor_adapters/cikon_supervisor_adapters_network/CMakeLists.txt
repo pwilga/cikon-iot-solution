@@ -1,4 +1,5 @@
-# Only the enabled uplinks are built. Requirements can't depend on Kconfig, so they stay listed
+# Only the enabled uplinks are built. Their headers (esp_wifi, esp_eth, openthread) come with
+# cikon_wifi / cikon_ethernet / cikon_thread_common, pulled in idf_component.yml only for that uplink
 set(srcs "network.c")
 
 if(CONFIG_NETWORK_UPLINK_WIFI)
@@ -21,9 +22,8 @@ idf_component_register(
     PRIV_INCLUDE_DIRS
         "private_include"
     PRIV_REQUIRES
-        esp_eth
-        esp_wifi
+        esp_event
+        esp_netif
         esp_netif_stack
         lwip
-        openthread
 )

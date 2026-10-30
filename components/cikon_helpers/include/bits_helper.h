@@ -30,7 +30,8 @@
 // BIT10-11: Available
 
 #define THREAD_BORDER_ROUTER_READY BIT12 // Thread border router initialized
-#define THREAD_DEVICE_READY BIT13        // Thread device joined network
+
+// BIT13: Available
 
 #define NETWORK_UPLINK_READY BIT14 // Network: active uplink has IP into the LAN (any uplink)
 #define NETWORK_UPLINK_LOST BIT15  // Network: active uplink lost

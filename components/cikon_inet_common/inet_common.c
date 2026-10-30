@@ -30,11 +30,10 @@
 #include "tcp_monitor.h"
 #include "tcp_ota.h"
 
-#if CONFIG_OPENTHREAD_ENABLED
+#if CONFIG_NETWORK_UPLINK_THREAD
 #include "esp_openthread.h"
 #include "esp_openthread_dns64.h"
 #include "esp_openthread_lock.h"
-#include "esp_openthread_netif_glue.h"
 #include "openthread/srp_client.h"
 #include "openthread/thread.h"
 #endif
@@ -316,15 +315,7 @@ const char *inet_common_get_device_url(void) {
     return s_device_url;
 }
 
-#if CONFIG_OPENTHREAD_SRP_CLIENT || CONFIG_OPENTHREAD_DNS64_CLIENT
-// Thread is the way out (Thread device, not a border router) - the same check IDF's DNS64 hook uses
-static bool thread_is_default_netif(void) {
-    esp_netif_t *thread_netif = esp_openthread_get_netif();
-    return thread_netif && esp_netif_get_default_netif() == thread_netif;
-}
-#endif
-
-#if CONFIG_OPENTHREAD_SRP_CLIENT
+#if CONFIG_NETWORK_UPLINK_THREAD && CONFIG_OPENTHREAD_SRP_CLIENT
 static otSrpClientService s_srp_http_service;
 
 static void srp_client_callback(otError error, const otSrpClientHostInfo *hostInfo,
@@ -384,22 +375,21 @@ static void srp_add_service(otSrpClientService *svc, const char *type, uint16_t 
 #endif
 
 bool is_internet_reachable(void) {
-#if CONFIG_OPENTHREAD_DNS64_CLIENT
+#if CONFIG_NETWORK_UPLINK_THREAD && CONFIG_OPENTHREAD_DNS64_CLIENT
     // Same as `ot ping 8.8.8.8`: Thread has no IPv4, the BR's NAT64 prefix gets glued to the
     // address
-    if (thread_is_default_netif()) {
-        ip6_addr_t nat64;
-        if (esp_openthread_get_nat64_prefix(&nat64) != ESP_OK) {
-            return false;
-        }
-        nat64.addr[3] = ipaddr_addr("8.8.8.8");
-
-        char nat64_address[IP6ADDR_STRLEN_MAX];
-        ip6addr_ntoa_r(&nat64, nat64_address, sizeof(nat64_address));
-        return is_tcp_port_reachable(nat64_address, 53);
+    ip6_addr_t nat64;
+    if (esp_openthread_get_nat64_prefix(&nat64) != ESP_OK) {
+        return false;
     }
-#endif
+    nat64.addr[3] = ipaddr_addr("8.8.8.8");
+
+    char nat64_address[IP6ADDR_STRLEN_MAX];
+    ip6addr_ntoa_r(&nat64, nat64_address, sizeof(nat64_address));
+    return is_tcp_port_reachable(nat64_address, 53);
+#else
     return is_tcp_port_reachable("8.8.8.8", 53);
+#endif
 }
 
 void inet_common_poll_internet_reachability(void) {
@@ -534,17 +524,15 @@ void inet_common_mdns_init(void) {
         return; // already up — no-op, keeps existing hostname/instance intact
     }
 
-#if CONFIG_OPENTHREAD_SRP_CLIENT
+#if CONFIG_NETWORK_UPLINK_THREAD && CONFIG_OPENTHREAD_SRP_CLIENT
     // Over Thread the name is registered with the border router (SRP), which announces it on the
     // LAN - mDNS has no interface to run on there
-    if (thread_is_default_netif()) {
-        srp_host_init();
-        bool secure = config_get()->http_secure;
-        uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
-        srp_add_service(&s_srp_http_service, secure ? "_https._tcp" : "_http._tcp", port);
-        s_mdns_ready = true;
-        return;
-    }
+    srp_host_init();
+    bool secure = config_get()->http_secure;
+    uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
+    srp_add_service(&s_srp_http_service, secure ? "_https._tcp" : "_http._tcp", port);
+    s_mdns_ready = true;
+    return;
 #endif
 
     const char *hostname = inet_common_get_hostname();

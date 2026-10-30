@@ -17,8 +17,9 @@ endif()
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
     INCLUDE_DIRS "include"
+    REQUIRES
+        esp_eth  # ethernet_backend.h includes esp_eth_driver.h; the network adapter gets it from here
     PRIV_REQUIRES
-        esp_eth
         esp_netif
         esp_driver_gpio  # For GPIO (W5500 reset/interrupt)
         esp_driver_spi   # For SPI (W5500)

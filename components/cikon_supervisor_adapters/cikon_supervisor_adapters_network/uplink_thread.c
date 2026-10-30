@@ -141,7 +141,7 @@ static esp_err_t uplink_thread_start(void) {
     return ESP_OK;
 }
 
-// The OpenThread stack keeps running, as it did with the thread_device adapter
+// The OpenThread stack keeps running
 static esp_err_t uplink_thread_stop(void) {
 
     if (ot_event_instance) {

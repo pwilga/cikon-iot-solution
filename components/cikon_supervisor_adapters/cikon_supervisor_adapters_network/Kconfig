@@ -3,7 +3,7 @@ menu "Cikon IoT Supervisor Network Adapter"
 
     config NETWORK_UPLINK_WIFI
         bool "WiFi uplink"
-        default y if SOC_WIFI_SUPPORTED
+        default n
         help
             Bring the device onto the network over WiFi (STA, with AP mode for local access).
 
@@ -17,10 +17,32 @@ menu "Cikon IoT Supervisor Network Adapter"
     config NETWORK_UPLINK_THREAD
         bool "Thread uplink"
         default n
+        # Turned on together with the uplink - a device can still override any of them
+        imply OPENTHREAD_ENABLED
+        # NAT64 for lwIP sockets (MQTT/SNTP/esp-tls) - names resolve to the BR's NAT64 addresses
+        imply OPENTHREAD_DNS64_CLIENT
+        # mbedTLS for OpenThread (commissioning and joining)
+        imply MBEDTLS_ECJPAKE_C
+        imply MBEDTLS_KEY_EXCHANGE_ECJPAKE
+        imply MBEDTLS_SSL_PROTO_DTLS
+        imply MBEDTLS_CMAC_C
+        imply LWIP_MULTICAST_PING
+        # Internet check uses one fixed source port and closes with RST, so the port is free again
+        # right away - the BR's NAT64 then keeps a single session instead of one per check
+        imply LWIP_SO_LINGER
+        # Needed for HTTP - large files cause NoBufs over 6LoWPAN (IDF default 65).
+        # Set 65 in the device if it doesn't serve HTTP, to save ~8KB RAM
+        set default OPENTHREAD_NUM_MESSAGE_BUFFERS=128
+        # Thread netif holds several IPv6 addresses (link-local, mesh-local, OMR, ...)
+        set default LWIP_IPV6_NUM_ADDRESSES=8
+        # eventfd required by OpenThread
+        set default VFS_EVENTFD_MAX_FDS=5
         help
             Bring the device onto the network over Thread (FTD/MED, joins an existing network).
-            Takes precedence over WiFi when both are enabled. Requires OPENTHREAD_DNS64_CLIENT.
+            Takes precedence over WiFi when both are enabled.
             Not for the border router (it runs Thread itself).
+            Turns on what Thread needs (OpenThread with DNS64, mbedTLS, lwIP, eventfd).
+            LWIP_HOOK_IP6_SELECT_SRC_ADDR_CUSTOM still has to be set by the device (menu choice).
 
     if NETWORK_UPLINK_THREAD
         config THREAD_DEVICE_PROVISIONED_DATASET

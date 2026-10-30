@@ -190,9 +190,6 @@ static void debug_adapter_on_event(EventBits_t bits) {
     if (bits & THREAD_BORDER_ROUTER_READY) {
         ESP_LOGI(TAG, "  -> THREAD_BORDER_ROUTER_READY");
     }
-    if (bits & THREAD_DEVICE_READY) {
-        ESP_LOGI(TAG, "  -> THREAD_DEVICE_READY");
-    }
 }
 
 #if CONFIG_LWIP_IPV6
