@@ -7,7 +7,6 @@
 #include "metadata.h"
 #include "mqtt.h"
 #include "network_adapter.h"
-#include "network_ap.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tcp_monitor.h"
@@ -80,11 +79,6 @@ static esp_err_t network_adapter_init(void) {
         tele_register_group(uplink->tele);
     }
 
-#if CONFIG_NETWORK_UPLINK_WIFI
-    cmnd_register_group(network_ap_commands);
-    network_ap_http_register();
-#endif
-
     register_restart_callback(inet_common_on_restart);
 
     initialized = true;
@@ -110,10 +104,6 @@ static esp_err_t network_adapter_shutdown(void) {
     if (uplink->tele) {
         tele_unregister_group(uplink->tele);
     }
-
-#if CONFIG_NETWORK_UPLINK_WIFI
-    cmnd_unregister_group(network_ap_commands);
-#endif
 
     uplink->stop();
 

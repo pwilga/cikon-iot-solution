@@ -87,7 +87,15 @@ static esp_err_t uplink_wifi_start(void) {
     ESP_ERROR_CHECK(esp_event_handler_instance_register(
         IP_EVENT, IP_EVENT_STA_GOT_IP, &uplink_wifi_event_handler, NULL, &ip_event_instance));
 
-    return wifi_start(&creds);
+    esp_err_t err = wifi_start(&creds);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    cmnd_register_group(network_ap_commands);
+    network_ap_http_register();
+
+    return ESP_OK;
 }
 
 static esp_err_t uplink_wifi_stop(void) {
@@ -103,6 +111,7 @@ static esp_err_t uplink_wifi_stop(void) {
     }
 
     unregister_restart_callback(uplink_wifi_on_restart);
+    cmnd_unregister_group(network_ap_commands);
 
     // The handler is gone, so AP_STOP from the shutdown below wouldn't reach it
     network_ap_dns_stop();
