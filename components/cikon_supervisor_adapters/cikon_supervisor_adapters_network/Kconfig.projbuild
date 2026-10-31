@@ -1,0 +1,27 @@
+# Not adapter options - IDF options the Thread uplink turns on; a device can still override them.
+# Relies on load order, not on a Kconfig feature: IDF reads every Kconfig.projbuild before the
+# component Kconfigs, so a `default` added here to an IDF menu choice comes first and beats IDF's
+# own. The choice blocks have no prompt, so they add nothing to menuconfig. Re-check after an IDF
+# update.
+
+config NETWORK_UPLINK_THREAD
+    bool
+    imply OPENTHREAD_ENABLED
+    # NAT64 for MQTT/SNTP: names resolve to the BR's NAT64 addresses
+    imply OPENTHREAD_DNS64_CLIENT
+    imply MBEDTLS_ECJPAKE_C
+    imply MBEDTLS_KEY_EXCHANGE_ECJPAKE
+    imply MBEDTLS_SSL_PROTO_DTLS
+    imply MBEDTLS_CMAC_C
+    imply LWIP_MULTICAST_PING
+    # Internet check closes with RST, so its fixed source port is free again right away
+    imply LWIP_SO_LINGER
+    # HTTP over 6LoWPAN runs out of buffers at the IDF default 65; 65 saves ~8KB without HTTP
+    set default OPENTHREAD_NUM_MESSAGE_BUFFERS=128
+    set default LWIP_IPV6_NUM_ADDRESSES=8
+    set default VFS_EVENTFD_MAX_FDS=5
+
+# Traffic out goes from the address OpenThread picks (OMR), the one the BR forwards
+choice LWIP_HOOK_IP6_SELECT_SRC_ADDR
+    default LWIP_HOOK_IP6_SELECT_SRC_ADDR_CUSTOM if NETWORK_UPLINK_THREAD
+endchoice

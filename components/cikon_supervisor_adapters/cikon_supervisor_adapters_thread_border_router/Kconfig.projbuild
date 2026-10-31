@@ -1,0 +1,50 @@
+# Not adapter options - IDF options the border router turns on; a device can still override them.
+# Relies on load order, not on a Kconfig feature: IDF reads every Kconfig.projbuild before the
+# component Kconfigs, so a `default` added here to an IDF option or menu choice comes first and
+# beats IDF's own. The blocks have no prompt, so they add nothing to menuconfig. Re-check after an
+# IDF update.
+
+config ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+    bool
+    imply OPENTHREAD_ENABLED
+    imply OPENTHREAD_BORDER_ROUTER
+    imply OPENTHREAD_COMMISSIONER
+    imply OPENTHREAD_JOINER
+    imply MBEDTLS_ECJPAKE_C
+    imply MBEDTLS_KEY_EXCHANGE_ECJPAKE
+    imply MBEDTLS_SSL_PROTO_DTLS
+    imply MBEDTLS_CMAC_C
+    imply LWIP_IPV6_FORWARD
+    imply LWIP_FORCE_ROUTER_FORWARDING
+    imply LWIP_IPV6_AUTOCONFIG
+    imply LWIP_NETIF_STATUS_CALLBACK
+    imply LWIP_MULTICAST_PING
+    set default LWIP_IPV6_NUM_ADDRESSES=12
+    set default VFS_EVENTFD_MAX_FDS=5
+
+# The BR runs the SRP server itself; imply can't turn an option off
+config OPENTHREAD_SRP_CLIENT
+    bool
+    default n if ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+
+# Radio on a separate chip (RCP) over UART; a BR on its own 802.15.4 radio sets RADIO_NATIVE
+choice OPENTHREAD_RADIO_TYPE
+    default OPENTHREAD_RADIO_SPINEL_UART if ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+endchoice
+
+# Routing between Thread and the backbone - implemented by OpenThread's BR library
+choice LWIP_HOOK_IP6_ROUTE
+    default LWIP_HOOK_IP6_ROUTE_DEFAULT if ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+endchoice
+
+choice LWIP_HOOK_ND6_GET_GW
+    default LWIP_HOOK_ND6_GET_GW_DEFAULT if ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+endchoice
+
+choice LWIP_HOOK_IP6_INPUT
+    default LWIP_HOOK_IP6_INPUT_CUSTOM if ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+endchoice
+
+choice LWIP_HOOK_IP6_SELECT_SRC_ADDR
+    default LWIP_HOOK_IP6_SELECT_SRC_ADDR_CUSTOM if ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
+endchoice
