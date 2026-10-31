@@ -14,6 +14,7 @@ config ETHERNET_W5500
 
 config ETHERNET_ESP_EMAC
     bool "ESP32-P4 Internal EMAC + External PHY"
+    depends on SOC_EMAC_SUPPORTED
     help
         ESP32-P4 built-in Ethernet MAC (esp_eth_mac_new_esp32) with external PHY chip.
         Uses the RMII interface. Data-plane pins follow the ESP32-P4 IO_MUX defaults
