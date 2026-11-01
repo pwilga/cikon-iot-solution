@@ -7,6 +7,8 @@
 config NETWORK_UPLINK_THREAD
     bool
     imply OPENTHREAD_ENABLED
+    # Joins the network by a commissioner's PSKd (ot joiner start)
+    imply OPENTHREAD_JOINER
     # NAT64 for MQTT/SNTP: names resolve to the BR's NAT64 addresses
     imply OPENTHREAD_DNS64_CLIENT
     imply MBEDTLS_ECJPAKE_C

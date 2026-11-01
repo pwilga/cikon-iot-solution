@@ -22,15 +22,6 @@ menu "Cikon IoT Supervisor Network Adapter"
             Takes precedence over WiFi when both are enabled.
             Not for the border router (it runs Thread itself).
             Turns on what Thread needs (see Kconfig.projbuild).
-
-    if NETWORK_UPLINK_THREAD
-        config THREAD_DEVICE_PROVISIONED_DATASET
-            string "Provisioned dataset hex (from 'ot dataset active -x', empty = use NVS)"
-            default ""
-            help
-                Full dataset backup from the Thread network leader.
-                Get value by running on any joined device: ot dataset active -x
-                Used when NVS is empty (e.g. after factory reset or first boot).
-    endif
+            The network key comes from a commissioner (ot joiner start <PSKd>), not from the build.
 
 endmenu

@@ -23,7 +23,9 @@
 #include "lwip/tcpip.h"
 #include "openthread/border_agent.h"
 #include "openthread/border_routing.h"
+#include "openthread/commissioner.h"
 #include "openthread/dataset_ftd.h"
+#include "openthread/error.h"
 #include "openthread/ip6.h"
 #include "openthread/link.h"
 #include "openthread/platform/radio.h"
@@ -33,14 +35,21 @@
 #include "cJSON.h"
 
 #include "bits_helper.h"
+#include "cmnd.h"
 #include "config_manager.h"
 #include "inet_common.h"
+#include "json_parser.h"
 #include "supervisor.h"
 #include "tele.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
 
 #define TAG "cikon:adapter:thread_border_router"
+
+// What a joiner has to know to join: 6-32 characters, upper case letters and digits, without
+// I, O, Q and Z. Fixed until the web page lets it be typed in
+#define THREAD_COMMISSIONER_PSKD "DUPA123"
+#define THREAD_COMMISSIONER_TIMEOUT_S 120
 
 static esp_event_handler_instance_t s_ip6_handler =
     NULL; // one-shot: fires once backbone IPv6 link-local is up, then unregisters itself
@@ -99,45 +108,33 @@ static void thread_start_task(void *arg) {
     esp_openthread_lock_acquire(portMAX_DELAY);
 
     otOperationalDatasetTlvs dataset;
-    bool dataset_ready = false;
 
-    if (CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET[0] != '\0') {
-        if (thread_dataset_parse_hex(CONFIG_THREAD_BORDER_ROUTER_PROVISIONED_DATASET, &dataset)) {
-            ESP_LOGI(TAG, "Using provisioned dataset");
-            dataset_ready = true;
-        } else {
-            ESP_LOGW(TAG, "Provisioned dataset parse failed, falling back to NVS/new");
+    if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
+        ESP_LOGI(TAG, "Using dataset from NVS");
+    } else {
+        otOperationalDataset config_dataset;
+        if (otDatasetCreateNewNetwork(esp_openthread_get_instance(), &config_dataset) !=
+            OT_ERROR_NONE) {
+            ESP_LOGE(TAG, "Failed to create new Thread dataset");
+            esp_openthread_lock_release();
+            goto done;
         }
-    }
 
-    if (!dataset_ready) {
-        if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
-            ESP_LOGI(TAG, "Using dataset from NVS");
-        } else {
-            otOperationalDataset config_dataset;
-            if (otDatasetCreateNewNetwork(esp_openthread_get_instance(), &config_dataset) !=
-                OT_ERROR_NONE) {
-                ESP_LOGE(TAG, "Failed to create new Thread dataset");
-                esp_openthread_lock_release();
-                goto done;
-            }
+        memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
+               strlen(CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME) + 1);
+        config_dataset.mComponents.mIsNetworkNamePresent = true;
 
-            memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
-                   strlen(CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME) + 1);
-            config_dataset.mComponents.mIsNetworkNamePresent = true;
-
-            config_dataset.mChannel = CONFIG_THREAD_BORDER_ROUTER_CHANNEL;
-            config_dataset.mComponents.mIsChannelPresent = true;
+        config_dataset.mChannel = CONFIG_THREAD_BORDER_ROUTER_CHANNEL;
+        config_dataset.mComponents.mIsChannelPresent = true;
 
 #if CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL > 0
-            config_dataset.mWakeupChannel = CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL;
-            config_dataset.mComponents.mIsWakeupChannelPresent = true;
+        config_dataset.mWakeupChannel = CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL;
+        config_dataset.mComponents.mIsWakeupChannelPresent = true;
 #endif
 
-            otDatasetConvertToTlvs(&config_dataset, &dataset);
-            ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d",
-                     CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME, CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
-        }
+        otDatasetConvertToTlvs(&config_dataset, &dataset);
+        ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d",
+                 CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME, CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
     }
 
     esp_openthread_auto_start(&dataset);
@@ -498,6 +495,68 @@ static void tele_thread(const char *tele_id, cJSON *json_root) {
 
 static const tele_entry_t thread_border_router_tele[] = {{"thread", tele_thread}, {NULL, NULL}};
 
+// The commissioner callbacks run in the OpenThread task, which already holds its lock
+static void commissioner_state_cb(otCommissionerState state, void *context) {
+    if (state == OT_COMMISSIONER_STATE_ACTIVE) {
+        // NULL joiner: whoever knows the PSKd
+        otError err =
+            otCommissionerAddJoiner(esp_openthread_get_instance(), NULL, THREAD_COMMISSIONER_PSKD,
+                                    THREAD_COMMISSIONER_TIMEOUT_S);
+        if (err == OT_ERROR_NONE) {
+            ESP_LOGI(TAG, "Commissioner active, joiners with PSKd %s can join for %d s",
+                     THREAD_COMMISSIONER_PSKD, THREAD_COMMISSIONER_TIMEOUT_S);
+        } else {
+            ESP_LOGE(TAG, "Commissioner add joiner failed: %s", otThreadErrorToString(err));
+        }
+    } else if (state == OT_COMMISSIONER_STATE_DISABLED) {
+        ESP_LOGI(TAG, "Commissioner stopped");
+    }
+}
+
+static void commissioner_joiner_cb(otCommissionerJoinerEvent event, const otJoinerInfo *info,
+                                   const otExtAddress *joiner_id, void *context) {
+    static const char *const names[] = {"start", "connected", "finalize", "end", "removed"};
+
+    ESP_LOGI(TAG, "Joiner %s",
+             (size_t)event < sizeof(names) / sizeof(names[0]) ? names[event] : "?");
+
+    // The window ran out: stopping from the supervisor, not from inside this callback
+    if (event == OT_COMMISSIONER_JOINER_REMOVED) {
+        cmnd_submit("commissioner", "false");
+    }
+}
+
+static void commissioner_handler(const char *args_json_str) {
+    logic_state_t state = json_str_as_logic_state(args_json_str);
+
+    if (!s_ot_started || !esp_openthread_lock_acquire(pdMS_TO_TICKS(1000))) {
+        ESP_LOGW(TAG, "Commissioner: OpenThread is not available");
+        return;
+    }
+
+    otInstance *instance = esp_openthread_get_instance();
+
+    if (state == STATE_TOGGLE) {
+        state = otCommissionerGetState(instance) == OT_COMMISSIONER_STATE_DISABLED ? STATE_ON
+                                                                                   : STATE_OFF;
+    }
+
+    otError err = state == STATE_ON ? otCommissionerStart(instance, commissioner_state_cb,
+                                                          commissioner_joiner_cb, NULL)
+                                    : otCommissionerStop(instance);
+    esp_openthread_lock_release();
+
+    if (err != OT_ERROR_NONE) {
+        ESP_LOGW(TAG, "Commissioner %s: %s", state == STATE_ON ? "start" : "stop",
+                 otThreadErrorToString(err));
+    }
+}
+
+static const command_entry_t thread_border_router_commands[] = {
+    {"commissioner", "Let joiners that know the PSKd join the Thread network (on/off)",
+     commissioner_handler},
+    {NULL, NULL, NULL}};
+
 supervisor_platform_adapter_t thread_border_router_adapter = {
     .name = "thread_border_router",
     .enable_in_safe_mode = false,
@@ -505,5 +564,6 @@ supervisor_platform_adapter_t thread_border_router_adapter = {
     .shutdown = thread_border_router_adapter_shutdown,
     .on_event = thread_border_router_adapter_on_event,
     .on_interval = thread_border_router_adapter_on_interval,
+    .cmnd_group = thread_border_router_commands,
     .tele_group = thread_border_router_tele,
 };

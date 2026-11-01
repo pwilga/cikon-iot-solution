@@ -14,13 +14,6 @@ menu "Cikon IoT Supervisor Thread Border Router Adapter"
         default 25
         range 0 26
 
-    config THREAD_BORDER_ROUTER_PROVISIONED_DATASET
-        string "Provisioned dataset hex (from 'ot dataset active -x', empty = generate new)"
-        default ""
-        help
-            Full dataset backup. Used when NVS is empty (e.g. after controller swap).
-            Get value by running: ot dataset active -x
-
     config THREAD_BORDER_ROUTER_WEB
         bool "Enable Thread Border Router Web GUI"
         default n

@@ -39,24 +39,13 @@ static void uplink_thread_start_task(void *arg) {
     otOperationalDatasetTlvs dataset;
     bool dataset_ready = false;
 
-    if (CONFIG_THREAD_DEVICE_PROVISIONED_DATASET[0] != '\0') {
-        if (thread_dataset_parse_hex(CONFIG_THREAD_DEVICE_PROVISIONED_DATASET, &dataset)) {
-            ESP_LOGI(TAG, "Using provisioned dataset");
-            dataset_ready = true;
-        } else {
-            ESP_LOGW(TAG, "Provisioned dataset parse failed, trying NVS");
-        }
-    }
-
-    if (!dataset_ready) {
-        if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
-            ESP_LOGI(TAG, "Using dataset from NVS");
-            dataset_ready = true;
-        } else {
-            ESP_LOGW(TAG, "No dataset — Thread will not join automatically");
-            ESP_LOGW(TAG, "Provision via: ot dataset active -x (from BR), then ot ifconfig up / ot "
-                          "thread start");
-        }
+    if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
+        ESP_LOGI(TAG, "Using dataset from NVS");
+        dataset_ready = true;
+    } else {
+        ESP_LOGW(TAG, "No dataset — Thread will not join automatically");
+        ESP_LOGW(TAG, "Join with a commissioner: ot ifconfig up, ot joiner start <PSKd>, ot thread "
+                      "start");
     }
 
 #if CONFIG_OPENTHREAD_FTD
