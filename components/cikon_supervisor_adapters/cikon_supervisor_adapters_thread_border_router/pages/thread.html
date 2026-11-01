@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thread · Cikon IoT</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+
+    <header class="header">
+      <div class="header-top">
+        <div class="th-brand">
+          <span class="th-logo"><svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3" r="1.6"></circle><circle cx="3.4" cy="12" r="1.6"></circle><circle cx="12.6" cy="12" r="1.6"></circle><path d="M8 4.6 4 10.6M8 4.6l4 6M5 12h6"></path></svg></span>
+          <div class="th-brand-txt">
+            <h1 class="th-title"><span class="th-title-c">Cikon</span> Thread Border Router</h1>
+            <div class="th-dev"><span id="dev-name">—</span><span class="th-dev-ip mono" id="dev-sub"></span></div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <a class="btn-nav" href="./" title="Back to dashboard">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8H3M7 4 3 8l4 4"></path></svg>
+            <span class="btn-nav-label">Dashboard</span>
+          </a>
+          <span class="badge" id="status">
+            <span class="dot"></span><span id="status-text">Offline</span>
+          </span>
+          <button class="btn-icon" id="btn-theme" title="Toggle theme" aria-label="Toggle theme"></button>
+        </div>
+      </div>
+    </header>
+
+    <section class="card th-none" id="th-none" hidden>
+      <div class="row-title">No Thread data</div>
+      <div class="row-sub">This device does not report a Thread border router.</div>
+    </section>
+
+    <div id="th-body" hidden>
+      <!-- Network -->
+      <section class="hero th-hero">
+        <div class="hero-main th-main">
+          <div class="hlabel">Thread network</div>
+          <div class="th-net-row"><span class="th-net" id="th-network">–</span><span class="role-pill" id="th-role">–</span></div>
+        </div>
+        <div class="th-stats">
+          <div class="th-stat"><span class="th-k"><svg class="th-ic" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"></circle><path d="M5.2 5.2a4 4 0 0 0 0 5.6M10.8 5.2a4 4 0 0 1 0 5.6M3.1 3.1a7 7 0 0 0 0 9.8M12.9 3.1a7 7 0 0 1 0 9.8"></path></svg>Channel</span><span class="th-v" id="th-channel">–</span></div>
+          <div class="th-stat"><span class="th-k"><svg class="th-ic" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7v7M5.5 14h5"></path><circle cx="8" cy="5.5" r="1.1" fill="currentColor" stroke="none"></circle><path d="M5.3 3a3.6 3.6 0 0 0 0 5M10.7 3a3.6 3.6 0 0 1 0 5"></path></svg>TX power</span><span class="th-v" id="th-tx">–</span></div>
+          <div class="th-stat"><span class="th-k"><svg class="th-ic" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="3" r="1.6"></circle><circle cx="3.4" cy="12" r="1.6"></circle><circle cx="12.6" cy="12" r="1.6"></circle><path d="M8 4.6 4 10.6M8 4.6l4 6M5 12h6"></path></svg>PAN ID</span><span class="th-v mono" id="th-panid">–</span></div>
+          <div class="th-stat"><span class="th-k"><svg class="th-ic" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.3 2.5 5 13.5M11 2.5l-1.3 11M3 6h10.5M2.5 10H13"></path></svg>Extended PAN ID</span><span class="th-v mono" id="th-extpan">–</span></div>
+          <div class="th-stat"><span class="th-k"><svg class="th-ic" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"></circle><path d="M8 2.4V8l4.3 3.4"></path></svg>Partition ID</span><span class="th-v mono" id="th-partition">–</span></div>
+        </div>
+      </section>
+
+      <div class="grid">
+        <div class="cols">
+          <div class="col">
+            <section class="cell">
+              <div class="label section-label th-sec"><span class="th-sec-ic"><svg class="th-ic" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.3" cy="8" r="2.8"></circle><path d="M8.1 8H14M12 8v2.3M14 8v1.6"></path></svg></span>Identifiers</div>
+              <div class="card list">
+                <div class="item kv-wrap"><span class="k">EUI-64</span><span class="v mono" id="th-eui">–</span></div>
+                <div class="item kv-wrap"><span class="k">Border Agent ID</span><span class="v mono" id="th-baid">–</span></div>
+              </div>
+            </section>
+            <section class="cell th-devices">
+              <div class="section-head">
+                <span class="label th-sec"><span class="th-sec-ic"><svg class="th-ic" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.2" y="4.2" width="7.6" height="7.6" rx="2"></rect><path d="M6.5 2v2.2M9.5 2v2.2M6.5 11.8V14M9.5 11.8V14M2 6.5h2.2M2 9.5h2.2M11.8 6.5H14M11.8 9.5H14"></path></svg></span>Devices</span>
+                <span class="count" id="th-dev-count">0</span>
+              </div>
+              <div class="card dev-table">
+                <div id="th-dev-list"></div>
+              </div>
+            </section>
+          </div>
+          <div class="col">
+            <section class="cell">
+              <div class="label section-label th-sec"><span class="th-sec-ic"><svg class="th-ic" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c2.2 2.2 2.2 9.8 0 12M8 2c-2.2 2.2-2.2 9.8 0 12"></path></svg></span>IPv6 addresses</div>
+              <div class="card list th-addrs">
+                <div class="item kv-wrap"><span class="k">OMR prefix</span><span class="v mono" id="th-omr">–</span></div>
+                <div class="th-subhead"><span>Addresses</span><span class="count" id="th-addr-count">0</span></div>
+                <div id="th-addr-list"></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer" id="footer"></footer>
+  </main>
+
+  <div class="reconnect" id="reconnect" hidden>
+    <div class="reconnect-pill"><span class="reconnect-spin"></span>Reconnecting to device…</div>
+  </div>
+
+  <script>
+  /* ===== Cikon Thread border router page ===== */
+  (function () {
+    "use strict";
+
+    var POLL_MS = 5000;
+    var TELE_TIMEOUT_MS = 3500;
+    var NA = "–";
+
+    var state = { tele: null, online: true, live: false };
+    // Rewrite a list only when its HTML changed: replacing it every poll collapses the page height and iOS Safari jumps to the top.
+    function setHTML(id, html) { var el = $(id); if (el.__html !== html) { el.__html = html; el.innerHTML = html; } }
+    var $ = function (id) { return document.getElementById(id); };
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+    function val(v, suffix) { return v == null || v === "" ? NA : String(v) + (suffix || ""); }
+
+    var NODE_IC = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="2.4" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="5.6" stroke-dasharray="2.2 2.2"></circle></svg>';
+    var ROLE_COLOR = { leader: "#6fae84", router: "#5f9ea8", child: "#6f8fd6", detached: "#d9a866", disabled: "#d98e84" };
+
+    // Address type comes from firmware (thread.addresses[].type). No type → no label; unknown → shown as-is.
+    var ADDR_TYPE = {
+      "omr":        ["OMR", "routable from the LAN"],
+      "ml-eid":     ["ML-EID", "Mesh-local EID: stable address inside the mesh"],
+      "rloc":       ["RLOC", "routing locator, changes with topology"],
+      "aloc":       ["ALOC", "anycast (leader, services)"],
+      "link-local": ["Link-local", "this radio link only"]
+    };
+
+    // ---- telemetry ----
+    function loadTele() {
+      var ctrl = new AbortController();
+      var to = setTimeout(function () { ctrl.abort(); }, TELE_TIMEOUT_MS);
+      return fetch("/tele", { cache: "no-store", signal: ctrl.signal })
+        .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
+        .then(function (t) { state.tele = t; state.online = true; state.live = true; render(); })
+        .catch(function () {
+          if (state.live) { state.online = false; render(); return; }
+          // Design preview only: no real /tele → sample file (not deployed to the device)
+          return fetch("sample-tele.json", { cache: "no-store" })
+            .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
+            .then(function (t) { state.tele = t; state.online = true; render(); })
+            .catch(function () { state.online = false; render(); });
+        })
+        .finally(function () { clearTimeout(to); });
+    }
+    function pollLoop() {
+      loadTele().finally(function () { setTimeout(pollLoop, state.online ? POLL_MS : 2000); });
+    }
+
+    // ---- theme ----
+    var SUN = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="9" cy="9" r="3.4"></circle><path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.8 3.8l1.4 1.4M12.8 12.8l1.4 1.4M3.8 14.2l1.4-1.4M12.8 5.2l1.4-1.4"></path></svg>';
+    var MOON = '<svg width="18" height="18" viewBox="0 0 18 18"><path d="M14.5 11.2A6 6 0 1 1 7.3 3.6a4.8 4.8 0 0 0 7.2 7.6z" fill="currentColor"></path></svg>';
+    function themeIcon() { $("btn-theme").innerHTML = document.documentElement.getAttribute("data-theme") === "dark" ? SUN : MOON; }
+    function toggleTheme() {
+      var html = document.documentElement;
+      var next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      html.setAttribute("data-theme", next);
+      try { localStorage.setItem("cikon-theme", next); } catch (e) {}
+      themeIcon();
+    }
+
+    // ---- render ----
+    function render() {
+      var t = state.tele || {};
+      var th = t.thread;
+
+      $("dev-name").textContent = t.name || "—";
+      $("dev-sub").textContent = t.ip || t.mdns || "";
+
+      var badge = $("status");
+      badge.classList.toggle("online", state.online);
+      badge.title = state.online ? "Receiving telemetry from /tele" : "No response from /tele";
+      $("status-text").textContent = state.online ? "Live" : "Offline";
+      document.querySelector(".wrap").classList.toggle("offline", !state.online);
+      $("reconnect").hidden = state.online;
+
+      var loaded = !!state.tele;
+      $("th-none").hidden = !loaded || !!th;
+      $("th-body").hidden = !th;
+      $("footer").textContent = "© 2025–" + new Date().getFullYear() + " Cikon IoT Solutions";
+      if (!th) return;
+
+      // network
+      $("th-network").textContent = val(th.network);
+      $("th-network").title = th.network || "";
+      var role = th.role ? String(th.role).toLowerCase() : "";
+      var rp = $("th-role");
+      rp.textContent = role ? role.charAt(0).toUpperCase() + role.slice(1) : NA;
+      rp.style.color = ROLE_COLOR[role] || "var(--muted)";
+      $("th-channel").textContent = val(th.channel);
+      $("th-tx").textContent = val(th.tx_power, " dBm");
+      $("th-panid").textContent = val(th.panid);
+      $("th-extpan").textContent = val(th.ext_panid);
+      $("th-partition").textContent = val(th.partition_id);
+
+      // identifiers
+      $("th-eui").textContent = val(th.eui64);
+      $("th-baid").textContent = val(th.ba_id);
+
+      // IPv6
+      $("th-omr").textContent = val(th.omr);
+      var addrs = Array.isArray(th.addresses) ? th.addresses : [];
+      $("th-addr-count").textContent = addrs.length;
+      setHTML("th-addr-list", addrs.length
+        ? addrs.map(function (a) {
+            var ip = a && typeof a === "object" ? a.ip : a;
+            var raw = a && typeof a === "object" && a.type ? String(a.type) : "";
+            var def = ADDR_TYPE[raw.toLowerCase()];
+            var label = def ? '<span class="addr-type" title="' + esc(def[1]) + '">' + esc(def[0]) + '</span>'
+              : raw ? '<span class="addr-type">' + esc(raw) + '</span>' : '';
+            return '<div class="item th-addr"><span class="mono">' + esc(val(ip)) + '</span>' + label + '</div>';
+          }).join("")
+        : '<div class="item th-empty">No addresses</div>');
+
+      // devices
+      var devs = Array.isArray(th.devices) ? th.devices : [];
+      $("th-dev-count").textContent = devs.length;
+      setHTML("th-dev-list", devs.length
+        ? devs.map(function (d) {
+            var name = d && d.name ? String(d.name) : "";
+            var nameHTML = name
+              ? '<a class="dev-name mono" href="http://' + encodeURIComponent(name) + '.local/" target="_blank" rel="noopener">' + esc(name) + '<span class="dev-arrow">↗</span></a>'
+              : '<span class="dev-name mono">' + NA + '</span>';
+            return '<div class="dev-row"><span class="dev-ic">' + NODE_IC + '</span><span class="dev-txt">' + nameHTML + '<span class="dev-ip mono">' + esc(val(d && d.ip)) + '</span></span></div>';
+          }).join("")
+        : '<div class="dev-row th-empty">No devices on the network</div>');
+    }
+
+    function init() {
+      try {
+        var saved = localStorage.getItem("cikon-theme");
+        if (saved) document.documentElement.setAttribute("data-theme", saved);
+      } catch (e) {}
+      themeIcon();
+      $("btn-theme").addEventListener("click", toggleTheme);
+      render();
+      pollLoop();
+    }
+
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+    else init();
+  })();
+  </script>
+</body>
+</html>
