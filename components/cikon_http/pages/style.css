@@ -341,7 +341,7 @@ a.dev-name:hover { color: #5f9ea8; text-decoration: underline; }
 .list .item.kv-wrap .v { white-space: nowrap; word-break: normal; font-size: clamp(10px, calc((100cqi - 36px) / 24), 13px); }
 .list .item.th-addr .mono { white-space: nowrap; word-break: normal; font-size: clamp(10px, calc((100cqi - 36px - 70px) / 24), 13px); }
 .dev-row .dev-ip { white-space: nowrap; word-break: normal; font-size: clamp(10px, calc((100cqi - 36px - 42px) / 24), 12.5px); }
-@container (max-width: 430px) {
+@container (max-width: 380px) {
   .list .item.kv-wrap { flex-direction: column; align-items: flex-start; gap: 4px; }
   .list .item.kv-wrap .v { margin-left: 0; text-align: left; }
   .list .item.th-addr { flex-direction: column; align-items: flex-start; gap: 4px; }

@@ -445,6 +445,8 @@
     // IP under the device name (System list no longer repeats it); mDNS name as tooltip
     $("dev-sub").textContent = t.ip || t.mdns || "";
     $("dev-sub").title = t.ip && t.mdns ? t.mdns : "";
+    // Thread page link: only on border routers (/tele carries a `thread` key)
+    $("nav-thread").hidden = !t.thread;
 
     var badge = $("status");
     badge.classList.toggle("online", state.online);
