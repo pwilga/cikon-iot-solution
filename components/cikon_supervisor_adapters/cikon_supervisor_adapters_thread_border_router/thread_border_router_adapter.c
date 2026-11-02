@@ -19,7 +19,6 @@
 #include "lwip/tcpip.h"
 #include "openthread/border_agent.h"
 #include "openthread/border_routing.h"
-#include "openthread/commissioner.h"
 #include "openthread/dataset_ftd.h"
 #include "openthread/error.h"
 #include "openthread/ip6.h"
@@ -31,20 +30,13 @@
 #include "cJSON.h"
 
 #include "bits_helper.h"
-#include "cmnd.h"
 #include "config_manager.h"
-#include "json_parser.h"
 #include "supervisor.h"
 #include "tele.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
 
 #define TAG "cikon:adapter:thread_border_router"
-
-// What a joiner has to know to join: 6-32 characters, upper case letters and digits, without
-// I, O, Q and Z. Fixed until the web page lets it be typed in
-#define THREAD_COMMISSIONER_PSKD "DUPA123"
-#define THREAD_COMMISSIONER_TIMEOUT_S 120
 
 static esp_event_handler_instance_t s_ip6_handler =
     NULL; // one-shot: fires once backbone IPv6 link-local is up, then unregisters itself
@@ -477,72 +469,12 @@ static void tele_thread(const char *tele_id, cJSON *json_root) {
         cJSON_AddItemToArray(devices, device);
     }
 
+    thread_commissioner_tele(thread);
+
     xSemaphoreGive(s_snapshot_mutex);
 }
 
 static const tele_entry_t thread_border_router_tele[] = {{"thread", tele_thread}, {NULL, NULL}};
-
-// The commissioner callbacks run in the OpenThread task, which already holds its lock
-static void commissioner_state_cb(otCommissionerState state, void *context) {
-    if (state == OT_COMMISSIONER_STATE_ACTIVE) {
-        // NULL joiner: whoever knows the PSKd
-        otError err =
-            otCommissionerAddJoiner(esp_openthread_get_instance(), NULL, THREAD_COMMISSIONER_PSKD,
-                                    THREAD_COMMISSIONER_TIMEOUT_S);
-        if (err == OT_ERROR_NONE) {
-            ESP_LOGI(TAG, "Commissioner active, joiners with PSKd %s can join for %d s",
-                     THREAD_COMMISSIONER_PSKD, THREAD_COMMISSIONER_TIMEOUT_S);
-        } else {
-            ESP_LOGE(TAG, "Commissioner add joiner failed: %s", otThreadErrorToString(err));
-        }
-    } else if (state == OT_COMMISSIONER_STATE_DISABLED) {
-        ESP_LOGI(TAG, "Commissioner stopped");
-    }
-}
-
-static void commissioner_joiner_cb(otCommissionerJoinerEvent event, const otJoinerInfo *info,
-                                   const otExtAddress *joiner_id, void *context) {
-    static const char *const names[] = {"start", "connected", "finalize", "end", "removed"};
-
-    ESP_LOGI(TAG, "Joiner %s",
-             (size_t)event < sizeof(names) / sizeof(names[0]) ? names[event] : "?");
-
-    // The window ran out: stopping from the supervisor, not from inside this callback
-    if (event == OT_COMMISSIONER_JOINER_REMOVED) {
-        cmnd_submit("commissioner", "false");
-    }
-}
-
-static void commissioner_handler(const char *args_json_str) {
-    logic_state_t state = json_str_as_logic_state(args_json_str);
-
-    if (!s_ot_started || !esp_openthread_lock_acquire(pdMS_TO_TICKS(1000))) {
-        ESP_LOGW(TAG, "Commissioner: OpenThread is not available");
-        return;
-    }
-
-    otInstance *instance = esp_openthread_get_instance();
-
-    if (state == STATE_TOGGLE) {
-        state = otCommissionerGetState(instance) == OT_COMMISSIONER_STATE_DISABLED ? STATE_ON
-                                                                                   : STATE_OFF;
-    }
-
-    otError err = state == STATE_ON ? otCommissionerStart(instance, commissioner_state_cb,
-                                                          commissioner_joiner_cb, NULL)
-                                    : otCommissionerStop(instance);
-    esp_openthread_lock_release();
-
-    if (err != OT_ERROR_NONE) {
-        ESP_LOGW(TAG, "Commissioner %s: %s", state == STATE_ON ? "start" : "stop",
-                 otThreadErrorToString(err));
-    }
-}
-
-static const command_entry_t thread_border_router_commands[] = {
-    {"commissioner", "Let joiners that know the PSKd join the Thread network (on/off)",
-     commissioner_handler},
-    {NULL, NULL, NULL}};
 
 supervisor_platform_adapter_t thread_border_router_adapter = {
     .name = "thread_border_router",
@@ -551,6 +483,6 @@ supervisor_platform_adapter_t thread_border_router_adapter = {
     .shutdown = thread_border_router_adapter_shutdown,
     .on_event = thread_border_router_adapter_on_event,
     .on_interval = thread_border_router_adapter_on_interval,
-    .cmnd_group = thread_border_router_commands,
+    .cmnd_group = thread_commands,
     .tele_group = thread_border_router_tele,
 };

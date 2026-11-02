@@ -156,6 +156,6 @@ const uplink_t uplink_thread = {
     .name = "thread",
     .start = uplink_thread_start,
     .stop = uplink_thread_stop,
-    .commands = NULL,
+    .commands = thread_commands,
     .tele = uplink_thread_tele,
 };

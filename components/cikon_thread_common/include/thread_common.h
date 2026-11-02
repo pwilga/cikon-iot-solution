@@ -5,6 +5,9 @@
 
 #include "openthread/dataset.h"
 
+#include "cJSON.h"
+#include "cmnd.h"
+
 bool thread_dataset_parse_hex(const char *hex, otOperationalDatasetTlvs *out);
 void thread_log_network_info(void);
 
@@ -23,6 +26,28 @@ void thread_log_network_info(void);
  * @return true if a reachable address was found and written to @p out.
  */
 bool thread_get_reachable_ip6(char *out, size_t out_size);
+
+/**
+ * @brief Supervisor commands of the Thread services built into this device.
+ *
+ * Each service is there only when its OpenThread option is on; without any the array holds just
+ * the terminator.
+ */
+extern const command_entry_t thread_commands[];
+
+/**
+ * @brief Add the commissioner state to the "thread" tele object.
+ *
+ * Adds "commissioner": {"state": "disabled"|"petition"|"active", "remaining": seconds left, only
+ * when active}. Does nothing when OpenThread has no commissioner.
+ *
+ * @param thread  The "thread" object of the tele.
+ */
+#if CONFIG_OPENTHREAD_COMMISSIONER
+void thread_commissioner_tele(cJSON *thread);
+#else
+static inline void thread_commissioner_tele(cJSON *thread) { (void)thread; }
+#endif
 
 #if CONFIG_OPENTHREAD_CLI
 void thread_console_start(const char *prompt);

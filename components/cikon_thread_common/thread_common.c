@@ -10,6 +10,8 @@
 #include "openthread/link.h"
 #include "openthread/thread.h"
 
+#include "thread_commissioner.h" // IWYU pragma: keep
+
 #define TAG "cikon:thread"
 
 bool thread_dataset_parse_hex(const char *hex, otOperationalDatasetTlvs *out) {
@@ -62,7 +64,8 @@ bool thread_get_reachable_ip6(char *out, size_t out_size) {
     const otNetifAddress *omr = NULL;
     const otNetifAddress *mesh_local = NULL;
 
-    for (const otNetifAddress *addr = otIp6GetUnicastAddresses(ot); addr != NULL; addr = addr->mNext) {
+    for (const otNetifAddress *addr = otIp6GetUnicastAddresses(ot); addr != NULL;
+         addr = addr->mNext) {
         if (!addr->mValid || addr->mRloc) {
             continue;
         }
@@ -86,6 +89,13 @@ bool thread_get_reachable_ip6(char *out, size_t out_size) {
     esp_openthread_lock_release();
     return found;
 }
+
+const command_entry_t thread_commands[] = {
+#if CONFIG_OPENTHREAD_COMMISSIONER
+    {"commissioner", "Let joiners that know the PSKd join the Thread network (on/off)",
+     thread_commissioner_handler},
+#endif
+    {NULL, NULL, NULL}};
 
 #if CONFIG_OPENTHREAD_CLI
 #include "esp_console.h"

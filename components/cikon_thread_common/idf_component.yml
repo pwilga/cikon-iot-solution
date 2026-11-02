@@ -8,6 +8,12 @@ maintainers:
 
 dependencies:
   idf: ">=6.0"
+  cikon_supervisor:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_supervisor
+  cikon_helpers:
+    git: "https://github.com/pwilga/cikon-iot-solution.git"
+    path: components/cikon_helpers
   espressif/esp_ot_cli_extension:
     version: ">=2.0.0"
     matches:
