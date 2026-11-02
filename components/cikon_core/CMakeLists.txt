@@ -14,5 +14,4 @@ idf_component_register(
         esp_timer
         nvs_flash
         vfs
-        spiffs
 )

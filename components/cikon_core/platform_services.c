@@ -33,9 +33,6 @@
 #if CONFIG_VFS_LITTLEFS_ENABLED
 #include "esp_littlefs.h"
 #endif
-#if CONFIG_VFS_SPIFFS_ENABLED
-#include "esp_spiffs.h"
-#endif
 
 #define TAG "cikon:platform"
 
@@ -61,19 +58,6 @@ void core_system_init(void) {
         };
         ESP_ERROR_CHECK(esp_vfs_littlefs_register(&lfs));
         ESP_LOGI(TAG, "LittleFS mounted at %s", CONFIG_VFS_LITTLEFS_MOUNT_POINT);
-    }
-#endif
-
-#if CONFIG_VFS_SPIFFS_ENABLED
-    {
-        esp_vfs_spiffs_conf_t spiffs = {
-            .base_path = CONFIG_VFS_SPIFFS_MOUNT_POINT,
-            .partition_label = CONFIG_VFS_SPIFFS_PARTITION,
-            .max_files = 10,
-            .format_if_mount_failed = false,
-        };
-        ESP_ERROR_CHECK(esp_vfs_spiffs_register(&spiffs));
-        ESP_LOGI(TAG, "SPIFFS mounted at %s", CONFIG_VFS_SPIFFS_MOUNT_POINT);
     }
 #endif
 }

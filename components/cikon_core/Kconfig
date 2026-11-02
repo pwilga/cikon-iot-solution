@@ -22,20 +22,6 @@ menu "Cikon IoT Board Configuration"
         default "littlefs"
         depends on VFS_LITTLEFS_ENABLED
 
-    config VFS_SPIFFS_ENABLED
-        bool "Mount SPIFFS partition at boot"
-        default n
-
-    config VFS_SPIFFS_MOUNT_POINT
-        string "Mount point"
-        default "/spiffs"
-        depends on VFS_SPIFFS_ENABLED
-
-    config VFS_SPIFFS_PARTITION
-        string "Partition label"
-        default "web_storage"
-        depends on VFS_SPIFFS_ENABLED
-
     config RESTART_MAX_CALLBACKS
         int "Maximum number of restart callbacks"
         default 4
