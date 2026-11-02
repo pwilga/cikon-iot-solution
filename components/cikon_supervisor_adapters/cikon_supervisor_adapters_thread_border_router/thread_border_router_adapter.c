@@ -1,9 +1,5 @@
 #include "thread_border_router_adapter.h"
 
-#if CONFIG_THREAD_BORDER_ROUTER_WEB
-#include "esp_br_web.h"
-#endif
-
 #include <stdio.h>
 #include <string.h>
 
@@ -37,7 +33,6 @@
 #include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
-#include "inet_common.h"
 #include "json_parser.h"
 #include "supervisor.h"
 #include "tele.h"
@@ -155,14 +150,6 @@ static esp_err_t thread_border_router_adapter_init(void) {
     if (s_snapshot_mutex == NULL) {
         s_snapshot_mutex = xSemaphoreCreateMutex();
     }
-
-#if CONFIG_THREAD_BORDER_ROUTER_WEB
-    // esp_br_web_start() aborts if mDNS isn't running yet, and the network adapter starts it only
-    // with the uplink - so start it here (inet_common_mdns_init() is idempotent)
-    inet_common_mdns_init();
-    esp_br_web_start(CONFIG_VFS_SPIFFS_MOUNT_POINT);
-    ESP_LOGI(TAG, "Thread BR Web GUI handler registered");
-#endif
 
     // esp_netif_init() already called by the network adapter (uplink) before us
 #if CONFIG_OPENTHREAD_CLI

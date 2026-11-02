@@ -14,12 +14,4 @@ menu "Cikon IoT Supervisor Thread Border Router Adapter"
         default 25
         range 0 26
 
-    config THREAD_BORDER_ROUTER_WEB
-        bool "Enable Thread Border Router Web GUI"
-        default n
-        imply VFS_SPIFFS_ENABLED
-        help
-            Start the ot-br-posix REST API + HTML/JS frontend on port 80.
-            Turns on SPIFFS; needs the web_storage partition.
-
 endmenu
