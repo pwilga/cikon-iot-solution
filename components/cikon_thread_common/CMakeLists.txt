@@ -1,4 +1,4 @@
-set(srcs "thread_common.c")
+set(srcs "thread_common.c" "thread_tele.c")
 
 # A Thread service is built only when OpenThread has it
 if(CONFIG_OPENTHREAD_COMMISSIONER)

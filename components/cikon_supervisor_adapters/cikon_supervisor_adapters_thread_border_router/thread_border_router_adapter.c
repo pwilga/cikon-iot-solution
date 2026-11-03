@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
-#include "freertos/semphr.h"
 #include "freertos/task.h"
 
 #include "esp_event.h"
@@ -17,17 +16,10 @@
 #include "esp_openthread_types.h"
 #include "lwip/nd6.h"
 #include "lwip/tcpip.h"
-#include "openthread/border_agent.h"
 #include "openthread/border_routing.h"
 #include "openthread/dataset_ftd.h"
 #include "openthread/error.h"
-#include "openthread/ip6.h"
-#include "openthread/link.h"
-#include "openthread/platform/radio.h"
-#include "openthread/srp_server.h"
 #include "openthread/thread.h"
-
-#include "cJSON.h"
 
 #include "bits_helper.h"
 #include "config_manager.h"
@@ -48,44 +40,6 @@ static esp_netif_t *s_backbone_netif = NULL;
 
 static bool initialized = false;
 static bool s_ot_started = false;
-
-// Read once: asking the RCP goes over UART, and nothing changes it after the start
-static int8_t s_tx_power;
-static bool s_tx_power_known = false;
-
-#define THREAD_SNAPSHOT_MAX_ADDRESSES 8
-#define THREAD_SNAPSHOT_MAX_DEVICES 16
-
-typedef struct {
-    char name[32];
-    otIp6Address ip;
-    bool has_ip;
-} thread_snapshot_device_t;
-
-// The Thread network for the tele, copied from OpenThread every 10 s. The tele only formats it, so
-// MQTT and HTTP never take the OpenThread lock
-typedef struct {
-    otDeviceRole role;
-    char network[OT_NETWORK_NAME_MAX_SIZE + 1];
-    uint8_t channel;
-    otPanId panid;
-    otExtendedPanId ext_panid;
-    uint32_t partition_id;
-    otExtAddress eui64;
-    otBorderAgentId ba_id;
-    bool has_ba_id;
-    otIp6Prefix omr;
-    bool has_omr;
-    otIp6Address addresses[THREAD_SNAPSHOT_MAX_ADDRESSES];
-    const char *address_types[THREAD_SNAPSHOT_MAX_ADDRESSES]; // NULL when none fits
-    uint8_t addresses_num;
-    thread_snapshot_device_t devices[THREAD_SNAPSHOT_MAX_DEVICES];
-    uint8_t devices_num;
-} thread_snapshot_t;
-
-static thread_snapshot_t s_snapshot;
-static bool s_snapshot_valid = false;
-static SemaphoreHandle_t s_snapshot_mutex = NULL;
 
 static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
 
@@ -125,8 +79,6 @@ static void thread_start_task(void *arg) {
     }
 
     esp_openthread_auto_start(&dataset);
-    s_tx_power_known =
-        otPlatRadioGetTransmitPower(esp_openthread_get_instance(), &s_tx_power) == OT_ERROR_NONE;
     esp_openthread_lock_release();
     ESP_LOGI(TAG, "Thread network started");
 
@@ -137,10 +89,6 @@ done:
 static esp_err_t thread_border_router_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
-    }
-
-    if (s_snapshot_mutex == NULL) {
-        s_snapshot_mutex = xSemaphoreCreateMutex();
     }
 
     // esp_netif_init() already called by the network adapter (uplink) before us
@@ -302,179 +250,15 @@ static void thread_border_router_adapter_on_event(EventBits_t bits) {
     }
 }
 
-// What the address is for - OpenThread only tells where it came from ("thread" for most of them)
-static const char *thread_address_type(const otNetifAddress *addr) {
-    const uint8_t *bytes = addr->mAddress.mFields.m8;
-
-    // fe80::/10
-    if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) {
-        return "link-local";
-    }
-
-    // RLOC and ALOC end with 0000:00ff:fe00:<locator>, anycast locators from 0xfc00 up
-    static const uint8_t locator_iid[] = {0x00, 0x00, 0x00, 0xff, 0xfe, 0x00};
-    if (memcmp(&bytes[8], locator_iid, sizeof(locator_iid)) == 0) {
-        return bytes[14] >= 0xfc ? "aloc" : "rloc";
-    }
-
-    if (addr->mMeshLocal) {
-        return "ml-eid";
-    }
-
-    if (addr->mAddressOrigin == OT_ADDRESS_ORIGIN_SLAAC) {
-        return "omr";
-    }
-
-    return NULL;
-}
-
-// Only copying under the OpenThread lock - formatting happens in the tele, without it
-static void thread_snapshot_refresh(void) {
-    if (!s_ot_started) {
-        return;
-    }
-
-    // MQTT and HTTP read the snapshot from their own tasks - never while it's half written. The
-    // mutex comes first so the snapshot is filled in place, without a second buffer
-    xSemaphoreTake(s_snapshot_mutex, portMAX_DELAY);
-
-    // A busy OpenThread lock skips this refresh rather than stall the supervisor - the next one
-    // comes later
-    if (!esp_openthread_lock_acquire(pdMS_TO_TICKS(100))) {
-        xSemaphoreGive(s_snapshot_mutex);
-        return;
-    }
-
-    otInstance *instance = esp_openthread_get_instance();
-    memset(&s_snapshot, 0, sizeof(s_snapshot));
-
-    s_snapshot.role = otThreadGetDeviceRole(instance);
-    strlcpy(s_snapshot.network, otThreadGetNetworkName(instance), sizeof(s_snapshot.network));
-    s_snapshot.channel = otLinkGetChannel(instance);
-    s_snapshot.panid = otLinkGetPanId(instance);
-    s_snapshot.ext_panid = *otThreadGetExtendedPanId(instance);
-    s_snapshot.partition_id = otThreadGetPartitionId(instance);
-    otLinkGetFactoryAssignedIeeeEui64(instance, &s_snapshot.eui64);
-    s_snapshot.has_ba_id = otBorderAgentGetId(instance, &s_snapshot.ba_id) == OT_ERROR_NONE;
-    s_snapshot.has_omr = otBorderRoutingGetOmrPrefix(instance, &s_snapshot.omr) == OT_ERROR_NONE;
-
-    for (const otNetifAddress *addr = otIp6GetUnicastAddresses(instance);
-         addr && s_snapshot.addresses_num < THREAD_SNAPSHOT_MAX_ADDRESSES; addr = addr->mNext) {
-        s_snapshot.addresses[s_snapshot.addresses_num] = addr->mAddress;
-        s_snapshot.address_types[s_snapshot.addresses_num] = thread_address_type(addr);
-        s_snapshot.addresses_num++;
-    }
-
-    // Devices registered on the BR's SRP server, by the name they announce themselves with
-    const otSrpServerHost *host = NULL;
-    while ((host = otSrpServerGetNextHost(instance, host)) != NULL &&
-           s_snapshot.devices_num < THREAD_SNAPSHOT_MAX_DEVICES) {
-        if (otSrpServerHostIsDeleted(host)) {
-            continue;
-        }
-
-        thread_snapshot_device_t *device = &s_snapshot.devices[s_snapshot.devices_num++];
-
-        // "h2dev.default.service.arpa." - the device name is the first label
-        const char *full_name = otSrpServerHostGetFullName(host);
-        snprintf(device->name, sizeof(device->name), "%.*s", (int)strcspn(full_name, "."),
-                 full_name);
-
-        uint8_t addresses_num = 0;
-        const otIp6Address *addresses = otSrpServerHostGetAddresses(host, &addresses_num);
-        if (addresses_num > 0) {
-            device->ip = addresses[0];
-            device->has_ip = true;
-        }
-    }
-
-    esp_openthread_lock_release();
-
-    s_snapshot_valid = true;
-    xSemaphoreGive(s_snapshot_mutex);
-}
-
 // The network changes rarely, so 10 s is plenty
 static void thread_border_router_adapter_on_interval(supervisor_interval_stage_t stage) {
     if (stage == SUPERVISOR_INTERVAL_10S) {
-        thread_snapshot_refresh();
+        thread_tele_refresh();
     }
 }
 
-static void tele_add_hex(cJSON *json, const char *key, const uint8_t *bytes, size_t len) {
-    char hex[2 * OT_BORDER_AGENT_ID_LENGTH + 1];
-    for (size_t i = 0; i < len && i < OT_BORDER_AGENT_ID_LENGTH; i++) {
-        snprintf(&hex[2 * i], 3, "%02x", bytes[i]);
-    }
-    cJSON_AddStringToObject(json, key, hex);
-}
-
-static void tele_thread(const char *tele_id, cJSON *json_root) {
-    if (s_snapshot_mutex == NULL ||
-        xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return;
-    }
-
-    if (!s_snapshot_valid) {
-        xSemaphoreGive(s_snapshot_mutex);
-        return;
-    }
-
-    const thread_snapshot_t *snap = &s_snapshot;
-    cJSON *thread = cJSON_AddObjectToObject(json_root, tele_id);
-    char buf[OT_IP6_PREFIX_STRING_SIZE];
-
-    cJSON_AddStringToObject(thread, "role", otThreadDeviceRoleToString(snap->role));
-    cJSON_AddStringToObject(thread, "network", snap->network);
-    cJSON_AddNumberToObject(thread, "channel", snap->channel);
-
-    if (s_tx_power_known) {
-        cJSON_AddNumberToObject(thread, "tx_power", s_tx_power);
-    }
-
-    snprintf(buf, sizeof(buf), "0x%04x", snap->panid);
-    cJSON_AddStringToObject(thread, "panid", buf);
-    tele_add_hex(thread, "ext_panid", snap->ext_panid.m8, sizeof(snap->ext_panid.m8));
-    cJSON_AddNumberToObject(thread, "partition_id", snap->partition_id);
-    tele_add_hex(thread, "eui64", snap->eui64.m8, sizeof(snap->eui64.m8));
-
-    if (snap->has_ba_id) {
-        tele_add_hex(thread, "ba_id", snap->ba_id.mId, sizeof(snap->ba_id.mId));
-    }
-
-    if (snap->has_omr) {
-        otIp6PrefixToString(&snap->omr, buf, sizeof(buf));
-        cJSON_AddStringToObject(thread, "omr", buf);
-    }
-
-    cJSON *addresses = cJSON_AddArrayToObject(thread, "addresses");
-    for (uint8_t i = 0; i < snap->addresses_num; i++) {
-        cJSON *address = cJSON_CreateObject();
-        otIp6AddressToString(&snap->addresses[i], buf, sizeof(buf));
-        cJSON_AddStringToObject(address, "ip", buf);
-        if (snap->address_types[i]) {
-            cJSON_AddStringToObject(address, "type", snap->address_types[i]);
-        }
-        cJSON_AddItemToArray(addresses, address);
-    }
-
-    cJSON *devices = cJSON_AddArrayToObject(thread, "devices");
-    for (uint8_t i = 0; i < snap->devices_num; i++) {
-        cJSON *device = cJSON_CreateObject();
-        cJSON_AddStringToObject(device, "name", snap->devices[i].name);
-        if (snap->devices[i].has_ip) {
-            otIp6AddressToString(&snap->devices[i].ip, buf, sizeof(buf));
-            cJSON_AddStringToObject(device, "ip", buf);
-        }
-        cJSON_AddItemToArray(devices, device);
-    }
-
-    thread_commissioner_tele(thread);
-
-    xSemaphoreGive(s_snapshot_mutex);
-}
-
-static const tele_entry_t thread_border_router_tele[] = {{"thread", tele_thread}, {NULL, NULL}};
+static const tele_entry_t thread_border_router_tele[] = {{"thread", thread_tele_appender},
+                                                         {NULL, NULL}};
 
 supervisor_platform_adapter_t thread_border_router_adapter = {
     .name = "thread_border_router",

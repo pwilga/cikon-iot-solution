@@ -36,19 +36,21 @@ bool thread_get_reachable_ip6(char *out, size_t out_size);
 extern const command_entry_t thread_commands[];
 
 /**
- * @brief Add the commissioner state to the "thread" tele object.
+ * @brief Copy the Thread network state from OpenThread for thread_tele_appender().
  *
- * Adds "commissioner": {"state": "disabled"|"petition"|"active", "timeout": seconds the window was
- * opened for and "remaining": seconds left, both only when active, "error": why the last start
- * failed, only after a failure}. Does nothing when OpenThread has no commissioner.
- *
- * @param thread  The "thread" object of the tele.
+ * Always call it from the same task. Does nothing until the OpenThread stack has started.
  */
-#if CONFIG_OPENTHREAD_COMMISSIONER
-void thread_commissioner_tele(cJSON *thread);
-#else
-static inline void thread_commissioner_tele(cJSON *thread) { (void)thread; }
-#endif
+void thread_tele_refresh(void);
+
+/**
+ * @brief Tele appender of the Thread network state.
+ *
+ * Adds the object @p tele_id with the role, network name, channel, TX power, PAN IDs, partition ID,
+ * EUI-64 and the addresses with their types. The border agent ID, OMR prefix and the devices
+ * registered on the SRP server come only with a build that has them, the commissioner state only
+ * with one that has the commissioner. Adds nothing before the first thread_tele_refresh().
+ */
+void thread_tele_appender(const char *tele_id, cJSON *json_root);
 
 #if CONFIG_OPENTHREAD_CLI
 void thread_console_start(const char *prompt);

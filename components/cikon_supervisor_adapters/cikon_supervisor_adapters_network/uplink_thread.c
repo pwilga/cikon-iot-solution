@@ -149,8 +149,14 @@ static void uplink_thread_tele_ip_address(const char *tele_id, cJSON *json_root)
     }
 }
 
-static const tele_entry_t uplink_thread_tele[] = {{"ip", uplink_thread_tele_ip_address},
-                                                  {NULL, NULL}};
+static const tele_entry_t uplink_thread_tele[] = {
+    {"ip", uplink_thread_tele_ip_address}, {"thread", thread_tele_appender}, {NULL, NULL}};
+
+static void uplink_thread_on_interval(supervisor_interval_stage_t stage) {
+    if (stage == SUPERVISOR_INTERVAL_10S) {
+        thread_tele_refresh();
+    }
+}
 
 const uplink_t uplink_thread = {
     .name = "thread",
@@ -158,4 +164,5 @@ const uplink_t uplink_thread = {
     .stop = uplink_thread_stop,
     .commands = thread_commands,
     .tele = uplink_thread_tele,
+    .on_interval = uplink_thread_on_interval,
 };

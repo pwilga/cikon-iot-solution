@@ -149,6 +149,10 @@ static void network_adapter_on_event(EventBits_t bits) {
 static void network_adapter_on_interval(supervisor_interval_stage_t stage) {
     inet_common_on_interval(stage);
 
+    if (uplink && uplink->on_interval) {
+        uplink->on_interval(stage);
+    }
+
     if (stage == SUPERVISOR_INTERVAL_10M && network_clients_running) {
         mqtt_init();
     }
