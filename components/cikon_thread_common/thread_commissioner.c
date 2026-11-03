@@ -26,6 +26,21 @@ static uint32_t s_timeout_s;
 static uint32_t s_expires_s; // uptime second at which the joiner entry runs out
 static uint8_t s_state = OT_COMMISSIONER_STATE_DISABLED;
 
+// Why the last start did not end up active, shown in the tele until the next start
+enum {
+    ERROR_NONE,
+    ERROR_NOT_ATTACHED,
+    ERROR_PETITION_REJECTED,
+    ERROR_START_FAILED,
+};
+static const char *const error_names[] = {
+    [ERROR_NONE] = NULL,
+    [ERROR_NOT_ATTACHED] = "Not attached to a Thread network",
+    [ERROR_PETITION_REJECTED] = "Petition rejected, another commissioner may be active",
+    [ERROR_START_FAILED] = "Commissioner start failed",
+};
+static uint8_t s_error = ERROR_NONE;
+
 static bool pskd_valid(const char *pskd) {
     size_t len = strlen(pskd);
     if (len < THREAD_COMMISSIONER_PSKD_MIN_LEN || len > OT_JOINER_MAX_PSKD_LENGTH) {
@@ -44,6 +59,10 @@ static bool pskd_valid(const char *pskd) {
 
 // The commissioner callbacks run in the OpenThread task, which already holds its lock
 static void commissioner_state_cb(otCommissionerState state, void *context) {
+    // Going back to disabled while still petitioning: the leader did not accept the petition
+    if (state == OT_COMMISSIONER_STATE_DISABLED && s_state == OT_COMMISSIONER_STATE_PETITION) {
+        s_error = ERROR_PETITION_REJECTED;
+    }
     s_state = state;
 
     if (state == OT_COMMISSIONER_STATE_ACTIVE) {
@@ -122,6 +141,7 @@ void thread_commissioner_handler(const char *args_json_str) {
 
     otInstance *instance = esp_openthread_get_instance();
 
+    s_error = ERROR_NONE;
     otError err =
         start ? otCommissionerStart(instance, commissioner_state_cb, commissioner_joiner_cb, NULL)
               : otCommissionerStop(instance);
@@ -130,6 +150,12 @@ void thread_commissioner_handler(const char *args_json_str) {
     if (start && err == OT_ERROR_NONE) {
         snprintf(s_pskd, sizeof(s_pskd), "%s", pskd);
         s_timeout_s = timeout_s;
+    }
+    if (start && err != OT_ERROR_NONE) {
+        s_error = err == OT_ERROR_INVALID_STATE ? ERROR_NOT_ATTACHED : ERROR_START_FAILED;
+    } else if (!start) {
+        // Stopping during the petition is not a rejection
+        s_error = ERROR_NONE;
     }
     esp_openthread_lock_release();
 
@@ -148,8 +174,14 @@ void thread_commissioner_tele(cJSON *thread) {
         commissioner, "state",
         state < sizeof(state_names) / sizeof(state_names[0]) ? state_names[state] : "?");
 
+    uint8_t error = s_error;
+    if (error != ERROR_NONE && error < sizeof(error_names) / sizeof(error_names[0])) {
+        cJSON_AddStringToObject(commissioner, "error", error_names[error]);
+    }
+
     if (state == OT_COMMISSIONER_STATE_ACTIVE) {
         uint32_t now_s = (uint32_t)(esp_timer_get_time() / 1000000);
+        cJSON_AddNumberToObject(commissioner, "timeout", s_timeout_s);
         cJSON_AddNumberToObject(commissioner, "remaining",
                                 s_expires_s > now_s ? s_expires_s - now_s : 0);
     }

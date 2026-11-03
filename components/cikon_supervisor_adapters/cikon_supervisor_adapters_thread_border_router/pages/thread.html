@@ -5,6 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Thread · Cikon IoT</title>
   <link rel="stylesheet" href="style.css">
+  <style>
+    /* Commissioner card (kept here: style.css is untouched) */
+    .cm-wrap { container-type: inline-size; }
+    .cm-line { position: relative; overflow: hidden; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 56px; box-sizing: border-box; padding: 8px 10px 8px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 28px; box-shadow: 0 1px 2px var(--shadow2); }
+    @container (max-width: 380px) { .cm-line { border-radius: 22px; } }
+    .cm-line [hidden] { display: none !important; }
+    .cm-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: color-mix(in srgb, var(--accent) 22%, transparent); transition: width 1s linear; }
+    .cm-line > *:not(.cm-fill) { position: relative; }
+    .cm-input { flex: 1 1 120px; min-width: 0; height: 36px; box-sizing: border-box; padding: 0; border: none; border-bottom: 1.5px solid transparent; background: transparent; color: var(--text); font-size: 15px; font-weight: 600; letter-spacing: .08em; outline: none; border-radius: 0; }
+    .cm-input:focus { border-bottom-color: var(--accent); }
+    .cm-input:disabled, .cm-gen:disabled, .cm-sel select:disabled { opacity: .55; }
+    .cm-ib { flex: none; width: 36px; height: 36px; padding: 0; border: none; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; background: transparent; color: var(--text); }
+    .cm-gen { color: #a98ad0; background: color-mix(in srgb, #a98ad0 12%, transparent); }
+    .cm-show { flex: 1 1 90px; min-width: 0; font-family: ui-monospace, Menlo, monospace; font-size: 15px; font-weight: 600; letter-spacing: .08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cm-show { user-select: text; -webkit-user-select: text; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    .cm-show.copied { color: #6fae84; }
+    .cm-show.unk { cursor: default; }
+    .cm-show.unk { font-family: inherit; font-size: 12.5px; font-weight: 400; letter-spacing: 0; color: var(--muted); white-space: normal; }
+    .cm-time { flex: none; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .cm-end { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+    .cm-sel { position: relative; display: flex; align-items: center; }
+    .cm-sel select { appearance: none; -webkit-appearance: none; height: 34px; padding: 0 24px 0 11px; border-radius: 17px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; outline: none; }
+    .cm-sel svg { position: absolute; right: 10px; pointer-events: none; }
+    .cm-go { flex: none; width: 40px; height: 40px; padding: 0; border-radius: 50%; border: 1px solid transparent; background: var(--track-off); color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .cm-go.ready { background: var(--accent); color: #2f2a26; }
+    .cm-go.stop { background: var(--surface); border-color: var(--reset); color: var(--reset); }
+    .cm-go:disabled { opacity: .5; cursor: default; }
+    .cm-sq { display: block; width: 12px; height: 12px; border-radius: 2px; background: currentColor; }
+    .cm-msg { margin: 7px 18px 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cm-msg.err { color: var(--reset); }
+    .cm-off { color: var(--reset); opacity: .85; font-weight: 600; }
+    .cm-off.cm-on { color: #6fae84; opacity: 1; }
+  </style>
 </head>
 <body>
   <main class="wrap">
@@ -62,6 +95,24 @@
                 <div class="item kv-wrap"><span class="k">Border Agent ID</span><span class="v mono" id="th-baid">–</span></div>
               </div>
             </section>
+            <section class="cell" id="cm-cell" hidden>
+              <div class="label section-label th-sec"><span class="th-sec-ic"><svg class="th-ic" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z"></path><path d="M5.8 8l1.6 1.6L10.4 6.6"></path></svg></span>Commissioner</div>
+              <div class="cm-wrap">
+                <div class="cm-line">
+                  <div class="cm-fill" id="cm-fill" hidden></div>
+                  <input class="cm-input mono" id="cm-pskd" type="text" maxlength="32" aria-label="Joiner PSKd" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="PSKd">
+                  <button class="cm-ib cm-gen" id="cm-gen" type="button" title="Generate PSKd" aria-label="Generate PSKd"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="11" height="11" rx="3"></rect><circle cx="5.8" cy="5.8" r=".7" fill="currentColor"></circle><circle cx="10.2" cy="10.2" r=".7" fill="currentColor"></circle><circle cx="8" cy="8" r=".7" fill="currentColor"></circle></svg></button>
+                  <span class="cm-show mono" id="cm-show" hidden></span>
+                  <span class="cm-time" id="cm-time" hidden></span>
+                  <button class="cm-ib" id="cm-copy" type="button" title="Copy PSKd" aria-label="Copy PSKd" hidden></button>
+                  <div class="cm-end">
+                    <span class="cm-sel" id="cm-timeout"><select id="cm-min" aria-label="Timeout"><option value="2">2 min</option><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option></select><svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5 5 6.5 8 3.5"></path></svg></span>
+                    <button class="cm-go" id="cm-main" type="button"></button>
+                  </div>
+                </div>
+              </div>
+              <div class="cm-msg" id="cm-msg"></div>
+            </section>
             <section class="cell th-devices">
               <div class="section-head">
                 <span class="label th-sec"><span class="th-sec-ic"><svg class="th-ic" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.2" y="4.2" width="7.6" height="7.6" rx="2"></rect><path d="M6.5 2v2.2M9.5 2v2.2M6.5 11.8V14M9.5 11.8V14M2 6.5h2.2M2 9.5h2.2M11.8 6.5H14M11.8 9.5H14"></path></svg></span>Devices</span>
@@ -103,6 +154,10 @@
     var NA = "–";
 
     var state = { tele: null, online: true, live: false };
+    var CM_RE = /^[ABCDEFGHJKLMNPRSTUVWXY0-9]{6,32}$/;
+    var CM_ALPHA = "ABCDEFGHJKLMNPRSTUVWXY0123456789"; // 22 letters (no I O Q Z) + 10 digits = 32
+    // PSKd lives in memory only: never stored, never logged.
+    var cm = { last: null, optimistic: false, pending: false, minutes: 2, pskd: null, total: 0, endAt: 0, failed: "", copied: false };
     // Rewrite a list only when its HTML changed: replacing it every poll collapses the page height and iOS Safari jumps to the top.
     function setHTML(id, html) { var el = $(id); if (el.__html !== html) { el.__html = html; el.innerHTML = html; } }
     var $ = function (id) { return document.getElementById(id); };
@@ -133,13 +188,137 @@
           // Design preview only: no real /tele → sample file (not deployed to the device)
           return fetch("sample-tele.json", { cache: "no-store" })
             .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
-            .then(function (t) { state.tele = t; state.online = true; render(); })
+            .then(function (t) { cmPreview(t); state.tele = t; state.online = true; render(); })
             .catch(function () { state.online = false; render(); });
         })
         .finally(function () { clearTimeout(to); });
     }
     function pollLoop() {
       loadTele().finally(function () { setTimeout(pollLoop, state.online ? POLL_MS : 2000); });
+    }
+
+    // ---- commissioner ----
+    function cmLeft() { return Math.max(0, Math.ceil((cm.endAt - Date.now()) / 1000)); }
+    function mmss(s) { return ("0" + Math.floor(s / 60)).slice(-2) + ":" + ("0" + (s % 60)).slice(-2); }
+    function cmMode() {
+      var c = cm.last || {};
+      if (cm.optimistic) return "petition";
+      if (c.state === "active") return cmLeft() > 0 ? "active" : "idle";
+      return c.state === "petition" ? "petition" : "idle";
+    }
+    function cmApply(c) {
+      var cell = $("cm-cell");
+      if (!c || typeof c !== "object") { cell.hidden = true; cm.last = null; return; }
+      cell.hidden = false;
+      if (c !== cm.last) { // new telemetry sample: resync
+        cm.last = c; cm.optimistic = false; cm.failed = "";
+        if (c.state === "active") {
+          var rem = Number(c.remaining) || 0;
+          cm.endAt = Date.now() + rem * 1000;
+          var tmo = Number(c.timeout) || 0;
+          if (tmo > 0) cm.total = tmo;
+          else if (cm.pskd && rem > cm.total) cm.total = rem;
+        } else if (c.state === "disabled") { cm.pskd = null; cm.total = 0; }
+      }
+      cmDraw();
+    }
+    var IC_ARROW = '<svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h10M9 4l4 4-4 4"></path></svg>';
+    var IC_STOP = '<span class="cm-sq"></span>';
+    var IC_COPY = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="2"></rect><path d="M10.5 3.5h-6a1 1 0 0 0-1 1v6"></path></svg>';
+    var IC_OK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"></path></svg>';
+    function cmIcon(id, html) { var el = $(id); if (el.__ic !== html) { el.__ic = html; el.innerHTML = html; } }
+    function cmDraw() {
+      if ($("cm-cell").hidden || !cm.last) return;
+      var c = cm.last, mode = cmMode();
+      var idle = mode === "idle", act = mode === "active", pet = mode === "petition";
+      var inp = $("cm-pskd"), v = inp.value, valid = CM_RE.test(v), known = !!cm.pskd;
+      inp.hidden = act; $("cm-gen").hidden = act;
+      inp.disabled = !idle; $("cm-gen").disabled = !idle;
+      $("cm-show").hidden = !act; $("cm-time").hidden = !act; $("cm-copy").hidden = !(act && known);
+      $("cm-timeout").hidden = act && !known;
+      $("cm-min").disabled = !idle; $("cm-min").value = String(cm.minutes);
+      var left = act ? cmLeft() : 0;
+      if (act) {
+        var sv = $("cm-show");
+        sv.textContent = known ? (cm.copied ? "COPIED" : cm.pskd) : "PSKd was set from another session";
+        sv.classList.toggle("copied", !!(known && cm.copied));
+        sv.classList.toggle("unk", !known);
+        $("cm-time").textContent = mmss(left);
+        cmIcon("cm-copy", cm.copied ? IC_OK : IC_COPY);
+      }
+      var fill = act && cm.total > 0;
+      $("cm-fill").hidden = !fill;
+      if (fill) $("cm-fill").style.width = Math.min(100, left / cm.total * 100) + "%";
+      var mb = $("cm-main");
+      cmIcon("cm-main", idle ? IC_ARROW : IC_STOP);
+      mb.classList.toggle("ready", idle && valid);
+      mb.classList.toggle("stop", !idle);
+      mb.disabled = cm.pending || (idle && !valid);
+      var label = idle ? "Start commissioner" : act ? "Stop commissioner " + mmss(left) : "Stop commissioner";
+      mb.title = label; mb.setAttribute("aria-label", label);
+      var err = "";
+      if (idle && v) {
+        var bad = v.replace(/[ABCDEFGHJKLMNPRSTUVWXY0-9]/g, "");
+        if (bad) err = "Not allowed: " + Array.from(new Set(bad.split(""))).join(" ") + " (use A-Z without I O Q Z, and 0-9)";
+        else if (v.length < 6) err = "At least 6 characters (" + v.length + "/6)";
+      }
+      var raw = cm.failed || (c.error ? String(c.error) : "");
+      var msg = raw || err || (act ? "" : pet ? "Starting commissioner..." : "");
+      var me = $("cm-msg"); me.textContent = msg;
+      if (!msg) { var lead = document.createElement("span"); lead.className = act ? "cm-off cm-on" : "cm-off"; lead.textContent = act ? "Active" : "Disabled."; me.appendChild(lead); me.appendChild(document.createTextNode(act ? " - joiners with this PSKd can join" : " PSKd: 6-32 chars, A-Z (no I O Q Z), 0-9")); } me.classList.toggle("err", !!(raw || err)); me.title = me.textContent;
+    }
+    function cmPost(body, ok) {
+      cm.pending = true; cm.failed = ""; cmDraw();
+      fetch("/cmnd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .then(function (r) { if (!r.ok) throw new Error("bad"); ok(); })
+        .catch(function () { cm.failed = "Request failed"; })
+        .finally(function () { cm.pending = false; cmDraw(); loadTele(); }); // real result = next /tele
+    }
+    function cmStart() {
+      var v = $("cm-pskd").value;
+      if (cm.pending || !CM_RE.test(v)) return;
+      var secs = cm.minutes * 60;
+      cmPost({ commissioner: { pskd: v, timeout: secs } }, function () { cm.pskd = v; cm.total = secs; cm.optimistic = true; });
+    }
+    function cmStop() { if (!cm.pending) cmPost({ commissioner: "off" }, function () {}); }
+    function cmGenerate() {
+      var a = new Uint8Array(8); crypto.getRandomValues(a); // 32-symbol alphabet: & 31 is unbiased
+      var s = ""; for (var i = 0; i < a.length; i++) s += CM_ALPHA.charAt(a[i] & 31);
+      $("cm-pskd").value = s; cm.failed = ""; cmDraw();
+    }
+    function cmCopy() {
+      var txt = cm.pskd; if (!txt) return;
+      function done() { cm.copied = true; cmDraw(); setTimeout(function () { cm.copied = false; cmDraw(); }, 1500); }
+      function legacy() {
+        var ta = document.createElement("textarea"); ta.value = txt; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+        document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, txt.length); var ok = false; try { ok = document.execCommand("copy"); } catch (e) {} document.body.removeChild(ta); if (ok) done(); else { var el = $("cm-show"), sel = window.getSelection(); if (el && sel) { var r = document.createRange(); r.selectNodeContents(el); sel.removeAllRanges(); sel.addRange(r); } }
+      }
+      if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(txt).then(done, legacy); return; }
+      legacy();
+    }
+    function cmInit() {
+      var inp = $("cm-pskd");
+      inp.addEventListener("input", function () {
+        var s = inp.selectionStart, u = inp.value.toUpperCase();
+        if (u !== inp.value) { inp.value = u; try { inp.setSelectionRange(s, s); } catch (e) {} }
+        cm.failed = ""; cmDraw();
+      });
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") cmStart(); });
+      $("cm-gen").addEventListener("click", cmGenerate);
+      $("cm-copy").addEventListener("click", cmCopy);
+      $("cm-show").addEventListener("click", function () { if (cm.pskd) cmCopy(); });
+      $("cm-min").addEventListener("change", function () { cm.minutes = +$("cm-min").value; cmDraw(); });
+      $("cm-main").addEventListener("click", function () { if (cmMode() === "idle") cmStart(); else cmStop(); });
+      setInterval(cmDraw, 1000);
+    }
+    // Design preview only (sample data, no device): ?cm=disabled|petition|active|mine|error
+    function cmPreview(t) {
+      var q = (location.search.match(/[?&]cm=([a-z]+)/) || [])[1];
+      if (!q || !t.thread) return;
+      var m = { disabled: { state: "disabled" }, petition: { state: "petition" }, active: { state: "active", timeout: 300, remaining: 163 }, mine: { state: "active", timeout: 180, remaining: 163 }, error: { state: "disabled", error: "Another commissioner is active" } };
+      if (!m[q]) return;
+      t.thread.commissioner = m[q];
+      if (q === "mine") { cm.pskd = "K7M2X9QA"; cm.total = 180; }
     }
 
     // ---- theme ----
@@ -155,7 +334,28 @@
     }
 
     // ---- render ----
-    function render() {
+    var ORD = {};
+    function stable(key, arr, idf) {
+      var o = ORD[key] || (ORD[key] = []), ids = arr.map(idf);
+      ids.forEach(function (id) { if (o.indexOf(id) < 0) o.push(id); });
+      return arr.map(function (x, i) { return [o.indexOf(ids[i]), x]; }).sort(function (a, c) { return a[0] - c[0]; }).map(function (p) { return p[1]; });
+    }
+    function anchorGet() {
+      var best = null, bt = 1e9;
+      document.querySelectorAll(".wrap [id]").forEach(function (el) {
+        if (el.offsetParent === null) return;
+        var r = el.getBoundingClientRect();
+        if (r.height > 0 && r.top >= 0 && r.top < bt) { best = el; bt = r.top; }
+      });
+      return best && { el: best, top: bt };
+    }
+    function anchorSet(a) {
+      if (!a || !a.el.isConnected || !window.scrollY) return;
+      var d = a.el.getBoundingClientRect().top - a.top;
+      if (Math.abs(d) >= 1) window.scrollBy(0, d);
+    }
+    function render() { var a = anchorGet(); try { renderMain(); } finally { anchorSet(a); } }
+    function renderMain() {
       var t = state.tele || {};
       var th = t.thread;
 
@@ -194,7 +394,7 @@
 
       // IPv6
       $("th-omr").textContent = val(th.omr);
-      var addrs = Array.isArray(th.addresses) ? th.addresses : [];
+      var addrs = Array.isArray(th.addresses) ? stable("addr", th.addresses, function (a) { return String(a && typeof a === "object" ? a.ip : a); }) : [];
       $("th-addr-count").textContent = addrs.length;
       setHTML("th-addr-list", addrs.length
         ? addrs.map(function (a) {
@@ -208,7 +408,7 @@
         : '<div class="item th-empty">No addresses</div>');
 
       // devices
-      var devs = Array.isArray(th.devices) ? th.devices : [];
+      var devs = Array.isArray(th.devices) ? stable("dev", th.devices, function (d) { return String(d && (d.name || d.ip)); }) : [];
       $("th-dev-count").textContent = devs.length;
       setHTML("th-dev-list", devs.length
         ? devs.map(function (d) {
@@ -219,6 +419,8 @@
             return '<div class="dev-row"><span class="dev-ic">' + NODE_IC + '</span><span class="dev-txt">' + nameHTML + '<span class="dev-ip mono">' + esc(val(d && d.ip)) + '</span></span></div>';
           }).join("")
         : '<div class="dev-row th-empty">No devices on the network</div>');
+
+      cmApply(th.commissioner);
     }
 
     function init() {
@@ -227,6 +429,7 @@
         if (saved) document.documentElement.setAttribute("data-theme", saved);
       } catch (e) {}
       themeIcon();
+      cmInit();
       $("btn-theme").addEventListener("click", toggleTheme);
       render();
       pollLoop();

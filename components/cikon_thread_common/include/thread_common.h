@@ -38,8 +38,9 @@ extern const command_entry_t thread_commands[];
 /**
  * @brief Add the commissioner state to the "thread" tele object.
  *
- * Adds "commissioner": {"state": "disabled"|"petition"|"active", "remaining": seconds left, only
- * when active}. Does nothing when OpenThread has no commissioner.
+ * Adds "commissioner": {"state": "disabled"|"petition"|"active", "timeout": seconds the window was
+ * opened for and "remaining": seconds left, both only when active, "error": why the last start
+ * failed, only after a failure}. Does nothing when OpenThread has no commissioner.
  *
  * @param thread  The "thread" object of the tele.
  */
