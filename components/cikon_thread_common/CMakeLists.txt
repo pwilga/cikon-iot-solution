@@ -14,3 +14,20 @@ idf_component_register(
     PRIV_REQUIRES
         console
 )
+
+# The Thread page goes where Thread runs and the HTTP component is built: staged into the shared
+# LittleFS image next to the dashboard, gzipped the same way
+idf_build_get_property(fs_dir LITTLEFS_IMAGE_DIR)
+if(fs_dir AND CONFIG_HTTP_STACK_SIZE AND
+   (CONFIG_ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER OR CONFIG_NETWORK_UPLINK_THREAD))
+    file(GLOB PAGES_FILES "${CMAKE_CURRENT_SOURCE_DIR}/pages/*")
+    file(COPY ${PAGES_FILES} DESTINATION "${fs_dir}/www")
+
+    find_program(GZIP_EXECUTABLE gzip)
+    if(GZIP_EXECUTABLE)
+        foreach(page_file ${PAGES_FILES})
+            get_filename_component(page_name "${page_file}" NAME)
+            execute_process(COMMAND ${GZIP_EXECUTABLE} -f9 "${fs_dir}/www/${page_name}")
+        endforeach()
+    endif()
+endif()
