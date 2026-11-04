@@ -3,10 +3,10 @@
 #include "bits_helper.h"
 #include "cmnd.h"
 #include "config_manager.h"
-#include "inet_common.h"
 #include "metadata.h"
 #include "mqtt.h"
 #include "network_adapter.h"
+#include "network_services.h"
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tcp_monitor.h"
@@ -44,11 +44,11 @@ static void network_stop_services(void) {
     tcp_monitor_shutdown();
 
     mqtt_publish_offline_state();
-    inet_common_mqtt_shutdown();
-    inet_common_http_shutdown();
+    network_services_mqtt_shutdown();
+    network_services_http_shutdown();
     // Keep mDNS running - it works for both STA and AP interfaces
     // mdns_free();
-    inet_common_sntp_shutdown();
+    network_services_sntp_shutdown();
 
     if (!restart_pending()) {
         tcp_ota_shutdown();
@@ -79,7 +79,7 @@ static esp_err_t network_adapter_init(void) {
         tele_register_group(uplink->tele);
     }
 
-    register_restart_callback(inet_common_on_restart);
+    register_restart_callback(network_services_on_restart);
 
     initialized = true;
     return ESP_OK;
@@ -94,9 +94,9 @@ static esp_err_t network_adapter_shutdown(void) {
     ESP_LOGI(TAG, "Shutting down network adapter");
 
     network_stop_services();
-    inet_common_mdns_shutdown();
+    network_services_mdns_shutdown();
 
-    unregister_restart_callback(inet_common_on_restart);
+    unregister_restart_callback(network_services_on_restart);
 
     if (uplink->commands) {
         cmnd_unregister_group(uplink->commands);
@@ -113,7 +113,7 @@ static esp_err_t network_adapter_shutdown(void) {
 
 static void network_adapter_on_event(EventBits_t bits) {
 
-    inet_common_on_event(bits);
+    network_services_on_event(bits);
 
     // Servers start once, on whichever comes first, and keep running: they listen on any address,
     // so the AP coming and going doesn't touch them
@@ -123,8 +123,8 @@ static void network_adapter_on_event(EventBits_t bits) {
         tcp_monitor_init();
 
         if (!supervisor_is_safe_mode_active()) {
-            inet_common_mdns_init();
-            inet_common_http_init(config_get()->http_secure);
+            network_services_mdns_init();
+            network_services_http_init(config_get()->http_secure);
         }
 
         network_servers_running = true;
@@ -139,15 +139,15 @@ static void network_adapter_on_event(EventBits_t bits) {
         }
 
         ESP_LOGI(TAG, "Uplink ready, starting clients");
-        inet_common_sntp_init();
-        inet_common_mqtt_init();
+        network_services_sntp_init();
+        network_services_mqtt_init();
 
         network_clients_running = true;
     }
 }
 
 static void network_adapter_on_interval(supervisor_interval_stage_t stage) {
-    inet_common_on_interval(stage);
+    network_services_on_interval(stage);
 
     if (uplink && uplink->on_interval) {
         uplink->on_interval(stage);
@@ -188,12 +188,12 @@ static const ha_metadata_t network_ha_metadata = {
 #endif
 
 static const command_entry_t network_commands[] = {
-    {"http", "Control HTTP server (on/off)", inet_common_http_handler},
-    {"sntp", "Control SNTP service (on/off)", inet_common_sntp_handler},
-    {"ota", "Control OTA service (on/off)", inet_common_ota_handler},
-    {"monitor", "Control TCP monitor (on/off)", inet_common_monitor_handler},
+    {"http", "Control HTTP server (on/off)", network_services_http_handler},
+    {"sntp", "Control SNTP service (on/off)", network_services_sntp_handler},
+    {"ota", "Control OTA service (on/off)", network_services_ota_handler},
+    {"monitor", "Control TCP monitor (on/off)", network_services_monitor_handler},
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-    {"ha", "Trigger Home Assistant MQTT discovery", inet_common_ha_discovery_handler},
+    {"ha", "Trigger Home Assistant MQTT discovery", network_services_ha_discovery_handler},
 #endif
     {NULL, NULL, NULL}};
 

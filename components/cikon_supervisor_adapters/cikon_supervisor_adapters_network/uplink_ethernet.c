@@ -6,7 +6,7 @@
 
 #include "bits_helper.h"
 #include "ethernet.h"
-#include "inet_common.h"
+#include "network_services.h"
 #include "supervisor.h"
 #include "tele.h"
 #include "uplink.h"
@@ -85,7 +85,7 @@ static esp_err_t uplink_ethernet_stop(void) {
 
 static void uplink_ethernet_tele_ip_address(const char *tele_id, cJSON *json_root) {
     char ip[16];
-    get_netif_ip("ETH_DEF", ip, sizeof(ip));
+    network_services_get_netif_ip("ETH_DEF", ip, sizeof(ip));
     cJSON_AddStringToObject(json_root, tele_id, ip);
 }
 

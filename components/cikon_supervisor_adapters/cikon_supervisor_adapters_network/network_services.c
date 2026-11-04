@@ -26,7 +26,7 @@
 
 #include "esp_netif.h"
 #include "http_server.h"
-#include "inet_common.h"
+#include "network_services.h"
 #include "tcp_monitor.h"
 #include "tcp_ota.h"
 
@@ -38,7 +38,7 @@
 #include "openthread/thread.h"
 #endif
 
-#define TAG "cikon:inet_common"
+#define TAG "cikon:network:services"
 #define INTERNET_CHECK_SRC_PORT 49152
 
 static char s_device_url[64];
@@ -50,8 +50,8 @@ static void sntp_sync_callback(struct timeval *tv) {
     ESP_LOGW(TAG, "SNTP time synchronized: %s", time_str);
 }
 
-void inet_common_mqtt_init(void) {
-    const char *device_url = inet_common_get_device_url();
+void network_services_mqtt_init(void) {
+    const char *device_url = network_services_get_device_url();
     const device_info_t *dev_info = get_device_info();
 
     mqtt_config_t mqtt_cfg = {
@@ -236,7 +236,7 @@ static void register_core_ha_entities(void) {
                                              .entity_category = "diagnostic"});
 }
 
-void inet_common_register_all_ha_entities(void) {
+void network_services_register_all_ha_entities(void) {
     ESP_LOGI(TAG, "Registering all HA entities from adapters");
 
     register_core_ha_entities();
@@ -271,7 +271,7 @@ void inet_common_register_all_ha_entities(void) {
 #endif
 }
 
-void inet_common_ha_discovery_handler(const char *args_json_str) {
+void network_services_ha_discovery_handler(const char *args_json_str) {
     logic_state_t force_empty_payload = json_str_as_logic_state(args_json_str);
     if (force_empty_payload == STATE_TOGGLE) {
         ESP_LOGE(TAG, "Toggling is not permitted for HA discovery");
@@ -283,7 +283,7 @@ void inet_common_ha_discovery_handler(const char *args_json_str) {
 }
 #endif
 
-bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
+bool network_services_get_netif_ip(const char *if_key, char *buf, size_t buflen) {
     if (!buf || buflen == 0) {
         return false;
     }
@@ -301,7 +301,7 @@ bool get_netif_ip(const char *if_key, char *buf, size_t buflen) {
     return true;
 }
 
-const char *inet_common_get_hostname(void) {
+const char *network_services_get_hostname(void) {
     const char *hostname = config_get()->mdns_host;
     if (strlen(hostname) == 0) {
         hostname = config_get()->dev_name;
@@ -309,8 +309,8 @@ const char *inet_common_get_hostname(void) {
     return hostname;
 }
 
-const char *inet_common_get_device_url(void) {
-    const char *hostname = inet_common_get_hostname();
+const char *network_services_get_device_url(void) {
+    const char *hostname = network_services_get_hostname();
     snprintf(s_device_url, sizeof(s_device_url), "%s.local", hostname);
     return s_device_url;
 }
@@ -331,14 +331,14 @@ static void srp_client_callback(otError error, const otSrpClientHostInfo *hostIn
         // SRP key mismatch — NVS was likely erased. Remove the stale host entry on the OBR.
         // To clear all SRP registrations on OBR: ot srp server disable && ot srp server enable
         ESP_LOGE(TAG, "SRP: name conflict for %s — remove stale host on OBR",
-                 inet_common_get_hostname());
+                 network_services_get_hostname());
     } else {
         ESP_LOGW(TAG, "SRP error: %s", otThreadErrorToString(error));
     }
 }
 
 static void srp_host_init(void) {
-    const char *hostname = inet_common_get_hostname();
+    const char *hostname = network_services_get_hostname();
     esp_openthread_lock_acquire(portMAX_DELAY);
     otInstance *instance = esp_openthread_get_instance();
     otSrpClientSetCallback(instance, srp_client_callback, NULL);
@@ -361,7 +361,7 @@ static void srp_host_init(void) {
 static void srp_add_service(otSrpClientService *svc, const char *type, uint16_t port) {
     memset(svc, 0, sizeof(*svc));
     svc->mName = type;
-    svc->mInstanceName = inet_common_get_hostname();
+    svc->mInstanceName = network_services_get_hostname();
     svc->mPort = port;
     esp_openthread_lock_acquire(portMAX_DELAY);
     otError err = otSrpClientAddService(esp_openthread_get_instance(), svc);
@@ -374,7 +374,7 @@ static void srp_add_service(otSrpClientService *svc, const char *type, uint16_t 
 }
 #endif
 
-bool is_internet_reachable(void) {
+bool network_services_is_internet_reachable(void) {
 #if CONFIG_NETWORK_UPLINK_THREAD && CONFIG_OPENTHREAD_DNS64_CLIENT
     // Same as `ot ping 8.8.8.8`: Thread has no IPv4, the BR's NAT64 prefix gets glued to the
     // address
@@ -386,24 +386,24 @@ bool is_internet_reachable(void) {
 
     char nat64_address[IP6ADDR_STRLEN_MAX];
     ip6addr_ntoa_r(&nat64, nat64_address, sizeof(nat64_address));
-    return is_tcp_port_reachable(nat64_address, 53);
+    return network_services_is_tcp_port_reachable(nat64_address, 53);
 #else
-    return is_tcp_port_reachable("8.8.8.8", 53);
+    return network_services_is_tcp_port_reachable("8.8.8.8", 53);
 #endif
 }
 
-void inet_common_poll_internet_reachability(void) {
+void network_services_poll_internet_reachability(void) {
 
     static bool last_internet_reachable = false;
 
-    bool current_state = is_internet_reachable();
+    bool current_state = network_services_is_internet_reachable();
     if (current_state != last_internet_reachable) {
         supervisor_notify_event(current_state ? NETWORK_INTERNET_READY : NETWORK_INTERNET_LOST);
         last_internet_reachable = current_state;
     }
 }
 
-bool is_tcp_port_reachable(const char *host, uint16_t port) {
+bool network_services_is_tcp_port_reachable(const char *host, uint16_t port) {
     struct sockaddr_storage addr;
     memset(&addr, 0, sizeof(addr));
 
@@ -485,26 +485,26 @@ bool is_tcp_port_reachable(const char *host, uint16_t port) {
     }
 }
 
-void inet_common_on_interval(supervisor_interval_stage_t stage) {
+void network_services_on_interval(supervisor_interval_stage_t stage) {
     if (stage == SUPERVISOR_INTERVAL_5S) {
-        inet_common_poll_internet_reachability();
+        network_services_poll_internet_reachability();
     }
 }
 
 static void tele_common_mdns(const char *tele_id, cJSON *json_root) {
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s.local", inet_common_get_hostname());
+    snprintf(buf, sizeof(buf), "%s.local", network_services_get_hostname());
     cJSON_AddStringToObject(json_root, tele_id, buf);
 }
 
-void inet_common_on_event(EventBits_t bits) {
+void network_services_on_event(EventBits_t bits) {
     if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
         tele_register("mdns", tele_common_mdns);
     }
 
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
-        inet_common_register_all_ha_entities();
+        network_services_register_all_ha_entities();
         ha_register_entity(&(ha_entity_config_t){.type = HA_SENSOR,
                                                  .name = "IP",
                                                  .icon = "mdi:ip-outline",
@@ -519,7 +519,7 @@ void inet_common_on_event(EventBits_t bits) {
     }
 }
 
-void inet_common_mdns_init(void) {
+void network_services_mdns_init(void) {
     if (s_mdns_ready) {
         return; // already up — no-op, keeps existing hostname/instance intact
     }
@@ -535,7 +535,7 @@ void inet_common_mdns_init(void) {
     return;
 #endif
 
-    const char *hostname = inet_common_get_hostname();
+    const char *hostname = network_services_get_hostname();
     const char *instance = config_get()->mdns_instance;
 
     esp_err_t ret = (mdns_init() != ESP_OK || mdns_hostname_set(hostname) != ESP_OK ||
@@ -551,25 +551,25 @@ void inet_common_mdns_init(void) {
     }
 }
 
-void inet_common_mdns_shutdown(void) {
+void network_services_mdns_shutdown(void) {
     mdns_free();
     s_mdns_ready = false;
 }
 
-void inet_common_sntp_handler(const char *args_json_str) {
+void network_services_sntp_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
     if (state == STATE_ON) {
         ESP_LOGI(TAG, "Starting SNTP service");
-        inet_common_sntp_init();
+        network_services_sntp_init();
     } else if (state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping SNTP service");
-        inet_common_sntp_shutdown();
+        network_services_sntp_shutdown();
     } else {
         ESP_LOGW(TAG, "Invalid SNTP state");
     }
 }
 
-void inet_common_ota_handler(const char *args_json_str) {
+void network_services_ota_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
     if (state == STATE_ON) {
         ESP_LOGI(TAG, "Starting OTA update");
@@ -580,7 +580,7 @@ void inet_common_ota_handler(const char *args_json_str) {
     }
 }
 
-void inet_common_monitor_handler(const char *args_json_str) {
+void network_services_monitor_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
     if (state == STATE_ON) {
         ESP_LOGI(TAG, "Starting TCP monitor");
@@ -591,7 +591,7 @@ void inet_common_monitor_handler(const char *args_json_str) {
     }
 }
 
-void inet_common_http_init(bool secure) {
+void network_services_http_init(bool secure) {
     uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
     http_init(&(http_config_t){
         .port = port,
@@ -606,28 +606,28 @@ void inet_common_http_init(bool secure) {
     }
 }
 
-void inet_common_http_handler(const char *args_json_str) {
+void network_services_http_handler(const char *args_json_str) {
     logic_state_t state = json_str_as_logic_state(args_json_str);
     if (state == STATE_ON) {
         ESP_LOGI(TAG, "Starting HTTP server");
-        inet_common_http_init(config_get()->http_secure);
+        network_services_http_init(config_get()->http_secure);
     } else if (state == STATE_OFF) {
         ESP_LOGI(TAG, "Stopping HTTP server");
         http_shutdown();
     }
 }
 
-void inet_common_on_restart(void) {
+void network_services_on_restart(void) {
     if (supervisor_is_safe_mode_active()) {
         // Skip graceful MQTT shutdown in safe mode to avoid delaying the restart
         // waiting on broker ack.
         return;
     }
     mqtt_publish_offline_state();
-    inet_common_mqtt_shutdown();
+    network_services_mqtt_shutdown();
 }
 
-void inet_common_sntp_init(void) {
+void network_services_sntp_init(void) {
 
     const char *servers[] = {config_get()->sntp1, config_get()->sntp2, config_get()->sntp3};
 

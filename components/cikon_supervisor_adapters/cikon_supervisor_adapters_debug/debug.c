@@ -35,7 +35,10 @@ static char failed_ota_version[32] = "unknown";
 
 __attribute__((weak)) void wifi_log_event_group_bits(void) {}
 
-__attribute__((weak)) bool get_netif_ip(const char *if_key, char *buf, size_t len) { return false; }
+__attribute__((weak)) bool network_services_get_netif_ip(const char *if_key, char *buf,
+                                                         size_t len) {
+    return false;
+}
 
 __attribute__((weak)) void mqtt_log_event_group_bits(void) {}
 __attribute__((weak)) void thread_log_network_info(void) {}
@@ -251,16 +254,16 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
         mqtt_log_event_group_bits();
 
         char ip[16];
-        if (get_netif_ip("WIFI_STA_DEF", ip, sizeof(ip))) {
+        if (network_services_get_netif_ip("WIFI_STA_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "STA IP: %s", ip);
         }
 #if CONFIG_LWIP_IPV6
         debug_log_netif_ip6("WIFI_STA_DEF", "STA");
 #endif
-        if (get_netif_ip("WIFI_AP_DEF", ip, sizeof(ip))) {
+        if (network_services_get_netif_ip("WIFI_AP_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "AP IP: %s", ip);
         }
-        if (get_netif_ip("ETH_DEF", ip, sizeof(ip))) {
+        if (network_services_get_netif_ip("ETH_DEF", ip, sizeof(ip))) {
             ESP_LOGI(TAG, "ETH IP: %s", ip);
         }
 #if CONFIG_LWIP_IPV6

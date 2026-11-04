@@ -1,6 +1,6 @@
 # Only the enabled uplinks are built. Their headers (esp_wifi, esp_eth, openthread) come with
 # cikon_wifi / cikon_ethernet / cikon_thread_common, pulled in idf_component.yml only for that uplink
-set(srcs "network.c")
+set(srcs "network.c" "network_services.c")
 
 if(CONFIG_NETWORK_UPLINK_WIFI)
     list(APPEND srcs "uplink_wifi.c" "network_ap.c")
@@ -26,4 +26,5 @@ idf_component_register(
         esp_netif
         esp_netif_stack
         lwip
+        openthread
 )
