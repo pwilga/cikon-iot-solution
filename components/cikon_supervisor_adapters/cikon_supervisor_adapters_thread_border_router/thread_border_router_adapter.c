@@ -22,11 +22,11 @@
 #include "openthread/thread.h"
 
 #include "bits_helper.h"
-#include "config_manager.h"
 #include "supervisor.h"
 #include "tele.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
+#include "thread_tele.h"
 
 #define TAG "cikon:adapter:thread_border_router"
 
@@ -92,13 +92,6 @@ static esp_err_t thread_border_router_adapter_init(void) {
     }
 
     // esp_netif_init() already called by the network adapter (uplink) before us
-#if CONFIG_OPENTHREAD_CLI
-    {
-        static char repl_prompt[22]; // "(br) " (5) + dev_name (max 15) + ">" (1) + '\0' (1)
-        snprintf(repl_prompt, sizeof(repl_prompt), "(br) %s>", config_get()->dev_name);
-        thread_console_start(repl_prompt);
-    }
-#endif
     ESP_LOGI(TAG, "Starting OpenThread stack");
     esp_err_t err = esp_openthread_start(&s_ot_config);
     if (err != ESP_OK) {
@@ -106,10 +99,6 @@ static esp_err_t thread_border_router_adapter_init(void) {
         return err;
     }
     s_ot_started = true;
-
-#if CONFIG_OPENTHREAD_CLI
-    thread_cli_commands_init();
-#endif
 
     xTaskCreate(thread_start_task, "thread_start", 6144, NULL, 5, NULL);
 

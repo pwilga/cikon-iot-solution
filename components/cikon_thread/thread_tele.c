@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/semphr.h"
 
+#include "esp_log.h"
 #include "esp_openthread.h"
 #include "esp_openthread_lock.h"
 #include "openthread/border_agent.h"
@@ -15,7 +16,9 @@
 #include "openthread/thread.h"
 
 #include "thread_commissioner.h" // IWYU pragma: keep
-#include "thread_common.h"
+#include "thread_tele.h"
+
+#define TAG "cikon:thread:tele"
 
 #define THREAD_TELE_MAX_ADDRESSES 8
 #define THREAD_TELE_MAX_DEVICES 16
@@ -238,6 +241,58 @@ void thread_tele_appender(const char *tele_id, cJSON *json_root) {
 #endif
 
     thread_commissioner_tele(thread);
+
+    xSemaphoreGive(s_data_mutex);
+}
+
+void thread_tele_ip_appender(const char *tele_id, cJSON *json_root) {
+    if (s_data_mutex == NULL || xSemaphoreTake(s_data_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return;
+    }
+
+    // OMR is the address routed onto the LAN, the mesh-local EID is the fallback
+    const otIp6Address *best = NULL;
+    for (uint8_t i = 0; s_data_valid && i < s_data.addresses_num; i++) {
+        const char *type = s_data.address_types[i];
+        if (type && strcmp(type, "omr") == 0) {
+            best = &s_data.addresses[i];
+            break;
+        }
+        if (type && strcmp(type, "ml-eid") == 0 && !best) {
+            best = &s_data.addresses[i];
+        }
+    }
+
+    if (best) {
+        char buf[OT_IP6_ADDRESS_STRING_SIZE];
+        otIp6AddressToString(best, buf, sizeof(buf));
+        cJSON_AddStringToObject(json_root, tele_id, buf);
+    }
+
+    xSemaphoreGive(s_data_mutex);
+}
+
+void thread_tele_log_network(void) {
+    if (s_data_mutex == NULL || xSemaphoreTake(s_data_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+        return;
+    }
+
+    if (s_data_valid) {
+        // The RLOC16 is the last two bytes of the RLOC address
+        uint16_t rloc16 = OT_RADIO_INVALID_SHORT_ADDR;
+        for (uint8_t i = 0; i < s_data.addresses_num; i++) {
+            const char *type = s_data.address_types[i];
+            if (type && strcmp(type, "rloc") == 0) {
+                rloc16 =
+                    (s_data.addresses[i].mFields.m8[14] << 8) | s_data.addresses[i].mFields.m8[15];
+                break;
+            }
+        }
+
+        ESP_LOGI(TAG, "%s | %s | ch=%u | pan=0x%04X | rloc=0x%04X | part=%lu",
+                 otThreadDeviceRoleToString(s_data.role), s_data.network, s_data.channel,
+                 s_data.panid, rloc16, (unsigned long)s_data.partition_id);
+    }
 
     xSemaphoreGive(s_data_mutex);
 }

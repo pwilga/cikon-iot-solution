@@ -38,9 +38,9 @@ dependencies:
     path: components/cikon_ethernet
     matches:
       - if: "$CONFIG{NETWORK_UPLINK_ETHERNET} == True"
-  cikon_thread_common:
+  cikon_thread:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
-    path: components/cikon_thread_common
+    path: components/cikon_thread
     matches:
       - if: "$CONFIG{NETWORK_UPLINK_THREAD} == True"
   cikon_tcp_ota:

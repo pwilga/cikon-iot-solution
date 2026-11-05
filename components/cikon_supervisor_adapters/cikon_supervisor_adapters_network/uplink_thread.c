@@ -4,7 +4,6 @@
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
 
-#include "cJSON.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -19,11 +18,11 @@
 #include "openthread/thread.h"
 
 #include "bits_helper.h"
-#include "config_manager.h"
 #include "supervisor.h"
 #include "tele.h"
 #include "thread_common.h"
 #include "thread_radio_config.h"
+#include "thread_tele.h"
 #include "uplink.h"
 
 #define TAG "cikon:network:thread"
@@ -97,14 +96,6 @@ static esp_err_t uplink_thread_start(void) {
         return err;
     }
 
-#if CONFIG_OPENTHREAD_CLI
-    {
-        static char repl_prompt[20];
-        snprintf(repl_prompt, sizeof(repl_prompt), "%s>", config_get()->dev_name);
-        thread_console_start(repl_prompt);
-    }
-#endif
-
     ESP_LOGI(TAG, "Starting OpenThread stack (native radio)");
     err = esp_openthread_start(&s_ot_config);
     if (err != ESP_OK) {
@@ -117,10 +108,6 @@ static esp_err_t uplink_thread_start(void) {
     // then lwIP sockets (MQTT/SNTP/esp-tls) can't reach NAT64 while `ot ping` still works. Requires
     // CONFIG_LWIP_HOOK_DNS_EXT_RESOLVE_CUSTOM=y so lwIP actually calls the hook.
     esp_openthread_dns64_client_init();
-
-#if CONFIG_OPENTHREAD_CLI
-    thread_cli_commands_init();
-#endif
 
     ESP_ERROR_CHECK(esp_event_handler_instance_register(OPENTHREAD_EVENT, ESP_EVENT_ANY_ID,
                                                         &uplink_thread_event_handler, NULL,
@@ -142,15 +129,8 @@ static esp_err_t uplink_thread_stop(void) {
     return ESP_OK;
 }
 
-static void uplink_thread_tele_ip_address(const char *tele_id, cJSON *json_root) {
-    char ip[OT_IP6_ADDRESS_STRING_SIZE];
-    if (thread_get_reachable_ip6(ip, sizeof(ip))) {
-        cJSON_AddStringToObject(json_root, tele_id, ip);
-    }
-}
-
 static const tele_entry_t uplink_thread_tele[] = {
-    {"ip", uplink_thread_tele_ip_address}, {"thread", thread_tele_appender}, {NULL, NULL}};
+    {"ip", thread_tele_ip_appender}, {"thread", thread_tele_appender}, {NULL, NULL}};
 
 static void uplink_thread_on_interval(supervisor_interval_stage_t stage) {
     if (stage == SUPERVISOR_INTERVAL_10S) {

@@ -20,6 +20,7 @@
 #include "bits_helper.h"
 #include "config_manager.h"
 #include "debug_adapter.h"
+#include "debug_console.h" // IWYU pragma: keep
 #include "enum_helpers.h"
 #include "metadata.h"
 #include "platform_services.h"
@@ -41,7 +42,7 @@ __attribute__((weak)) bool network_services_get_netif_ip(const char *if_key, cha
 }
 
 __attribute__((weak)) void mqtt_log_event_group_bits(void) {}
-__attribute__((weak)) void thread_log_network_info(void) {}
+__attribute__((weak)) void thread_tele_log_network(void) {}
 
 // Helper for random float generation
 static float random_float(float min, float max) {
@@ -139,6 +140,10 @@ static esp_err_t debug_adapter_init(void) {
     }
 
     ESP_LOGI(TAG, "Initializing debug adapter");
+
+#if CONFIG_DEBUG_CONSOLE
+    debug_console_start();
+#endif
 
     // Check for failed OTA partition (passive check only)
     failed_ota_partition = esp_ota_get_last_invalid_partition();
@@ -284,7 +289,7 @@ static void debug_adapter_on_interval(supervisor_interval_stage_t stage) {
     }
 
     if (stage == SUPERVISOR_INTERVAL_10S) {
-        thread_log_network_info();
+        thread_tele_log_network();
     }
 }
 

@@ -1,5 +1,5 @@
 # Only the enabled uplinks are built. Their headers (esp_wifi, esp_eth, openthread) come with
-# cikon_wifi / cikon_ethernet / cikon_thread_common, pulled in idf_component.yml only for that uplink
+# cikon_wifi / cikon_ethernet / cikon_thread, pulled in idf_component.yml only for that uplink
 set(srcs "network.c" "network_services.c")
 
 if(CONFIG_NETWORK_UPLINK_WIFI)

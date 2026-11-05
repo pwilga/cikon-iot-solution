@@ -1,0 +1,10 @@
+menu "Cikon IoT Debug Adapter"
+
+    config DEBUG_CONSOLE
+        bool "Interactive console on the serial port"
+        depends on ENABLE_SUPERVISOR_DEBUG
+        default n
+        help
+            Starts an esp_console REPL on the console port, with the device name as the prompt.
+
+endmenu

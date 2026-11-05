@@ -1,6 +1,6 @@
-name: cikon_thread_common
+name: cikon_thread
 version: "0.1.0"
-description: "Shared utilities for Cikon Thread adapters"
+description: "Cikon Thread component: stack configuration, network tele, commissioner service"
 license: MIT
 url: https://github.com/pwilga/cikon-iot-solution
 maintainers:
@@ -14,8 +14,3 @@ dependencies:
   cikon_helpers:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_helpers
-  espressif/esp_ot_cli_extension:
-    version: ">=2.0.0"
-    matches:
-      - if: "$CONFIG{ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER} == True"
-      - if: "$CONFIG{NETWORK_UPLINK_THREAD} == True"
