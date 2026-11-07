@@ -43,7 +43,7 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
     get_filename_component(DEVICE_DIR "${DEVICE_CONFIG_DIR}" DIRECTORY)
     get_filename_component(DEVICE_NAME "${DEVICE_DIR}" NAME)
     file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/device_fields.h"
-         CONTENT "#define DEVICE_FIELDS(STR, U8, U16, U32, U64) STR(dev_name, 32, \"${DEVICE_NAME}\")\n")
+         CONTENT "#define DEVICE_FIELDS(STR, U8, U16, U32, U64) STR(dev_name, 16, \"${DEVICE_NAME}\")\n")
     cikon_config_add_fields(device_fields.h DEVICE_FIELDS)
 endif()
 
