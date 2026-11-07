@@ -56,7 +56,7 @@ esp_err_t ethernet_init(void) {
 
     // W5500 has no EEPROM - set MAC address from ESP32 eFuse before creating netif
     uint8_t mac[6];
-    ret = esp_efuse_mac_get_default(mac);
+    ret = esp_read_mac(mac, ESP_MAC_ETH);
     if (ret == ESP_OK) {
         ret = esp_eth_ioctl(s_eth_handle, ETH_CMD_S_MAC_ADDR, mac);
         if (ret != ESP_OK) {

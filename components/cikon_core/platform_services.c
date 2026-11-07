@@ -150,7 +150,8 @@ const device_info_t *get_device_info(void) {
     }
 
     uint8_t mac[6];
-    if (esp_efuse_mac_get_default(mac) == ESP_OK) {
+    // Not esp_efuse_mac_get_default(): with 802.15.4 it writes an 8-byte EUI-64
+    if (esp_read_mac(mac, ESP_MAC_EFUSE_FACTORY) == ESP_OK) {
         snprintf(device_info_s.id, sizeof(device_info_s.id), "%02X%02X%02X%02X%02X%02X",
                  MAC2STR(mac));
     }
