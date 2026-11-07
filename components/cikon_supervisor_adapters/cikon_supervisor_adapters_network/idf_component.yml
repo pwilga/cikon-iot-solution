@@ -8,7 +8,11 @@ maintainers:
 
 dependencies:
   idf: ">=5.0"
-  espressif/mdns: "*"
+  # Over Thread the name goes to the border router (SRP), so mDNS is not pulled in
+  espressif/mdns:
+    version: "*"
+    matches:
+      - if: "$CONFIG{NETWORK_UPLINK_THREAD} == False"
   cikon_supervisor:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_supervisor

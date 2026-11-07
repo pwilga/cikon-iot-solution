@@ -8,7 +8,9 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
+#if !CONFIG_NETWORK_UPLINK_THREAD
 #include "mdns.h"
+#endif
 
 #include "bits_helper.h"
 #include "cmnd.h"
@@ -532,9 +534,10 @@ void network_services_mdns_init(void) {
     uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
     srp_add_service(&s_srp_http_service, secure ? "_https._tcp" : "_http._tcp", port);
     s_mdns_ready = true;
-    return;
-#endif
-
+#elif CONFIG_NETWORK_UPLINK_THREAD
+    // mDNS has no interface to run on over Thread, so without an SRP client there is no name
+    ESP_LOGW(TAG, "Thread without an SRP client: no name is announced");
+#else
     const char *hostname = network_services_get_hostname();
     const char *instance = config_get()->mdns_instance;
 
@@ -549,10 +552,13 @@ void network_services_mdns_init(void) {
     } else {
         ESP_LOGE(TAG, "mDNS init failed: %s", esp_err_to_name(ret));
     }
+#endif
 }
 
 void network_services_mdns_shutdown(void) {
+#if !CONFIG_NETWORK_UPLINK_THREAD
     mdns_free();
+#endif
     s_mdns_ready = false;
 }
 
@@ -566,9 +572,11 @@ void network_services_http_init(bool secure) {
     });
     http_register_json_get("/tele", tele_append_all);
     http_register_json_post("/cmnd", cmnd_process_json);
+#if !CONFIG_NETWORK_UPLINK_THREAD
     if (s_mdns_ready) {
         mdns_service_add(NULL, secure ? "_https" : "_http", "_tcp", port, NULL, 0);
     }
+#endif
 }
 
 void network_services_http_start(void) { network_services_http_init(config_get()->http_secure); }
