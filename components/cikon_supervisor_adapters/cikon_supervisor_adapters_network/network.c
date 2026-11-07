@@ -119,12 +119,20 @@ static void network_adapter_on_event(EventBits_t bits) {
     // so the AP coming and going doesn't touch them
     if ((bits & (NETWORK_UPLINK_READY | NETWORK_AP_READY)) && !network_servers_running) {
         ESP_LOGI(TAG, "Uplink or AP ready, starting servers");
-        tcp_ota_init();
-        tcp_monitor_init();
+        if (NETWORK_OTA_ENABLED) {
+            network_services_ota_start();
+        }
+        if (NETWORK_MONITOR_ENABLED) {
+            network_services_monitor_start();
+        }
 
         if (!supervisor_is_safe_mode_active()) {
-            network_services_mdns_init();
-            network_services_http_init(config_get()->http_secure);
+            if (NETWORK_MDNS_ENABLED) {
+                network_services_mdns_init();
+            }
+            if (NETWORK_HTTP_ENABLED) {
+                network_services_http_init(config_get()->http_secure);
+            }
         }
 
         network_servers_running = true;
@@ -134,13 +142,19 @@ static void network_adapter_on_event(EventBits_t bits) {
     // itself down, racing with the uplink coming up
     if ((bits & NETWORK_UPLINK_READY) && !supervisor_is_safe_mode_active()) {
         if (network_clients_running) {
-            mqtt_init();
+            if (NETWORK_MQTT_ENABLED) {
+                mqtt_init();
+            }
             return;
         }
 
         ESP_LOGI(TAG, "Uplink ready, starting clients");
-        network_services_sntp_init();
-        network_services_mqtt_init();
+        if (NETWORK_SNTP_ENABLED) {
+            network_services_sntp_init();
+        }
+        if (NETWORK_MQTT_ENABLED) {
+            network_services_mqtt_init();
+        }
 
         network_clients_running = true;
     }
@@ -153,7 +167,7 @@ static void network_adapter_on_interval(supervisor_interval_stage_t stage) {
         uplink->on_interval(stage);
     }
 
-    if (stage == SUPERVISOR_INTERVAL_10M && network_clients_running) {
+    if (stage == SUPERVISOR_INTERVAL_10M && network_clients_running && NETWORK_MQTT_ENABLED) {
         mqtt_init();
     }
 }
@@ -188,10 +202,8 @@ static const ha_metadata_t network_ha_metadata = {
 #endif
 
 static const command_entry_t network_commands[] = {
-    {"http", "Control HTTP server (on/off)", network_services_http_handler},
-    {"sntp", "Control SNTP service (on/off)", network_services_sntp_handler},
-    {"ota", "Control OTA service (on/off)", network_services_ota_handler},
-    {"monitor", "Control TCP monitor (on/off)", network_services_monitor_handler},
+    {"service", "Start or stop services, e.g. {\"ota\":\"on\",\"mdns\":\"off\"}",
+     network_services_service_handler},
 #ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
     {"ha", "Trigger Home Assistant MQTT discovery", network_services_ha_discovery_handler},
 #endif

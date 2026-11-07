@@ -556,41 +556,6 @@ void network_services_mdns_shutdown(void) {
     s_mdns_ready = false;
 }
 
-void network_services_sntp_handler(const char *args_json_str) {
-    logic_state_t state = json_str_as_logic_state(args_json_str);
-    if (state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting SNTP service");
-        network_services_sntp_init();
-    } else if (state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping SNTP service");
-        network_services_sntp_shutdown();
-    } else {
-        ESP_LOGW(TAG, "Invalid SNTP state");
-    }
-}
-
-void network_services_ota_handler(const char *args_json_str) {
-    logic_state_t state = json_str_as_logic_state(args_json_str);
-    if (state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting OTA update");
-        tcp_ota_init();
-    } else if (state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping OTA update");
-        tcp_ota_shutdown();
-    }
-}
-
-void network_services_monitor_handler(const char *args_json_str) {
-    logic_state_t state = json_str_as_logic_state(args_json_str);
-    if (state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting TCP monitor");
-        tcp_monitor_init();
-    } else if (state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping TCP monitor");
-        tcp_monitor_shutdown();
-    }
-}
-
 void network_services_http_init(bool secure) {
     uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
     http_init(&(http_config_t){
@@ -606,15 +571,65 @@ void network_services_http_init(bool secure) {
     }
 }
 
-void network_services_http_handler(const char *args_json_str) {
-    logic_state_t state = json_str_as_logic_state(args_json_str);
-    if (state == STATE_ON) {
-        ESP_LOGI(TAG, "Starting HTTP server");
-        network_services_http_init(config_get()->http_secure);
-    } else if (state == STATE_OFF) {
-        ESP_LOGI(TAG, "Stopping HTTP server");
-        http_shutdown();
+void network_services_http_start(void) { network_services_http_init(config_get()->http_secure); }
+
+void network_services_ota_start(void) {
+    tcp_ota_configure(config_get()->ota_port);
+    tcp_ota_init();
+}
+
+void network_services_monitor_start(void) {
+    tcp_monitor_configure(config_get()->monitor_port);
+    tcp_monitor_init();
+}
+
+typedef struct {
+    const char *name;
+    void (*start)(void);
+    void (*stop)(void);
+} network_service_t;
+
+static const network_service_t network_services[] = {
+    {"mdns", network_services_mdns_init, network_services_mdns_shutdown},
+    {"mqtt", network_services_mqtt_init, network_services_mqtt_shutdown},
+    {"http", network_services_http_start, network_services_http_shutdown},
+    {"sntp", network_services_sntp_init, network_services_sntp_shutdown},
+    {"ota", network_services_ota_start, tcp_ota_shutdown},
+    {"monitor", network_services_monitor_start, tcp_monitor_shutdown},
+};
+
+// {"service": {"ota": "on", "mdns": "off"}}
+void network_services_service_handler(const char *args_json_str) {
+    cJSON *args = json_str_as_object(args_json_str);
+    if (!args) {
+        ESP_LOGW(TAG, "Command aborted: invalid JSON arguments: %s", args_json_str);
+        return;
     }
+
+    for (const cJSON *item = args->child; item != NULL; item = item->next) {
+        const network_service_t *service = NULL;
+        for (size_t i = 0; i < sizeof(network_services) / sizeof(network_services[0]); i++) {
+            if (strcmp(network_services[i].name, item->string) == 0) {
+                service = &network_services[i];
+                break;
+            }
+        }
+        if (!service) {
+            ESP_LOGW(TAG, "Unknown service: %s", item->string);
+            continue;
+        }
+
+        logic_state_t state = json_as_logic_state(item);
+        if (state == STATE_ON) {
+            ESP_LOGI(TAG, "Starting %s", service->name);
+            service->start();
+        } else if (state == STATE_OFF) {
+            ESP_LOGI(TAG, "Stopping %s", service->name);
+            service->stop();
+        }
+    }
+
+    cJSON_Delete(args);
 }
 
 void network_services_on_restart(void) {
@@ -629,7 +644,8 @@ void network_services_on_restart(void) {
 
 void network_services_sntp_init(void) {
 
-    const char *servers[] = {config_get()->sntp1, config_get()->sntp2, config_get()->sntp3};
+    const char *servers[] = {config_get()->sntp_server1, config_get()->sntp_server2,
+                             config_get()->sntp_server3};
 
     // Check if any server configured
     bool has_server = false;

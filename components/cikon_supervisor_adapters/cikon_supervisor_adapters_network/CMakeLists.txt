@@ -14,6 +14,45 @@ if(CONFIG_NETWORK_UPLINK_THREAD)
     list(APPEND srcs "uplink_thread.c")
 endif()
 
+# This adapter's settings are the profile's network.yaml laid over network.defaults.yaml, turned
+# into a field list at configure time by tools/network_cikon_config_gen.py and handed to
+# cikon_config. A profile without a network.yaml gets the defaults as they are. The early pass that
+# only collects requirements has no build directory to write to.
+if(NOT CMAKE_BUILD_EARLY_EXPANSION)
+    idf_build_get_property(DEVICE_CONFIG_DIR DEVICE_CONFIG_DIR)
+    set(NETWORK_DEFAULTS_YAML "${CMAKE_CURRENT_LIST_DIR}/network.defaults.yaml")
+    set(NETWORK_PROFILE_YAML "${DEVICE_CONFIG_DIR}/cikon_network/network.yaml")
+    set(NETWORK_GEN "${CMAKE_CURRENT_LIST_DIR}/tools/network_cikon_config_gen.py")
+    get_property(CONFIG_FIELDS_DIR GLOBAL PROPERTY CIKON_CONFIG_FIELDS_DIR)
+    set(NETWORK_FIELDS_HEADER "${CONFIG_FIELDS_DIR}/network_fields.h")
+
+    # Re-run when the profile, the defaults or the generator change, or a changed network.yaml
+    # would build the old field list
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                 "${NETWORK_DEFAULTS_YAML}" "${NETWORK_PROFILE_YAML}" "${NETWORK_GEN}")
+
+    # ESP-IDF's own interpreter, not the system one: the generator needs PyYAML, which IDF installs
+    # into that environment
+    idf_build_get_property(python PYTHON)
+    execute_process(
+        COMMAND "${python}" "${NETWORK_GEN}" "${NETWORK_DEFAULTS_YAML}" "${NETWORK_PROFILE_YAML}"
+                --name network --out-header "${NETWORK_FIELDS_HEADER}"
+        OUTPUT_VARIABLE NETWORK_GEN_OUTPUT
+        ERROR_VARIABLE NETWORK_GEN_ERROR
+        RESULT_VARIABLE NETWORK_GEN_RESULT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_STRIP_TRAILING_WHITESPACE)
+
+    if(NOT NETWORK_GEN_RESULT EQUAL 0)
+        message(FATAL_ERROR "network: ${NETWORK_GEN_ERROR}")
+    endif()
+
+    # A service left out of network.yaml does not start, and nothing else says so
+    message(STATUS "network: ${NETWORK_GEN_OUTPUT}")
+
+    cikon_config_add_fields(network_fields.h NETWORK_FIELDS)
+endif()
+
 idf_component_register(
     SRCS
         ${srcs}

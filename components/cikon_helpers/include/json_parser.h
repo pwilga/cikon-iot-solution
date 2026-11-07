@@ -31,6 +31,14 @@ cJSON *json_str_as_object(const char *json_str);
 logic_state_t json_str_as_logic_state(const char *json_str);
 
 /**
+ * @brief Same as json_str_as_logic_state(), for a value that is already parsed.
+ *
+ * @param json A boolean, number or string value
+ * @return logic_state_t Parsed state: STATE_ON, STATE_OFF or STATE_TOGGLE
+ */
+logic_state_t json_as_logic_state(const cJSON *json);
+
+/**
  * @brief Returns a sanitized lowercase copy of the input string.
  *
  * Spaces are replaced with underscores, uppercase letters are lowercased.

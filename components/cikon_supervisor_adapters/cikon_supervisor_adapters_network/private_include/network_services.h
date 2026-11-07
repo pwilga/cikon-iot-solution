@@ -53,11 +53,11 @@ static inline void network_services_mqtt_shutdown(void) {
     mqtt_shutdown();
 }
 
-void network_services_sntp_handler(const char *args_json_str);
-void network_services_ota_handler(const char *args_json_str);
-void network_services_monitor_handler(const char *args_json_str);
 void network_services_http_init(bool secure);
-void network_services_http_handler(const char *args_json_str);
+void network_services_http_start(void);
+void network_services_ota_start(void);
+void network_services_monitor_start(void);
+void network_services_service_handler(const char *args_json_str);
 static inline void network_services_http_shutdown(void) {
     extern void http_shutdown(void);
     http_shutdown();

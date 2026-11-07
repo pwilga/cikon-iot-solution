@@ -58,6 +58,28 @@ cJSON *json_str_as_object(const char *json_str) {
     return json_root;
 }
 
+logic_state_t json_as_logic_state(const cJSON *json) {
+
+    logic_state_t result = STATE_OFF;
+
+    if (cJSON_IsBool(json)) {
+        result = cJSON_IsTrue(json) ? STATE_ON : STATE_OFF;
+
+    } else if (cJSON_IsNumber(json)) {
+        result = json->valuedouble ? STATE_ON : STATE_OFF;
+
+    } else if (cJSON_IsString(json)) {
+        const char *s = json->valuestring;
+        if (strcasecmp(s, "on") == 0 || strcasecmp(s, "1") == 0 || strcasecmp(s, "true") == 0) {
+            result = STATE_ON;
+        } else if (strcasecmp(s, "toggle") == 0) {
+            result = STATE_TOGGLE;
+        }
+    }
+
+    return result;
+}
+
 logic_state_t json_str_as_logic_state(const char *json_str) {
 
     cJSON *json_root = cJSON_Parse(json_str);
@@ -65,22 +87,7 @@ logic_state_t json_str_as_logic_state(const char *json_str) {
         return STATE_OFF;
     }
 
-    logic_state_t result = STATE_OFF;
-
-    if (cJSON_IsBool(json_root)) {
-        result = cJSON_IsTrue(json_root) ? STATE_ON : STATE_OFF;
-
-    } else if (cJSON_IsNumber(json_root)) {
-        result = json_root->valuedouble ? STATE_ON : STATE_OFF;
-
-    } else if (cJSON_IsString(json_root)) {
-        const char *s = json_root->valuestring;
-        if (strcasecmp(s, "on") == 0 || strcasecmp(s, "1") == 0 || strcasecmp(s, "true") == 0) {
-            result = STATE_ON;
-        } else if (strcasecmp(s, "toggle") == 0) {
-            result = STATE_TOGGLE;
-        }
-    }
+    logic_state_t result = json_as_logic_state(json_root);
 
     cJSON_Delete(json_root);
     return result;

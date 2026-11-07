@@ -1,0 +1,48 @@
+# What a device profile's network.yaml starts from. The profile repeats only what differs.
+#
+# A setting is stored under <section>_<key> in NVS (15 characters at most): mqtt: broker is
+# mqtt_broker. A key that is not here cannot be set by a profile.
+#
+# A profile starts a service by naming its section. wifi is not a service: its settings apply
+# whatever runs, and naming it starts nothing. Passwords are never set here or in a profile, only
+# at runtime.
+
+mdns:
+  host: ""
+  instance: Cikon Systems ESP32 device
+
+mqtt:
+  broker: mqtts://skynet.cikon.eu:8883
+  user: mqttuser
+  node: idfnode
+  disc_pref: homeassistant
+  mtls_en: true
+  max_retry: 5
+  pass: ""
+
+# A profile picks the web server by having an http: or an https: section, not both. Each is
+# there to change its port.
+http:
+  port: 80
+
+https:
+  port: 443
+
+sntp:
+  server1: pool.ntp.org
+  server2: time.google.com
+  server3: time.cloudflare.com
+
+ota:
+  port: 5555
+
+monitor:
+  port: 6666
+
+# The network the device joins (ssid), and the name of its setup portal (ap_ssid; empty is
+# <dev_name>_<id>)
+wifi:
+  ssid: ""
+  pass: ""
+  ap_ssid: ""
+  ap_pass: ""

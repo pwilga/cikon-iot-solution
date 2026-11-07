@@ -6,7 +6,7 @@
 #include "cJSON.h"
 #include "esp_err.h"
 
-#include "config_fields_private.h"
+#include "config_fields.h"
 
 #ifdef __cplusplus
 extern "C" {
