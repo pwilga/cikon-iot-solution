@@ -1,17 +1,21 @@
 # Only the enabled uplinks are built. Their headers (esp_wifi, esp_eth, openthread) come with
 # cikon_wifi / cikon_ethernet / cikon_thread, pulled in idf_component.yml only for that uplink
-set(srcs "network.c" "network_services.c")
+set(srcs "network.c" "services/network_services.c" "services/network_internet.c")
+
+if(CONFIG_MQTT_ENABLE_HA_DISCOVERY)
+    list(APPEND srcs "services/network_ha.c")
+endif()
 
 if(CONFIG_NETWORK_UPLINK_WIFI)
-    list(APPEND srcs "uplink_wifi.c" "network_ap.c")
+    list(APPEND srcs "uplinks/uplink_wifi.c" "uplinks/network_ap.c")
 endif()
 
 if(CONFIG_NETWORK_UPLINK_ETHERNET)
-    list(APPEND srcs "uplink_ethernet.c")
+    list(APPEND srcs "uplinks/uplink_ethernet.c")
 endif()
 
 if(CONFIG_NETWORK_UPLINK_THREAD)
-    list(APPEND srcs "uplink_thread.c")
+    list(APPEND srcs "uplinks/uplink_thread.c")
 endif()
 
 # This adapter's settings are the profile's network.yaml laid over network.defaults.yaml, turned
