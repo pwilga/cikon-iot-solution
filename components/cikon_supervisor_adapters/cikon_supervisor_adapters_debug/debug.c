@@ -4,9 +4,7 @@
 #include <string.h>
 
 #include "cJSON.h"
-#include "esp_chip_info.h"
 #include "esp_core_dump.h"
-#include "esp_flash.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_net_stack.h"
@@ -18,7 +16,6 @@
 #include "lwip/netif.h"
 
 #include "bits_helper.h"
-#include "config_manager.h"
 #include "debug_adapter.h"
 #include "debug_console.h" // IWYU pragma: keep
 #include "enum_helpers.h"
@@ -61,23 +58,6 @@ static TaskStatus_t *get_task_status_array(UBaseType_t *out_count) {
 }
 #endif
 
-static void debug_print_config_summary(void) {
-    const config_t *cfg = config_get();
-    ESP_LOGI(TAG, "| * CONFIG *");
-#define PRINT_STR(field, size, defval) ESP_LOGI(TAG, "| %-16s | %-36.36s |", #field, cfg->field);
-#define PRINT_U8(field, defval) ESP_LOGI(TAG, "| %-16s | %-36u |", #field, (unsigned)cfg->field);
-#define PRINT_U16(field, defval) ESP_LOGI(TAG, "| %-16s | %-36u |", #field, (unsigned)cfg->field);
-#define PRINT_U32(field, defval) ESP_LOGI(TAG, "| %-16s | %-36u |", #field, (unsigned)cfg->field);
-#define PRINT_U64(field, defval)                                                                   \
-    ESP_LOGI(TAG, "| %-16s | %-36llu |", #field, (unsigned long long)cfg->field);
-    CONFIG_FIELDS(PRINT_STR, PRINT_U8, PRINT_U16, PRINT_U32, PRINT_U64)
-#undef PRINT_STR
-#undef PRINT_U8
-#undef PRINT_U16
-#undef PRINT_U32
-#undef PRINT_U64
-}
-
 #if CONFIG_FREERTOS_USE_TRACE_FACILITY
 static void debug_print_tasks_summary(void) {
     UBaseType_t task_count = 0;
@@ -110,29 +90,6 @@ static void debug_print_tasks_summary(void) {
     free(task_status_array);
 }
 #endif
-
-static void debug_print_sys_info(void) {
-    esp_chip_info_t chip_info;
-    uint32_t flash_size;
-    esp_chip_info(&chip_info);
-
-    unsigned major_rev = chip_info.revision / 100;
-    unsigned minor_rev = chip_info.revision % 100;
-
-    if (esp_flash_get_size(NULL, &flash_size) != ESP_OK) {
-        ESP_LOGE(TAG, "Get flash size failed");
-        return;
-    }
-
-    ESP_LOGI(TAG, "This is %s chip with %d CPU core(s), %s%s%s%s, ", CONFIG_IDF_TARGET,
-             chip_info.cores, (chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "WiFi/" : "",
-             (chip_info.features & CHIP_FEATURE_BT) ? "BT" : "",
-             (chip_info.features & CHIP_FEATURE_BLE) ? "BLE" : "",
-             (chip_info.features & CHIP_FEATURE_IEEE802154) ? ", 802.15.4 (Zigbee/Thread)" : "");
-    ESP_LOGI(TAG, "silicon revision v%d.%d, ", major_rev, minor_rev);
-    ESP_LOGI(TAG, "%" PRIu32 "MB %s flash", flash_size / (uint32_t)(1024 * 1024),
-             (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
-}
 
 static esp_err_t debug_adapter_init(void) {
     if (initialized) {
@@ -307,16 +264,6 @@ static void tele_debug_sensor_temp(const char *tele_id, cJSON *json_root) {
     cJSON_AddNumberToObject(json_root, tele_id, temp);
 }
 
-static void cmnd_debug_sysinfo(const char *args_json_str) {
-    (void)args_json_str;
-    debug_print_sys_info();
-}
-
-static void cmnd_debug_config(const char *args_json_str) {
-    (void)args_json_str;
-    debug_print_config_summary();
-}
-
 static void cmnd_debug_crash(const char *args_json_str) {
     (void)args_json_str;
     abort();
@@ -364,12 +311,16 @@ static void cmnd_debug_coredump_erase(const char *args_json_str) {
     }
 }
 
+static void cmnd_debug_coredump_export(const char *args_json_str) {
+    (void)args_json_str;
+    coredump_export_to_littlefs();
+}
+
 static const command_entry_t debug_commands[] = {
-    {"sysinfo", "Print system information", cmnd_debug_sysinfo},
-    {"showconf", "Print configuration summary", cmnd_debug_config},
     {"crash", "Crash the system (for testing)", cmnd_debug_crash},
     {"coredump", "Check if core dump exists in flash", cmnd_debug_coredump},
     {"coredump_erase", "Erase core dump partition", cmnd_debug_coredump_erase},
+    {"coredump_export", "Export coredump partition to littlefs", cmnd_debug_coredump_export},
     {NULL, NULL, NULL}};
 
 static const tele_entry_t debug_telemetry[] = {{"debug_sensor_temp", tele_debug_sensor_temp},

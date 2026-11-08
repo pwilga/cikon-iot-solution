@@ -83,9 +83,10 @@ void config_manager_init(void);
 const config_t *config_get(void);
 
 /**
- * @brief Log all NVS keys in the configuration namespace (for diagnostics).
+ * @brief Log every config field with its value and where the value comes from: "nvs" (set at
+ * runtime) or "default" (built into the firmware). Passwords (fields ending in "pass") as ***.
  */
-void config_manager_print_all_keys(void);
+void config_manager_print_summary(void);
 
 /**
  * @brief Set configuration fields from a cJSON object.

@@ -192,21 +192,41 @@ void config_manager_init(void) {
 
 const config_t *config_get(void) { return &config_data; }
 
-void config_manager_print_all_keys(void) {
+// The monitor on the TCP port has no authentication, so a password never goes into the log
+static bool config_field_is_secret(const char *name) {
+    size_t len = strlen(name);
+    return len >= 4 && strcmp(name + len - 4, "pass") == 0;
+}
 
-    nvs_iterator_t it = NULL;
-    esp_err_t err = nvs_entry_find("nvs", CONFIG_MANAGER_NAMESPACE, NVS_TYPE_ANY, &it);
+void config_manager_print_summary(void) {
+    const config_t *cfg = config_get();
+    nvs_handle_t nvs;
+    bool nvs_open_ok = nvs_open(CONFIG_MANAGER_NAMESPACE, NVS_READONLY, &nvs) == ESP_OK;
 
-    ESP_LOGI(TAG, "NVS keys in namespace '%s':", CONFIG_MANAGER_NAMESPACE);
-    if (err != ESP_OK || it == NULL) {
-        ESP_LOGI(TAG, "No keys found or error: %s", esp_err_to_name(err));
-        return;
-    }
-    while (err == ESP_OK && it) {
-        nvs_entry_info_t info;
-        nvs_entry_info(it, &info);
-        ESP_LOGI(TAG, "key: %-15s | type: %d", info.key, info.type);
-        err = nvs_entry_next(&it);
+    // A field is in NVS only after a setconf; until then the built-in default is used
+#define SOURCE(field)                                                                              \
+    ((nvs_open_ok && nvs_find_key(nvs, #field, NULL) == ESP_OK) ? "nvs" : "default")
+#define PRINT_STR(field, size, defval)                                                             \
+    ESP_LOGI(TAG, "| %-16s | %-7s | %-36.36s |", #field, SOURCE(field),                            \
+             (config_field_is_secret(#field) && cfg->field[0]) ? "***" : cfg->field);
+#define PRINT_NUM(field, fmt, cast)                                                                \
+    ESP_LOGI(TAG, "| %-16s | %-7s | " fmt " |", #field, SOURCE(field), (cast)cfg->field);
+#define PRINT_U8(field, defval) PRINT_NUM(field, "%-36u", unsigned)
+#define PRINT_U16(field, defval) PRINT_NUM(field, "%-36u", unsigned)
+#define PRINT_U32(field, defval) PRINT_NUM(field, "%-36u", unsigned)
+#define PRINT_U64(field, defval) PRINT_NUM(field, "%-36llu", unsigned long long)
+    ESP_LOGI(TAG, "| * CONFIG * (nvs = set at runtime, default = built into the firmware)");
+    CONFIG_FIELDS(PRINT_STR, PRINT_U8, PRINT_U16, PRINT_U32, PRINT_U64)
+#undef PRINT_STR
+#undef PRINT_NUM
+#undef PRINT_U8
+#undef PRINT_U16
+#undef PRINT_U32
+#undef PRINT_U64
+#undef SOURCE
+
+    if (nvs_open_ok) {
+        nvs_close(nvs);
     }
 }
 

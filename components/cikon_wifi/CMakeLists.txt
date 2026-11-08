@@ -5,4 +5,6 @@ idf_component_register(
         "include"
     REQUIRES
         esp_wifi
+    PRIV_REQUIRES
+        esp_timer
 )
