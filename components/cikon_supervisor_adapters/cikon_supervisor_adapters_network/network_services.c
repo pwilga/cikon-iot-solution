@@ -33,11 +33,7 @@
 #include "tcp_ota.h"
 
 #if CONFIG_NETWORK_UPLINK_THREAD
-#include "esp_openthread.h"
-#include "esp_openthread_dns64.h"
-#include "esp_openthread_lock.h"
-#include "openthread/srp_client.h"
-#include "openthread/thread.h"
+#include "thread_common.h"
 #endif
 
 #define TAG "cikon:network:services"
@@ -317,77 +313,14 @@ const char *network_services_get_device_url(void) {
     return s_device_url;
 }
 
-#if CONFIG_NETWORK_UPLINK_THREAD && CONFIG_OPENTHREAD_SRP_CLIENT
-static otSrpClientService s_srp_http_service;
-
-static void srp_client_callback(otError error, const otSrpClientHostInfo *hostInfo,
-                                const otSrpClientService *services,
-                                const otSrpClientService *removedServices, void *context) {
-    (void)hostInfo;
-    (void)services;
-    (void)removedServices;
-    (void)context;
-    if (error == OT_ERROR_NONE) {
-        ESP_LOGI(TAG, "SRP: registered OK");
-    } else if (error == OT_ERROR_DUPLICATED) {
-        // SRP key mismatch — NVS was likely erased. Remove the stale host entry on the OBR.
-        // To clear all SRP registrations on OBR: ot srp server disable && ot srp server enable
-        ESP_LOGE(TAG, "SRP: name conflict for %s — remove stale host on OBR",
-                 network_services_get_hostname());
-    } else {
-        ESP_LOGW(TAG, "SRP error: %s", otThreadErrorToString(error));
-    }
-}
-
-static void srp_host_init(void) {
-    const char *hostname = network_services_get_hostname();
-    esp_openthread_lock_acquire(portMAX_DELAY);
-    otInstance *instance = esp_openthread_get_instance();
-    otSrpClientSetCallback(instance, srp_client_callback, NULL);
-    otError err = otSrpClientSetHostName(instance, hostname);
-    if (err != OT_ERROR_NONE) {
-        ESP_LOGE(TAG, "SRP set hostname: %s", otThreadErrorToString(err));
-        esp_openthread_lock_release();
-        return;
-    }
-    err = otSrpClientEnableAutoHostAddress(instance);
-    if (err != OT_ERROR_NONE) {
-        ESP_LOGW(TAG, "SRP auto host addr: %s", otThreadErrorToString(err));
-    }
-    otSrpClientEnableAutoStartMode(instance, NULL, NULL);
-    ESP_LOGI(TAG, "SRP host: %s, lease: %lus", hostname,
-             (unsigned long)otSrpClientGetLeaseInterval(instance));
-    esp_openthread_lock_release();
-}
-
-static void srp_add_service(otSrpClientService *svc, const char *type, uint16_t port) {
-    memset(svc, 0, sizeof(*svc));
-    svc->mName = type;
-    svc->mInstanceName = network_services_get_hostname();
-    svc->mPort = port;
-    esp_openthread_lock_acquire(portMAX_DELAY);
-    otError err = otSrpClientAddService(esp_openthread_get_instance(), svc);
-    esp_openthread_lock_release();
-    if (err != OT_ERROR_NONE && err != OT_ERROR_ALREADY) {
-        ESP_LOGE(TAG, "SRP add %s: %s", type, otThreadErrorToString(err));
-    } else {
-        ESP_LOGI(TAG, "SRP: %s port %d", type, port);
-    }
-}
-#endif
-
 bool network_services_is_internet_reachable(void) {
 #if CONFIG_NETWORK_UPLINK_THREAD && CONFIG_OPENTHREAD_DNS64_CLIENT
     // Same as `ot ping 8.8.8.8`: Thread has no IPv4, the BR's NAT64 prefix gets glued to the
     // address
-    ip6_addr_t nat64;
-    if (esp_openthread_get_nat64_prefix(&nat64) != ESP_OK) {
+    char nat64_address[THREAD_NAT64_ADDRESS_MAX];
+    if (!thread_nat64_address("8.8.8.8", nat64_address, sizeof(nat64_address))) {
         return false;
     }
-    nat64.addr[3] = ipaddr_addr("8.8.8.8");
-
-    char nat64_address[IP6ADDR_STRLEN_MAX];
-    ip6addr_ntoa_r(&nat64, nat64_address, sizeof(nat64_address));
     return network_services_is_tcp_port_reachable(nat64_address, 53);
 #else
     return network_services_is_tcp_port_reachable("8.8.8.8", 53);
@@ -529,10 +462,13 @@ void network_services_mdns_init(void) {
 #if CONFIG_NETWORK_UPLINK_THREAD && CONFIG_OPENTHREAD_SRP_CLIENT
     // Over Thread the name is registered with the border router (SRP), which announces it on the
     // LAN - mDNS has no interface to run on there
-    srp_host_init();
-    bool secure = config_get()->http_secure;
-    uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
-    srp_add_service(&s_srp_http_service, secure ? "_https._tcp" : "_http._tcp", port);
+    thread_srp_host_init(network_services_get_hostname());
+    if (NETWORK_HTTP_ENABLED) {
+        bool secure = config_get()->http_secure;
+        uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
+        thread_srp_add_service(network_services_get_hostname(),
+                               secure ? "_https._tcp" : "_http._tcp", port);
+    }
     s_mdns_ready = true;
 #elif CONFIG_NETWORK_UPLINK_THREAD
     // mDNS has no interface to run on over Thread, so without an SRP client there is no name
@@ -549,6 +485,11 @@ void network_services_mdns_init(void) {
     if (ret == ESP_OK) {
         s_mdns_ready = true;
         ESP_LOGI(TAG, "mDNS started with hostname: %s.local", hostname);
+        if (NETWORK_HTTP_ENABLED) {
+            bool secure = config_get()->http_secure;
+            uint16_t port = secure ? config_get()->https_port : config_get()->http_port;
+            mdns_service_add(NULL, secure ? "_https" : "_http", "_tcp", port, NULL, 0);
+        }
     } else {
         ESP_LOGE(TAG, "mDNS init failed: %s", esp_err_to_name(ret));
     }
@@ -572,11 +513,6 @@ void network_services_http_init(bool secure) {
     });
     http_register_json_get("/tele", tele_append_all);
     http_register_json_post("/cmnd", cmnd_process_json);
-#if !CONFIG_NETWORK_UPLINK_THREAD
-    if (s_mdns_ready) {
-        mdns_service_add(NULL, secure ? "_https" : "_http", "_tcp", port, NULL, 0);
-    }
-#endif
 }
 
 void network_services_http_start(void) { network_services_http_init(config_get()->http_secure); }

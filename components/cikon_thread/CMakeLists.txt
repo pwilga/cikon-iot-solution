@@ -11,6 +11,7 @@ idf_component_register(
     PRIV_INCLUDE_DIRS "private_include"
     REQUIRES
         openthread
+        lwip
 )
 
 # The Thread page goes where Thread runs and the HTTP component is built: staged into the shared
