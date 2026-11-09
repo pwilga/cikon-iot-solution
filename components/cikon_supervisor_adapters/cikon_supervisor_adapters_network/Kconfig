@@ -3,9 +3,10 @@ menu "Cikon IoT Supervisor Network Adapter"
 
     config NETWORK_UPLINK_WIFI
         bool "WiFi uplink"
-        default n
+        default y if !NETWORK_UPLINK_ETHERNET && !NETWORK_UPLINK_THREAD
         help
             Bring the device onto the network over WiFi (STA, with AP mode for local access).
+            The uplink a device has when it names none (uplink: in its network.yaml).
 
     config NETWORK_UPLINK_ETHERNET
         bool "Ethernet uplink"

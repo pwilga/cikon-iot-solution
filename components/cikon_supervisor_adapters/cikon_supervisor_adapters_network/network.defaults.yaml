@@ -6,6 +6,11 @@
 # A profile starts a service by naming its section. wifi is not a service: its settings apply
 # whatever runs, and naming it starts nothing. Passwords are never set here or in a profile, only
 # at runtime.
+#
+# A profile also says which uplink the device has: uplink: wifi, ethernet or thread. It is better
+# to name it even for wifi, which a profile that names none has. It is no setting: the project reads
+# it before sdkconfig exists and makes it the CONFIG_NETWORK_UPLINK_* option, so changing it needs
+# a clean build (./fullclean.sh).
 
 mdns:
   host: ""

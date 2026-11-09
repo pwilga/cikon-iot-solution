@@ -11,6 +11,10 @@ The type comes from the value: true/false is a uint8_t, a number a uint16_t, tex
 string's buffer is twice its value, in steps of 32 and not under 32, so setconf has room for a
 longer one.
 
+The profile also says which uplink the device has, uplink: wifi, ethernet or thread. That is no
+setting: the project's CMakeLists.txt turns it into the CONFIG_NETWORK_UPLINK_* option before
+sdkconfig exists, and this script only checks the word and reports it.
+
 A bad profile exits non-zero with a message naming the section and the key, which CMake turns into
 a configure error.
 """
@@ -26,6 +30,7 @@ NAME_MAX = 15  # NVS key limit
 # A service runs when its section is in the profile. wifi is an uplink, not a service, and the
 # web server is http or https, so neither is here
 SERVICES = ("mdns", "mqtt", "sntp", "ota", "monitor")
+UPLINKS = ("wifi", "ethernet", "thread")
 U16_MAX = 0xFFFF
 STR_STEP = 32
 
@@ -35,14 +40,20 @@ class ConfigError(Exception):
 
 
 def load(path):
+    """The sections of a file, and the uplink it names (None when it does not)."""
     data = yaml.safe_load(Path(path).read_text())
     if data is None:
-        return {}
+        return {}, None
+    uplink = None
+    if isinstance(data, dict) and "uplink" in data:
+        uplink = data.pop("uplink")
+        if uplink not in UPLINKS:
+            raise ConfigError(f"{path}: uplink: {uplink!r}, expected one of {list(UPLINKS)}")
     # A section with nothing under it, like a bare https:, is None
     if not isinstance(data, dict) or not all(s is None or isinstance(s, dict)
                                              for s in data.values()):
         raise ConfigError(f"{path}: expected <section>: followed by <key>: <value> lines")
-    return {section: keys or {} for section, keys in data.items()}
+    return {section: keys or {} for section, keys in data.items()}, uplink
 
 
 def kind(value):
@@ -110,8 +121,8 @@ def main():
     args = parser.parse_args()
 
     try:
-        defaults = load(args.defaults)
-        profile = load(args.profile) if Path(args.profile).exists() else {}
+        defaults, _ = load(args.defaults)
+        profile, uplink = load(args.profile) if Path(args.profile).exists() else ({}, None)
         merged = merge(defaults, profile, args.profile)
         lines = [field_line(s, k, v) for s, keys in merged.items() for k, v in keys.items()]
         # The web server is http or https, whichever section the profile has; with neither it is
@@ -137,7 +148,8 @@ def main():
         f"#pragma once\n\n"
         f"{flags}\n"
         f"#define {macro}(STR, U8, U16, U32, U64) \\\n    {body}\n")
-    print("services on: " + (" ".join(s for s, on in enabled.items() if on) or "none") +
+    print((f"uplink: {uplink}; " if uplink else "") +
+          "services on: " + (" ".join(s for s, on in enabled.items() if on) or "none") +
           "; off: " + (" ".join(s for s, on in enabled.items() if not on) or "none"))
     return 0
 

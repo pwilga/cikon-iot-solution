@@ -51,6 +51,18 @@ if(NOT CMAKE_BUILD_EARLY_EXPANSION)
         message(FATAL_ERROR "network: ${NETWORK_GEN_ERROR}")
     endif()
 
+    # The uplink is read from network.yaml before sdkconfig exists. A sdkconfig that is older than
+    # the profile still holds the previous choice, and building on it would give another uplink
+    # than the one the profile names
+    if(NETWORK_GEN_OUTPUT MATCHES "uplink: ([a-z]+);")
+        string(TOUPPER "${CMAKE_MATCH_1}" NETWORK_UPLINK_NAME)
+        if(NOT CONFIG_NETWORK_UPLINK_${NETWORK_UPLINK_NAME})
+            message(FATAL_ERROR "network: network.yaml says uplink: ${CMAKE_MATCH_1}, but "
+                                "CONFIG_NETWORK_UPLINK_${NETWORK_UPLINK_NAME} is off in sdkconfig, "
+                                "which still holds an older choice. Run ./fullclean.sh")
+        endif()
+    endif()
+
     # A service left out of network.yaml does not start, and nothing else says so
     message(STATUS "network: ${NETWORK_GEN_OUTPUT}")
 
