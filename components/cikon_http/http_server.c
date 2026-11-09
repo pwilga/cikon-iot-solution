@@ -178,6 +178,7 @@ void http_init(const http_config_t *cfg) {
         ssl_cfg.servercert_len = get_client_pem_size();
         ssl_cfg.prvtkey_pem = (const uint8_t *)get_client_key_start();
         ssl_cfg.prvtkey_len = get_client_key_size();
+        ssl_cfg.port_secure = cfg->port;
         ssl_cfg.httpd.stack_size = CONFIG_HTTPS_STACK_SIZE;
         ssl_cfg.httpd.recv_wait_timeout = CONFIG_HTTP_SESSION_TIMEOUT;
         ssl_cfg.httpd.send_wait_timeout = CONFIG_HTTP_SESSION_TIMEOUT;
