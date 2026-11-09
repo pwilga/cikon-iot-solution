@@ -49,7 +49,8 @@ menu "Cikon IoT Supervisor Core Configuration"
         range 2 10
         help
             Number of crashes/panics before activating safe mode.
-            Safe mode disables hardware adapters and keeps only WiFi/Monitor/OTA active.
+            Safe mode disables hardware adapters and keeps only the network uplink, OTA and
+            monitor active.
 
     config SUPERVISOR_SAFE_MODE_STABLE_TIME_S
         int "Safe mode auto-clear time (seconds)"

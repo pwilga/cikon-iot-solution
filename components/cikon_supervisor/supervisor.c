@@ -186,7 +186,7 @@ static bool safe_mode_check(void) {
 
     if (boot_counter >= CONFIG_SUPERVISOR_SAFE_MODE_THRESHOLD) {
         ESP_LOGE(TAG, "Safe mode active: %" PRIu32 " crashes detected", boot_counter);
-        ESP_LOGE(TAG, "Hardware adapters DISABLED - WiFi/OTA only");
+        ESP_LOGE(TAG, "Hardware adapters DISABLED - network uplink, OTA and monitor only");
         ESP_LOGE(TAG, "Auto-clear after %ds stable operation",
                  CONFIG_SUPERVISOR_SAFE_MODE_STABLE_TIME_S);
         return true;

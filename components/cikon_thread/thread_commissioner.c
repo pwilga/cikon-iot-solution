@@ -9,6 +9,7 @@
 #include "esp_timer.h"
 #include "openthread/commissioner.h"
 #include "openthread/error.h"
+#include "openthread/link.h"
 
 #include "cmnd.h"
 #include "json_parser.h"
@@ -141,6 +142,18 @@ void thread_commissioner_handler(const char *args_json_str) {
 
     otInstance *instance = esp_openthread_get_instance();
 
+    if (start) {
+        // The leader hands the role to a petition carrying the ID of the commissioner that holds
+        // it, and the default ID is the same on every device. Only a disabled commissioner takes a
+        // new ID, so a start that is already running keeps its own
+        const otExtAddress *ext = otLinkGetExtendedAddress(instance);
+        char id[2 * sizeof(ext->m8) + 1];
+        for (size_t i = 0; i < sizeof(ext->m8); i++) {
+            snprintf(&id[2 * i], 3, "%02x", ext->m8[i]);
+        }
+        (void)otCommissionerSetId(instance, id);
+    }
+
     s_error = ERROR_NONE;
     otError err =
         start ? otCommissionerStart(instance, commissioner_state_cb, commissioner_joiner_cb, NULL)
@@ -151,7 +164,8 @@ void thread_commissioner_handler(const char *args_json_str) {
         snprintf(s_pskd, sizeof(s_pskd), "%s", pskd);
         s_timeout_s = timeout_s;
     }
-    if (start && err != OT_ERROR_NONE) {
+    // Already running is not a failure of the start
+    if (start && err != OT_ERROR_NONE && err != OT_ERROR_ALREADY) {
         s_error = err == OT_ERROR_INVALID_STATE ? ERROR_NOT_ATTACHED : ERROR_START_FAILED;
     } else if (!start) {
         // Stopping during the petition is not a rejection
@@ -159,7 +173,9 @@ void thread_commissioner_handler(const char *args_json_str) {
     }
     esp_openthread_lock_release();
 
-    if (err != OT_ERROR_NONE) {
+    if (err == OT_ERROR_ALREADY) {
+        ESP_LOGI(TAG, "Commissioner already %s", start ? "running" : "stopped");
+    } else if (err != OT_ERROR_NONE) {
         ESP_LOGW(TAG, "Commissioner %s: %s", start ? "start" : "stop", otThreadErrorToString(err));
     }
 }
