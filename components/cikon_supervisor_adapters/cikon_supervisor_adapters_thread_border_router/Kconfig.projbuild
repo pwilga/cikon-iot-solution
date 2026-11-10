@@ -21,6 +21,9 @@ config ENABLE_SUPERVISOR_THREAD_BORDER_ROUTER
     imply LWIP_MULTICAST_PING
     set default LWIP_IPV6_NUM_ADDRESSES=12
     set default VFS_EVENTFD_MAX_FDS=5
+    # Messages in flight through the BR: a TCP stream to a Thread device (OTA) keeps several full
+    # packets queued in it. IDF's 65 is too few, 128 still drops packets at the start of a transfer
+    set default OPENTHREAD_NUM_MESSAGE_BUFFERS=140
 
 # The BR runs the SRP server itself; imply can't turn an option off
 config OPENTHREAD_SRP_CLIENT
