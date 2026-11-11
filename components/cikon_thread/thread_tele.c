@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -11,6 +12,7 @@
 #include "openthread/border_routing.h" // IWYU pragma: keep
 #include "openthread/ip6.h"
 #include "openthread/link.h"
+#include "openthread/message.h" // IWYU pragma: keep
 #include "openthread/platform/radio.h"
 #include "openthread/srp_server.h" // IWYU pragma: keep
 #include "openthread/thread.h"
@@ -22,6 +24,7 @@
 
 #define THREAD_TELE_MAX_ADDRESSES 8
 #define THREAD_TELE_MAX_DEVICES 16
+#define THREAD_TELE_MAX_NEIGHBORS 8
 
 // The Thread network state, copied from OpenThread so that the services reading it never take the
 // OpenThread lock
@@ -44,7 +47,70 @@ static struct {
     otIp6Address addresses[THREAD_TELE_MAX_ADDRESSES];
     const char *address_types[THREAD_TELE_MAX_ADDRESSES]; // NULL when none fits
     uint8_t addresses_num;
+
+#if CONFIG_THREAD_TELE_COUNTERS
+    // Counters since the start of the device, copied as they are
+    struct {
+        uint32_t tx_total;
+        uint32_t tx_retry;
+        uint32_t tx_err_cca;
+        uint32_t tx_err_busy;
+        uint32_t tx_max_retry;
+        uint32_t rx_total;
+        uint32_t rx_err_fcs;
+        uint16_t cca_fail; // of the latest frames, 0xffff is 100%
+    } mac;
+    struct {
+        uint16_t detached;
+        uint16_t child;
+        uint16_t router;
+        uint16_t leader;
+        uint16_t attach_attempts;
+        uint16_t partition_changes;
+        uint16_t parent_changes;
+    } mle;
+    struct {
+        uint32_t tx_ok;
+        uint32_t tx_fail;
+        uint32_t rx_ok;
+        uint32_t rx_fail;
+    } ip;
+    struct {
+        uint16_t total;
+        uint16_t free;
+        uint16_t max_used; // the most buffers taken at once since the start
+        uint16_t send;     // taken by the 6LoWPAN send queue
+        uint16_t reassembly;
+    } buffers;
+    struct {
+        uint16_t rloc16;
+        int8_t rssi;
+        int8_t last_rssi;
+        uint8_t lq;
+        uint32_t age; // seconds since it was last heard
+        bool child;
+    } neighbors[THREAD_TELE_MAX_NEIGHBORS];
+    uint8_t neighbors_num;
+#endif
+
 #if CONFIG_OPENTHREAD_BORDER_ROUTER
+#if CONFIG_THREAD_TELE_COUNTERS
+    struct {
+        otBorderRoutingState state;
+        otSrpServerState srp;
+        uint64_t in_pkts; // unicast, Thread to the LAN and back
+        uint64_t in_bytes;
+        uint64_t out_pkts;
+        uint64_t out_bytes;
+        uint32_t ra_rx;
+        uint32_t ra_tx;
+        uint32_t ra_tx_fail;
+        uint32_t rs_rx;
+        uint32_t rs_tx;
+        uint32_t rs_tx_fail;
+        uint8_t routers; // other routers on the LAN
+    } br;
+#endif
     struct {
         char name[32];
         otIp6Address ip; // unspecified when the device registered none
@@ -135,7 +201,82 @@ void thread_tele_refresh(void) {
         s_data.addresses_num++;
     }
 
+#if CONFIG_THREAD_TELE_COUNTERS
+    const otMacCounters *mac = otLinkGetCounters(instance);
+    s_data.mac.tx_total = mac->mTxTotal;
+    s_data.mac.tx_retry = mac->mTxRetry;
+    s_data.mac.tx_err_cca = mac->mTxErrCca;
+    s_data.mac.tx_err_busy = mac->mTxErrBusyChannel;
+    s_data.mac.tx_max_retry = mac->mTxDirectMaxRetryExpiry;
+    s_data.mac.rx_total = mac->mRxTotal;
+    s_data.mac.rx_err_fcs = mac->mRxErrFcs;
+    s_data.mac.cca_fail = otLinkGetCcaFailureRate(instance);
+
+    const otMleCounters *mle = otThreadGetMleCounters(instance);
+    s_data.mle.detached = mle->mDetachedRole;
+    s_data.mle.child = mle->mChildRole;
+    s_data.mle.router = mle->mRouterRole;
+    s_data.mle.leader = mle->mLeaderRole;
+    s_data.mle.attach_attempts = mle->mAttachAttempts;
+    s_data.mle.partition_changes = mle->mPartitionIdChanges;
+    s_data.mle.parent_changes = mle->mParentChanges;
+
+    const otIpCounters *ip = otThreadGetIp6Counters(instance);
+    s_data.ip.tx_ok = ip->mTxSuccess;
+    s_data.ip.tx_fail = ip->mTxFailure;
+    s_data.ip.rx_ok = ip->mRxSuccess;
+    s_data.ip.rx_fail = ip->mRxFailure;
+
+    otBufferInfo buffer_info;
+    otMessageGetBufferInfo(instance, &buffer_info);
+    s_data.buffers.total = buffer_info.mTotalBuffers;
+    s_data.buffers.free = buffer_info.mFreeBuffers;
+    s_data.buffers.max_used = buffer_info.mMaxUsedBuffers;
+    s_data.buffers.send = buffer_info.m6loSendQueue.mNumBuffers;
+    s_data.buffers.reassembly = buffer_info.m6loReassemblyQueue.mNumBuffers;
+
+    s_data.neighbors_num = 0;
+    otNeighborInfoIterator neighbor_it = OT_NEIGHBOR_INFO_ITERATOR_INIT;
+    otNeighborInfo neighbor;
+    while (s_data.neighbors_num < THREAD_TELE_MAX_NEIGHBORS &&
+           otThreadGetNextNeighborInfo(instance, &neighbor_it, &neighbor) == OT_ERROR_NONE) {
+        uint8_t i = s_data.neighbors_num++;
+        s_data.neighbors[i].rloc16 = neighbor.mRloc16;
+        s_data.neighbors[i].rssi = neighbor.mAverageRssi;
+        s_data.neighbors[i].last_rssi = neighbor.mLastRssi;
+        s_data.neighbors[i].lq = neighbor.mLinkQualityIn;
+        s_data.neighbors[i].age = neighbor.mAge;
+        s_data.neighbors[i].child = neighbor.mIsChild;
+    }
+#endif
+
 #if CONFIG_OPENTHREAD_BORDER_ROUTER
+#if CONFIG_THREAD_TELE_COUNTERS
+    const otBorderRoutingCounters *br = otIp6GetBorderRoutingCounters(instance);
+    s_data.br.in_pkts = br->mInboundUnicast.mPackets;
+    s_data.br.in_bytes = br->mInboundUnicast.mBytes;
+    s_data.br.out_pkts = br->mOutboundUnicast.mPackets;
+    s_data.br.out_bytes = br->mOutboundUnicast.mBytes;
+    s_data.br.ra_rx = br->mRaRx;
+    s_data.br.ra_tx = br->mRaTxSuccess;
+    s_data.br.ra_tx_fail = br->mRaTxFailure;
+    s_data.br.rs_rx = br->mRsRx;
+    s_data.br.rs_tx = br->mRsTxSuccess;
+    s_data.br.rs_tx_fail = br->mRsTxFailure;
+    s_data.br.state = otBorderRoutingGetState(instance);
+    s_data.br.srp = otSrpServerGetState(instance);
+
+    s_data.br.routers = 0;
+    otBorderRoutingPrefixTableIterator router_it;
+    otBorderRoutingRouterEntry router;
+    otBorderRoutingPrefixTableInitIterator(instance, &router_it);
+    while (otBorderRoutingGetNextRouterEntry(instance, &router_it, &router) == OT_ERROR_NONE) {
+        if (!router.mIsLocalDevice && s_data.br.routers < UINT8_MAX) {
+            s_data.br.routers++;
+        }
+    }
+#endif
+
     // Devices registered on the BR's SRP server, by the name they announce themselves with
     s_data.devices_num = 0;
     const otSrpServerHost *host = NULL;
@@ -175,6 +316,36 @@ static void thread_tele_hex_appender(cJSON *json, const char *key, const uint8_t
     }
     cJSON_AddStringToObject(json, key, hex);
 }
+
+#if CONFIG_THREAD_TELE_COUNTERS
+#if CONFIG_OPENTHREAD_BORDER_ROUTER
+static const char *thread_tele_routing_state(otBorderRoutingState state) {
+    switch (state) {
+    case OT_BORDER_ROUTING_STATE_UNINITIALIZED:
+        return "uninitialized";
+    case OT_BORDER_ROUTING_STATE_DISABLED:
+        return "disabled";
+    case OT_BORDER_ROUTING_STATE_STOPPED:
+        return "stopped";
+    case OT_BORDER_ROUTING_STATE_RUNNING:
+        return "running";
+    }
+    return "unknown";
+}
+
+static const char *thread_tele_srp_state(otSrpServerState state) {
+    switch (state) {
+    case OT_SRP_SERVER_STATE_DISABLED:
+        return "disabled";
+    case OT_SRP_SERVER_STATE_RUNNING:
+        return "running";
+    case OT_SRP_SERVER_STATE_STOPPED:
+        return "stopped";
+    }
+    return "unknown";
+}
+#endif
+#endif // CONFIG_THREAD_TELE_COUNTERS
 
 void thread_tele_appender(const char *tele_id, cJSON *json_root) {
     if (s_data_mutex == NULL || xSemaphoreTake(s_data_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
@@ -238,6 +409,71 @@ void thread_tele_appender(const char *tele_id, cJSON *json_root) {
         }
         cJSON_AddItemToArray(devices, device);
     }
+#endif
+
+#if CONFIG_THREAD_TELE_COUNTERS
+    // Counters since the start of the device: the ratio of two of them is the lifetime average
+    cJSON *mac = cJSON_AddObjectToObject(thread, "mac");
+    cJSON_AddNumberToObject(mac, "tx_total", s_data.mac.tx_total);
+    cJSON_AddNumberToObject(mac, "tx_retry", s_data.mac.tx_retry);
+    cJSON_AddNumberToObject(mac, "tx_err_cca", s_data.mac.tx_err_cca);
+    cJSON_AddNumberToObject(mac, "tx_err_busy", s_data.mac.tx_err_busy);
+    cJSON_AddNumberToObject(mac, "tx_max_retry", s_data.mac.tx_max_retry);
+    cJSON_AddNumberToObject(mac, "rx_total", s_data.mac.rx_total);
+    cJSON_AddNumberToObject(mac, "rx_err_fcs", s_data.mac.rx_err_fcs);
+    // Of the latest frames, not since the start
+    cJSON_AddNumberToObject(mac, "cca_fail_pct", s_data.mac.cca_fail * 100.0 / UINT16_MAX);
+
+    cJSON *mle = cJSON_AddObjectToObject(thread, "mle");
+    cJSON_AddNumberToObject(mle, "detached", s_data.mle.detached);
+    cJSON_AddNumberToObject(mle, "child", s_data.mle.child);
+    cJSON_AddNumberToObject(mle, "router", s_data.mle.router);
+    cJSON_AddNumberToObject(mle, "leader", s_data.mle.leader);
+    cJSON_AddNumberToObject(mle, "attach_attempts", s_data.mle.attach_attempts);
+    cJSON_AddNumberToObject(mle, "partition_changes", s_data.mle.partition_changes);
+    cJSON_AddNumberToObject(mle, "parent_changes", s_data.mle.parent_changes);
+
+    cJSON *ip = cJSON_AddObjectToObject(thread, "ip");
+    cJSON_AddNumberToObject(ip, "tx_ok", s_data.ip.tx_ok);
+    cJSON_AddNumberToObject(ip, "tx_fail", s_data.ip.tx_fail);
+    cJSON_AddNumberToObject(ip, "rx_ok", s_data.ip.rx_ok);
+    cJSON_AddNumberToObject(ip, "rx_fail", s_data.ip.rx_fail);
+
+    cJSON *buffers = cJSON_AddObjectToObject(thread, "buffers");
+    cJSON_AddNumberToObject(buffers, "total", s_data.buffers.total);
+    cJSON_AddNumberToObject(buffers, "free", s_data.buffers.free);
+    cJSON_AddNumberToObject(buffers, "max_used", s_data.buffers.max_used);
+    cJSON_AddNumberToObject(buffers, "send", s_data.buffers.send);
+    cJSON_AddNumberToObject(buffers, "reassembly", s_data.buffers.reassembly);
+
+    cJSON *neighbors = cJSON_AddArrayToObject(thread, "neighbors");
+    for (uint8_t i = 0; i < s_data.neighbors_num; i++) {
+        cJSON *neighbor = cJSON_CreateObject();
+        cJSON_AddNumberToObject(neighbor, "rloc16", s_data.neighbors[i].rloc16);
+        cJSON_AddNumberToObject(neighbor, "rssi", s_data.neighbors[i].rssi);
+        cJSON_AddNumberToObject(neighbor, "last_rssi", s_data.neighbors[i].last_rssi);
+        cJSON_AddNumberToObject(neighbor, "lq", s_data.neighbors[i].lq);
+        cJSON_AddNumberToObject(neighbor, "age", s_data.neighbors[i].age);
+        cJSON_AddBoolToObject(neighbor, "child", s_data.neighbors[i].child);
+        cJSON_AddItemToArray(neighbors, neighbor);
+    }
+
+#if CONFIG_OPENTHREAD_BORDER_ROUTER
+    cJSON *br = cJSON_AddObjectToObject(thread, "br");
+    cJSON_AddStringToObject(br, "state", thread_tele_routing_state(s_data.br.state));
+    cJSON_AddStringToObject(br, "srp", thread_tele_srp_state(s_data.br.srp));
+    cJSON_AddNumberToObject(br, "in_pkts", s_data.br.in_pkts);
+    cJSON_AddNumberToObject(br, "in_bytes", s_data.br.in_bytes);
+    cJSON_AddNumberToObject(br, "out_pkts", s_data.br.out_pkts);
+    cJSON_AddNumberToObject(br, "out_bytes", s_data.br.out_bytes);
+    cJSON_AddNumberToObject(br, "ra_rx", s_data.br.ra_rx);
+    cJSON_AddNumberToObject(br, "ra_tx", s_data.br.ra_tx);
+    cJSON_AddNumberToObject(br, "ra_tx_fail", s_data.br.ra_tx_fail);
+    cJSON_AddNumberToObject(br, "rs_rx", s_data.br.rs_rx);
+    cJSON_AddNumberToObject(br, "rs_tx", s_data.br.rs_tx);
+    cJSON_AddNumberToObject(br, "rs_tx_fail", s_data.br.rs_tx_fail);
+    cJSON_AddNumberToObject(br, "routers", s_data.br.routers);
+#endif
 #endif
 
     thread_commissioner_tele(thread);
