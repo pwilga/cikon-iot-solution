@@ -4,6 +4,8 @@
 #include "esp_http_server.h"
 #include "esp_https_server.h"
 #include "esp_log.h"
+#include "esp_rom_crc.h"
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #if CONFIG_HTTP_ENABLE_WEBDAV
@@ -23,6 +25,7 @@ static const char *s_not_found_redirect = NULL; // NULL = missing files get 404
 static bool s_secure = false;
 static char s_path[sizeof(WWW_ROOT) + CONFIG_HTTPD_MAX_URI_LEN];
 static char gz_path[sizeof(s_path) + 4]; /* + ".gz\0" */
+static char s_etag[16];                  /* "xxxxxxxx" of the file being served */
 
 static void http_log(const char *method, int status, const char *path, size_t bytes) {
     if (status >= 500)
@@ -88,13 +91,38 @@ static esp_err_t static_file_handler(httpd_req_t *req, httpd_err_code_t err) {
         return ESP_FAIL;
     }
 
+    // Validator of the bytes we would send. LittleFS keeps no timestamps, and the size alone would
+    // miss an edit that keeps the length, so it is a CRC32 of the file.
+    char buf[1024];
+    size_t n;
+    uint32_t crc = 0;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
+        crc = esp_rom_crc32_le(crc, (const uint8_t *)buf, n);
+    }
+    snprintf(s_etag, sizeof(s_etag), "\"%08" PRIx32 "\"", crc);
+
     set_keepalive_timeout(req);
+    httpd_resp_set_hdr(req, "ETag", s_etag);
+    // no-cache = the browser may keep the file but must ask first, so a freshly deployed
+    // dashboard shows at once, while an unchanged one costs a 304 instead of the whole file
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+
+    char if_none_match[sizeof(s_etag)] = "";
+    if (httpd_req_get_hdr_value_str(req, "If-None-Match", if_none_match, sizeof(if_none_match)) ==
+            ESP_OK &&
+        strcmp(if_none_match, s_etag) == 0) {
+        fclose(f);
+        httpd_resp_set_status(req, "304 Not Modified");
+        httpd_resp_send(req, NULL, 0);
+        http_log("GET", 304, s_path, 0);
+        return ESP_OK;
+    }
+
+    rewind(f);
     httpd_resp_set_type(req, ct);
     if (gzipped)
         httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
 
-    char buf[1024];
-    size_t n;
     size_t total = 0;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
         httpd_resp_send_chunk(req, buf, n);
