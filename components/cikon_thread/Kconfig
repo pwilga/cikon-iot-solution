@@ -27,9 +27,9 @@ menu "Cikon IoT Thread Radio Configuration"
         bool "Counters and link quality in the Thread tele"
         default y
         help
-            Adds the objects mac, mle, ip, buffers, neighbors (and br on a border router) to the
-            tele "thread": frames sent and received, retries and failed channel checks, the message
-            buffer pool and the RSSI of every neighbour. Building the tele takes a few KB of heap
-            for a moment, so a device short on memory can leave it out.
+            Adds the objects mac, mle, ip, buffers (and br on a border router) and the RSSI of the
+            parent to the tele "thread": frames sent and received, retries and failed channel
+            checks, the message buffer pool. Building the tele takes a few KB of heap for a moment,
+            so a device short on memory can leave it out.
 
 endmenu

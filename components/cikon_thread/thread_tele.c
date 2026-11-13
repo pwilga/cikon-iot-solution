@@ -24,7 +24,6 @@
 
 #define THREAD_TELE_MAX_ADDRESSES 8
 #define THREAD_TELE_MAX_DEVICES 16
-#define THREAD_TELE_MAX_NEIGHBORS 8
 
 // The Thread network state, copied from OpenThread so that the services reading it never take the
 // OpenThread lock
@@ -82,15 +81,7 @@ static struct {
         uint16_t send;     // taken by the 6LoWPAN send queue
         uint16_t reassembly;
     } buffers;
-    struct {
-        uint16_t rloc16;
-        int8_t rssi;
-        int8_t last_rssi;
-        uint8_t lq;
-        uint32_t age; // seconds since it was last heard
-        bool child;
-    } neighbors[THREAD_TELE_MAX_NEIGHBORS];
-    uint8_t neighbors_num;
+    int8_t parent_rssi; // OT_RADIO_RSSI_INVALID when there is no parent or no measurement yet
 #endif
 
 #if CONFIG_OPENTHREAD_BORDER_ROUTER
@@ -235,18 +226,9 @@ void thread_tele_refresh(void) {
     s_data.buffers.send = buffer_info.m6loSendQueue.mNumBuffers;
     s_data.buffers.reassembly = buffer_info.m6loReassemblyQueue.mNumBuffers;
 
-    s_data.neighbors_num = 0;
-    otNeighborInfoIterator neighbor_it = OT_NEIGHBOR_INFO_ITERATOR_INIT;
-    otNeighborInfo neighbor;
-    while (s_data.neighbors_num < THREAD_TELE_MAX_NEIGHBORS &&
-           otThreadGetNextNeighborInfo(instance, &neighbor_it, &neighbor) == OT_ERROR_NONE) {
-        uint8_t i = s_data.neighbors_num++;
-        s_data.neighbors[i].rloc16 = neighbor.mRloc16;
-        s_data.neighbors[i].rssi = neighbor.mAverageRssi;
-        s_data.neighbors[i].last_rssi = neighbor.mLastRssi;
-        s_data.neighbors[i].lq = neighbor.mLinkQualityIn;
-        s_data.neighbors[i].age = neighbor.mAge;
-        s_data.neighbors[i].child = neighbor.mIsChild;
+    // Fails on a device that has no parent (a router, a leader, or not attached)
+    if (otThreadGetParentAverageRssi(instance, &s_data.parent_rssi) != OT_ERROR_NONE) {
+        s_data.parent_rssi = OT_RADIO_RSSI_INVALID;
     }
 #endif
 
@@ -446,16 +428,8 @@ void thread_tele_appender(const char *tele_id, cJSON *json_root) {
     cJSON_AddNumberToObject(buffers, "send", s_data.buffers.send);
     cJSON_AddNumberToObject(buffers, "reassembly", s_data.buffers.reassembly);
 
-    cJSON *neighbors = cJSON_AddArrayToObject(thread, "neighbors");
-    for (uint8_t i = 0; i < s_data.neighbors_num; i++) {
-        cJSON *neighbor = cJSON_CreateObject();
-        cJSON_AddNumberToObject(neighbor, "rloc16", s_data.neighbors[i].rloc16);
-        cJSON_AddNumberToObject(neighbor, "rssi", s_data.neighbors[i].rssi);
-        cJSON_AddNumberToObject(neighbor, "last_rssi", s_data.neighbors[i].last_rssi);
-        cJSON_AddNumberToObject(neighbor, "lq", s_data.neighbors[i].lq);
-        cJSON_AddNumberToObject(neighbor, "age", s_data.neighbors[i].age);
-        cJSON_AddBoolToObject(neighbor, "child", s_data.neighbors[i].child);
-        cJSON_AddItemToArray(neighbors, neighbor);
+    if (s_data.parent_rssi != OT_RADIO_RSSI_INVALID) {
+        cJSON_AddNumberToObject(thread, "parent_rssi", s_data.parent_rssi);
     }
 
 #if CONFIG_OPENTHREAD_BORDER_ROUTER

@@ -312,7 +312,7 @@ bool light_get_state(size_t index, light_state_t *state) {
         .cct = light->cct,
     };
 
-#ifdef LIGHT_HAS_ADDRESSABLE
+#if defined(LIGHT_HAS_ADDRESSABLE) && LIGHT_EFFECTS_BUILD
     if (light->is_addressable && light_effect_count() > 0) {
         state->effect = light_effect_name(light->effect);
     }

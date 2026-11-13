@@ -12,6 +12,19 @@
     @container (max-width: 380px) { .cm-line { border-radius: 22px; } }
     .cm-line [hidden] { display: none !important; }
     .kv-wrap[hidden] { display: none !important; }
+    .th-diag-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 4px 12px; }
+    .th-diag-title { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+    .th-diag-sub { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
+    .th-diag-i { cursor: help; flex: none; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--muted); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; line-height: 1; }
+    .th-diag-card { display: flex; flex-direction: column; gap: 1px; background: var(--divider); overflow: hidden; }
+    .th-diag-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: baseline; gap: 6px 14px; padding: 12px 18px; background: var(--surface); }
+    .th-diag-name { font-size: 11.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+    .th-diag-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; min-width: 0; }
+    .th-diag-stat { cursor: help; display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+    .th-diag-stat i { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+    .th-diag-stat .k { color: var(--muted); }
+    .th-diag-stat .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+    @media (max-width: 560px) { .th-diag-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; } }
     .cm-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: color-mix(in srgb, var(--accent) 22%, transparent); transition: width 1s linear; }
     .cm-line > *:not(.cm-fill) { position: relative; }
     .cm-input { flex: 1 1 120px; min-width: 0; height: 36px; box-sizing: border-box; padding: 0; border: none; border-bottom: 1.5px solid transparent; background: transparent; color: var(--text); font-size: 15px; font-weight: 600; letter-spacing: .08em; outline: none; border-radius: 0; }
@@ -135,6 +148,10 @@
             </section>
           </div>
         </div>
+        <section class="cell th-diag" id="th-diag" hidden>
+          <div class="th-diag-head"><span class="label th-sec"><span class="th-sec-ic"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" class="th-ic"><path d="M1.8 8.5h2.6l1.6-4.5 3 8 1.7-3.5h3.5"></path></svg></span>Diagnostics</span><span class="th-diag-sub">Counters since last restart<span class="th-diag-i" id="th-diag-i">i</span></span></div>
+          <div class="card th-diag-card" id="th-diag-list"></div>
+        </section>
       </div>
     </div>
 
@@ -312,10 +329,13 @@
       $("cm-main").addEventListener("click", function () { if (cmMode() === "idle") cmStart(); else cmStop(); });
       setInterval(cmDraw, 1000);
     }
-    // Design preview only (sample data, no device): ?cm=disabled|petition|active|mine|error  and  ?host=plain (non-border-router host)
+    // Design preview only (sample data, no device): ?cm=disabled|petition|active|mine|error  ?host=plain (non-border-router host)  ?diag=off|child
     function cmPreview(t) {
-      if (/[?&]host=plain/.test(location.search) && t.thread) { delete t.thread.omr; delete t.thread.ba_id; delete t.thread.devices; }
-      var q =(location.search.match(/[?&]cm=([a-z]+)/) || [])[1];
+      if (/[?&]host=plain/.test(location.search) && t.thread) { delete t.thread.omr; delete t.thread.ba_id; delete t.thread.devices; delete t.thread.br; }
+      var dq = (location.search.match(/[?&]diag=([a-z]+)/) || [])[1];
+      if (t.thread && dq === "off") { ["mac", "mle", "ip", "buffers", "parent_rssi", "br"].forEach(function (k) { delete t.thread[k]; }); }
+      if (t.thread && dq === "child") { delete t.thread.br; delete t.thread.omr; delete t.thread.ba_id; delete t.thread.devices; t.thread.parent_rssi = -62; t.thread.role = "child"; }
+      var q = (location.search.match(/[?&]cm=([a-z]+)/) || [])[1];
       if (!q || !t.thread) return;
       var m = { disabled: { state: "disabled" }, petition: { state: "petition" }, active: { state: "active", timeout: 300, remaining: 163 }, mine: { state: "active", timeout: 180, remaining: 163 }, error: { state: "disabled", error: "Another commissioner is active" } };
       if (!m[q]) return;
@@ -355,6 +375,74 @@
       if (!a || !a.el.isConnected || !window.scrollY) return;
       var d = a.el.getBoundingClientRect().top - a.top;
       if (Math.abs(d) >= 1) window.scrollBy(0, d);
+    }
+    function diagStrips(th) {
+      var mac = th && th.mac;
+      if (!mac || typeof mac !== "object") return null;
+      var G = "#6fae84", A = "#d9b27a", C = "#d98e84";
+      var num = function (x) { return typeof x === "number" && isFinite(x); };
+      var n = function (x) { return Math.round(x).toLocaleString("en-US"); };
+      var lvl = function (v, w, c) { return v >= c ? C : v >= w ? A : G; };
+      var fp = function (v, d) { if (d === 0) return Math.round(v) + "%"; if (v === 0) return "0%"; if (v < 0.01) return "<0.01%"; return v.toFixed(v < 1 ? 2 : 1) + "%"; };
+      var st = function (label, value, color, tip) { return { label: label, value: value, color: color || "", tip: tip || "" }; };
+      var cnt = function (o, key, label, tip) { return o && num(o[key]) ? st(label, n(o[key]), "", tip) : null; };
+      var ps = function (label, a, b, w, c, tip, d) { if (!num(a) || !num(b) || b <= 0) return null; var v = 100 * a / b; return st(label, fp(v, d), lvl(v, w, c), tip); };
+      var bytes = function (b) { if (b < 1024) return Math.round(b) + " B"; var k = b / 1024; if (k < 1024) return Math.round(k) + " kB"; var m = k / 1024; return +m.toFixed(m < 10 ? 2 : 1) + " MB"; };
+      var pair = function (label, rx, tx, fail, tip) { if (!num(rx) || !num(tx)) return null; var bad = num(fail) && fail > 0; return st(label, rx + " / " + tx + (bad ? " · " + n(fail) + " failed" : ""), bad ? C : "", tip); };
+      var state = function (label, v, tip) { return typeof v === "string" && v ? st(label, v, v === "running" ? G : A, tip) : null; };
+      var mle = th.mle || {}, ip = th.ip || {}, buf = th.buffers || {};
+      var br = th.br && typeof th.br === "object" ? th.br : null;
+      var rows = [];
+      var add = function (name, tip, stats) { stats = stats.filter(Boolean); if (stats.length) rows.push({ name: name, tip: tip, stats: stats }); };
+      add("Stability", "How often the device joined, lost or changed its place in the network.", [
+        cnt(mle, "detached", "Detached", "Times the device was without a network. 1 is the start."),
+        cnt(mle, "child", "Child", "Times it became an end node attached to a parent."),
+        cnt(mle, "router", "Router", "Times it became a router forwarding others' traffic."),
+        cnt(mle, "leader", "Leader", "Times it became the router that manages the network."),
+        cnt(mle, "attach_attempts", "Attach", "Attempts to join the network. Growth after startup means trouble."),
+        cnt(mle, "parent_changes", "Parent change", "Times it switched to another parent. Frequent = unstable link."),
+        cnt(mle, "partition_changes", "Partition change", "Times the network split or merged.")]);
+      add("Radio", "Quality of the 802.15.4 radio link. Ratios are of frames sent or received.", [
+        ps("Retries", mac.tx_retry, mac.tx_total, 25, 50, "Frames sent again because no acknowledgement came, % of frames sent."),
+        ps("CCA busy", mac.tx_err_cca, mac.tx_total, 25, 50, "Sends delayed because the channel was busy (CCA), % of frames sent."),
+        ps("Lost", mac.tx_max_retry, mac.tx_total, 1, 5, "Frames dropped after all retries without acknowledgement, % of frames sent."),
+        ps("CRC", mac.rx_err_fcs, mac.rx_total, 2, 5, "Received frames with a bad checksum, % of frames received."),
+        num(mac.cca_fail_pct) ? st("Recent CCA", mac.cca_fail_pct.toFixed(1) + "%", lvl(mac.cca_fail_pct, 20, 40), "Busy-channel rate of the latest frames only, not since start.") : null,
+        cnt(mac, "tx_total", "TX", "Frames sent since start."),
+        cnt(mac, "rx_total", "RX", "Frames received since start.")]);
+      add("IPv6", "Packets above the radio layer.", [
+        ps("TX failed", ip.tx_fail, num(ip.tx_ok) && num(ip.tx_fail) ? ip.tx_ok + ip.tx_fail : null, 1, 5, "Packets that could not be sent, % of packets sent."),
+        ps("RX failed", ip.rx_fail, num(ip.rx_ok) && num(ip.rx_fail) ? ip.rx_ok + ip.rx_fail : null, 1, 5, "Packets received but dropped, % of packets received."),
+        cnt(ip, "tx_ok", "TX", "Packets sent since start."),
+        cnt(ip, "rx_ok", "RX", "Packets received since start.")]);
+      add("Buffers", "The stack's pool of packet memory.", [
+        num(buf.total) && num(buf.free) ? st("In use", n(buf.total - buf.free) + " / " + n(buf.total), "", "Buffers taken right now / pool size.") : null,
+        ps("Peak", buf.max_used, buf.total, 80, 95, "Most buffers used at once since start, % of the pool.", 0),
+        cnt(buf, "send", "Send", "Buffers held by packets waiting to be sent."),
+        cnt(buf, "reassembly", "Reassembly", "Buffers held by fragments waiting for the rest of a packet.")]);
+      add("Parent", "The link to the router this device is attached to.", [
+        num(th.parent_rssi) ? st("Signal", String(th.parent_rssi).replace("-", "−") + " dBm", th.parent_rssi >= -70 ? G : th.parent_rssi >= -80 ? A : C, "Average strength of the signal from the parent, in dBm. Closer to 0 is better.") : null]);
+      if (br) add("Border Router", "Traffic and state between Thread and the home network.", [
+        state("Routing", br.state, "State of border routing: running, stopped, disabled or uninitialized."),
+        state("SRP", br.srp, "Whether devices can register their names here (Service Registration Protocol)."),
+        num(br.in_pkts) ? st("In", n(br.in_pkts) + (num(br.in_bytes) ? " · " + bytes(br.in_bytes) : ""), "", "Packets and data passed from the home network into Thread.") : null,
+        num(br.out_pkts) ? st("Out", n(br.out_pkts) + (num(br.out_bytes) ? " · " + bytes(br.out_bytes) : ""), "", "Packets and data passed from Thread to the home network.") : null,
+        pair("RA", br.ra_rx, br.ra_tx, br.ra_tx_fail, "Router advertisements: received / sent."),
+        pair("RS", br.rs_rx, br.rs_tx, br.rs_tx_fail, "Router solicitations (asking who the routers are): received / sent."),
+        cnt(br, "routers", "Routers", "Other routers seen on the home network.")]);
+      return rows;
+    }
+    var DIAG_GLOSSARY = ["CCA: Clear Channel Assessment. The radio listens before sending and waits if the channel is busy.","CRC: Checksum of a radio frame. A bad one means the frame arrived corrupted.","SRP: Service Registration Protocol. How Thread devices register with the border router.","RA / RS: IPv6 messages. A router announcing the network / a device asking who the routers are.","dBm: Signal strength. -50 is very good, -85 is weak."].join("\n");
+    function renderDiag(th) {
+      var rows = diagStrips(th);
+      $("th-diag").hidden = !rows;
+      if (!rows) { setHTML("th-diag-list", ""); return; }
+      $("th-diag-i").title = DIAG_GLOSSARY;
+      setHTML("th-diag-list", rows.map(function (r) {
+        return '<div class="th-diag-row"><div class="th-diag-name" title="' + esc(r.tip) + '">' + esc(r.name) + '</div><div class="th-diag-stats">' + r.stats.map(function (s) {
+          return '<span class="th-diag-stat" title="' + esc(s.tip) + '">' + (s.color ? '<i style="background:' + s.color + '"></i>' : "") + '<span class="k">' + esc(s.label) + '</span><span class="v">' + esc(s.value) + '</span></span>';
+        }).join("") + '</div></div>';
+      }).join(""));
     }
     function render() { var a = anchorGet(); try { renderMain(); } finally { anchorSet(a); } }
     function renderMain() {
@@ -426,6 +514,7 @@
           }).join("")
         : '<div class="dev-row th-empty">No devices on the network</div>');
 
+      renderDiag(th);
       cmApply(th.commissioner);
     }
 
