@@ -18,9 +18,11 @@
 #include "openthread/thread.h"
 
 #include "bits_helper.h"
+#include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
 #include "thread_common.h"
+#include "thread_joiner.h"
 #include "thread_radio_config.h"
 #include "thread_tele.h"
 #include "uplink.h"
@@ -37,14 +39,14 @@ static void uplink_thread_start_task(void *arg) {
 
     otOperationalDatasetTlvs dataset;
     bool dataset_ready = false;
+    bool join_pending = false;
 
     if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
         ESP_LOGI(TAG, "Using dataset from NVS");
         dataset_ready = true;
     } else {
-        ESP_LOGW(TAG, "No dataset — Thread will not join automatically");
-        ESP_LOGW(TAG, "Join with a commissioner: ot ifconfig up, ot joiner start <PSKd>, ot thread "
-                      "start");
+        ESP_LOGW(TAG, "No dataset, joining through a commissioner with the device id as PSKd");
+        join_pending = true;
     }
 
 #if CONFIG_OPENTHREAD_FTD
@@ -57,6 +59,8 @@ static void uplink_thread_start_task(void *arg) {
 
     if (dataset_ready) {
         esp_openthread_auto_start(&dataset);
+    } else if (join_pending) {
+        thread_joiner_start(get_device_info()->id);
     }
 
     esp_openthread_lock_release();

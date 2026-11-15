@@ -4,6 +4,9 @@ set(srcs "thread_common.c" "thread_tele.c")
 if(CONFIG_OPENTHREAD_COMMISSIONER)
     list(APPEND srcs "thread_commissioner.c")
 endif()
+if(CONFIG_OPENTHREAD_JOINER)
+    list(APPEND srcs "thread_joiner.c")
+endif()
 
 idf_component_register(
     SRCS ${srcs}
