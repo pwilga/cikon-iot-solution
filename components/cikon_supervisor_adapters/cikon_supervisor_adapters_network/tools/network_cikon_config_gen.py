@@ -13,7 +13,10 @@ longer one.
 
 The profile also says which uplink the device has, uplink: wifi, ethernet or thread. That is no
 setting: the project's CMakeLists.txt turns it into the CONFIG_NETWORK_UPLINK_* option before
-sdkconfig exists, and this script only checks the word and reports it.
+sdkconfig exists, and this script only checks the word and reports it. The uplink can also be
+written as type: with options under it, today ipv6: true, which only adds IPv6 options and never
+turns one off. It is for a device that reaches Thread through a border router, not for the border
+router itself.
 
 A bad profile exits non-zero with a message naming the section and the key, which CMake turns into
 a configure error.
@@ -40,20 +43,33 @@ class ConfigError(Exception):
 
 
 def load(path):
-    """The sections of a file, and the uplink it names (None when it does not)."""
+    """The sections of a file, the uplink it names (None when it does not) and whether that
+    uplink has IPv6."""
     data = yaml.safe_load(Path(path).read_text())
     if data is None:
-        return {}, None
+        return {}, None, False
     uplink = None
+    ipv6 = False
     if isinstance(data, dict) and "uplink" in data:
         uplink = data.pop("uplink")
+        # Either the word alone, or type: with the uplink's options under it
+        if isinstance(uplink, dict):
+            options = uplink
+            unknown = sorted(set(options) - {"type", "ipv6"})
+            if unknown:
+                raise ConfigError(f"{path}: uplink.{unknown[0]}: unknown key, expected type or "
+                                  f"ipv6")
+            uplink = options.get("type")
+            ipv6 = options.get("ipv6", False)
+            if not isinstance(ipv6, bool):
+                raise ConfigError(f"{path}: uplink.ipv6: expected true or false, got {ipv6!r}")
         if uplink not in UPLINKS:
             raise ConfigError(f"{path}: uplink: {uplink!r}, expected one of {list(UPLINKS)}")
     # A section with nothing under it, like a bare https:, is None
     if not isinstance(data, dict) or not all(s is None or isinstance(s, dict)
                                              for s in data.values()):
         raise ConfigError(f"{path}: expected <section>: followed by <key>: <value> lines")
-    return {section: keys or {} for section, keys in data.items()}, uplink
+    return {section: keys or {} for section, keys in data.items()}, uplink, ipv6
 
 
 def kind(value):
@@ -121,8 +137,9 @@ def main():
     args = parser.parse_args()
 
     try:
-        defaults, _ = load(args.defaults)
-        profile, uplink = load(args.profile) if Path(args.profile).exists() else ({}, None)
+        defaults, _, _ = load(args.defaults)
+        profile, uplink, ipv6 = (load(args.profile) if Path(args.profile).exists() else
+                                 ({}, None, False))
         merged = merge(defaults, profile, args.profile)
         lines = [field_line(s, k, v) for s, keys in merged.items() for k, v in keys.items()]
         # The web server is http or https, whichever section the profile has; with neither it is
@@ -148,7 +165,7 @@ def main():
         f"#pragma once\n\n"
         f"{flags}\n"
         f"#define {macro}(STR, U8, U16, U32, U64) \\\n    {body}\n")
-    print((f"uplink: {uplink}; " if uplink else "") +
+    print((f"uplink: {uplink}{' (ipv6)' if ipv6 else ''}; " if uplink else "") +
           "services on: " + (" ".join(s for s, on in enabled.items() if on) or "none") +
           "; off: " + (" ".join(s for s, on in enabled.items() if not on) or "none"))
     return 0

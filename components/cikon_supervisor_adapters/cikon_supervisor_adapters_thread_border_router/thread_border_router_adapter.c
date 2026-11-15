@@ -9,12 +9,15 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_netif_net_stack.h"
 #include "esp_openthread.h"
 #include "esp_openthread_border_router.h"
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
+#include "lwip/ip6_addr.h"
 #include "lwip/nd6.h"
+#include "lwip/netif.h"
 #include "lwip/tcpip.h"
 #include "openthread/border_routing.h"
 #include "openthread/dataset_ftd.h"
@@ -174,15 +177,30 @@ done:
     vTaskDelete(NULL);
 }
 
-static void on_backbone_ip6(void *arg, esp_event_base_t base, int32_t id, void *data) {
-    ip_event_got_ip6_t *evt = (ip_event_got_ip6_t *)data;
-    if (evt->esp_netif != s_backbone_netif || initialized) {
+// The link-local address is made by the network adapter, here it is only waited for
+static bool link_local_ready(void) {
+    struct netif *lwip_netif = esp_netif_get_netif_impl(s_backbone_netif);
+    return lwip_netif != NULL && ip6_addr_ispreferred(netif_ip6_addr_state(lwip_netif, 0));
+}
+
+// Reached when the address was already up and when its event comes. The handler is registered
+// only while waiting, so once it is gone the start has been made
+static void start_border_router(void) {
+    if (s_ip6_handler == NULL) {
         return;
     }
     esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_GOT_IP6, s_ip6_handler);
     s_ip6_handler = NULL;
     ESP_LOGI(TAG, "Backbone IPv6 link-local ready, starting Border Router");
     xTaskCreate(border_router_start_task, "br_start", 6144, NULL, 5, NULL);
+}
+
+static void on_backbone_ip6(void *arg, esp_event_base_t base, int32_t id, void *data) {
+    ip_event_got_ip6_t *evt = (ip_event_got_ip6_t *)data;
+    if (evt->esp_netif != s_backbone_netif || initialized) {
+        return;
+    }
+    start_border_router();
 }
 
 static void clear_ip6_route_cache(void *arg) { nd6_clear_destination_cache(); }
@@ -206,14 +224,6 @@ static void on_backbone_ready(void) {
             esp_event_handler_instance_register(IP_EVENT, IP_EVENT_GOT_IP6, on_backbone_ip6_back,
                                                 NULL, &s_ip6_back_handler);
         }
-
-        // The uplink came back: after a longer outage its IPv6 link-local is gone and nothing else
-        // recreates it - border routing (RS/RA) and routes into Thread would stay dead
-        esp_ip6_addr_t link_local;
-        if (esp_netif_get_ip6_linklocal(s_backbone_netif, &link_local) != ESP_OK) {
-            ESP_LOGW(TAG, "Backbone lost its IPv6 link-local, recreating");
-            esp_netif_create_ip6_linklocal(s_backbone_netif);
-        }
         return;
     }
 
@@ -227,10 +237,16 @@ static void on_backbone_ready(void) {
         return;
     }
 
-    esp_netif_create_ip6_linklocal(s_backbone_netif);
-    ESP_LOGI(TAG, "Waiting for backbone IPv6 link-local...");
-    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_GOT_IP6, on_backbone_ip6, NULL,
-                                        &s_ip6_handler);
+    // Registered first and checked after, so an address that comes up in between is not missed
+    if (s_ip6_handler == NULL) {
+        esp_event_handler_instance_register(IP_EVENT, IP_EVENT_GOT_IP6, on_backbone_ip6, NULL,
+                                            &s_ip6_handler);
+    }
+    if (link_local_ready()) {
+        start_border_router();
+    } else {
+        ESP_LOGI(TAG, "Waiting for backbone IPv6 link-local...");
+    }
 }
 
 static void thread_border_router_adapter_on_event(EventBits_t bits) {

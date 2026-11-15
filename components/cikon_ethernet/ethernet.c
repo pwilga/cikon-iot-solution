@@ -99,6 +99,13 @@ esp_err_t ethernet_init(void) {
         return ret;
     }
 
+    // Without it the internal EMAC drops the all-nodes multicast that router advertisements come
+    // on, and there is no IPv6 address but the link-local one. A WiFi station gets every multicast
+    // frame as well. A driver that cannot do it (W5500) answers not supported, which is no error
+    bool all_multicast = true;
+    ret = esp_eth_ioctl(s_eth_handle, ETH_CMD_S_ALL_MULTICAST, &all_multicast);
+    ESP_LOGI(TAG, "Pass all multicast: %s", esp_err_to_name(ret));
+
     ret = esp_eth_start(s_eth_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start driver: %s", esp_err_to_name(ret));

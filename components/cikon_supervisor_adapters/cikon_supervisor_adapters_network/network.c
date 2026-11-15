@@ -1,4 +1,5 @@
 #include "esp_log.h"
+#include "esp_netif.h"
 
 #include "bits_helper.h"
 #include "cmnd.h"
@@ -111,7 +112,35 @@ static esp_err_t network_adapter_shutdown(void) {
     return ESP_OK;
 }
 
+#if CONFIG_LWIP_IPV6_AUTOCONFIG
+// ESP-IDF makes no IPv6 link-local address on a WiFi or Ethernet netif by itself, and without one
+// there is no SLAAC and no routes from router advertisements. Called when the uplink is ready, so
+// the netif is up (creating it earlier fails silently)
+static void network_ensure_ip6_linklocal(void) {
+#if CONFIG_NETWORK_UPLINK_THREAD
+    if (uplink == &uplink_thread) {
+        return; // OpenThread makes its own
+    }
+#endif
+    esp_netif_t *netif = esp_netif_get_default_netif();
+    esp_ip6_addr_t link_local;
+    if (netif == NULL || esp_netif_get_ip6_linklocal(netif, &link_local) == ESP_OK) {
+        return;
+    }
+    esp_err_t err = esp_netif_create_ip6_linklocal(netif);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "IPv6 link-local: %s", esp_err_to_name(err));
+    }
+}
+#endif
+
 static void network_adapter_on_event(EventBits_t bits) {
+
+#if CONFIG_LWIP_IPV6_AUTOCONFIG
+    if (bits & NETWORK_UPLINK_READY) {
+        network_ensure_ip6_linklocal();
+    }
+#endif
 
     network_services_on_event(bits);
 
