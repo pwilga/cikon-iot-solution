@@ -13,7 +13,6 @@
 
 #include "cmnd.h"
 #include "json_parser.h"
-#include "thread_common.h"
 
 #define TAG "cikon:thread:commissioner"
 

@@ -7,7 +7,6 @@
 #include "lwip/ip6_addr.h"
 #include "openthread/dataset.h"
 #include "openthread/srp_client.h"
-#include "openthread/thread.h"
 #include "thread_coap_client.h"
 #include "thread_commissioner.h" // IWYU pragma: keep
 #include <string.h>

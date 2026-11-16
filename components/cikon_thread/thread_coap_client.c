@@ -11,7 +11,6 @@
 #include "openthread/dns_client.h"
 #include "openthread/ip6.h"
 #include "openthread/message.h"
-#include "openthread/thread.h"
 
 #include "json_parser.h"
 
