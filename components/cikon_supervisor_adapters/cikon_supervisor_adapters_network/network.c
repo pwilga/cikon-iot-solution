@@ -14,9 +14,6 @@
 #include "tcp_ota.h"
 #include "tele.h"
 #include "uplink.h"
-#if CONFIG_NETWORK_UPLINK_THREAD
-#include "thread_coap_server.h"
-#endif
 
 #define TAG "cikon:adapter:network"
 
@@ -165,11 +162,6 @@ static void network_adapter_on_event(EventBits_t bits) {
             if (NETWORK_HTTP_ENABLED) {
                 network_services_http_init(config_get()->http_secure);
             }
-#if CONFIG_NETWORK_UPLINK_THREAD
-            if (uplink == &uplink_thread) {
-                thread_coap_server_start();
-            }
-#endif
         }
 
         network_servers_running = true;

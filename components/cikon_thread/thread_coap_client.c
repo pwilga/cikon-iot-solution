@@ -201,6 +201,11 @@ esp_err_t thread_coap_client_send(const char *name, const char *json) {
         snprintf(s_req.name, sizeof(s_req.name), "%s", name);
         snprintf(s_req.json, sizeof(s_req.json), "%s", json);
 
+        otError start_err = otCoapStart(esp_openthread_get_instance(), OT_DEFAULT_COAP_PORT);
+        if (start_err != OT_ERROR_NONE) {
+            ESP_LOGE(TAG, "CoAP start failed: %s", otThreadErrorToString(start_err));
+        }
+
         otIp6Address ml_eid;
         if (thread_coap_client_ml_eid_load(&ml_eid)) {
             thread_coap_client_send_to(&ml_eid);

@@ -21,6 +21,7 @@
 #include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
+#include "thread_coap_server.h"
 #include "thread_common.h"
 #include "thread_joiner.h"
 #include "thread_radio_config.h"
@@ -79,6 +80,7 @@ static void uplink_thread_event_handler(void *arg, esp_event_base_t event_base, 
         supervisor_notify_event(NETWORK_UPLINK_READY);
         break;
     case OPENTHREAD_EVENT_ATTACHED:
+        thread_coap_server_start();
         // Rejoining keeps the same DNS, so SET_DNS_SERVER doesn't come again
         if (dns_known) {
             supervisor_notify_event(NETWORK_UPLINK_READY);
