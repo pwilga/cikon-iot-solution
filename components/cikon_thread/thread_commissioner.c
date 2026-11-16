@@ -42,7 +42,7 @@ static const char *const error_names[] = {
 };
 static uint8_t s_error = ERROR_NONE;
 
-static bool pskd_valid(const char *pskd) {
+static bool thread_commissioner_pskd_valid(const char *pskd) {
     size_t len = strlen(pskd);
     if (len < THREAD_COMMISSIONER_PSKD_MIN_LEN || len > OT_JOINER_MAX_PSKD_LENGTH) {
         return false;
@@ -59,7 +59,7 @@ static bool pskd_valid(const char *pskd) {
 }
 
 // The commissioner callbacks run in the OpenThread task, which already holds its lock
-static void commissioner_state_cb(otCommissionerState state, void *context) {
+static void thread_commissioner_state_cb(otCommissionerState state, void *context) {
     // Going back to disabled while still petitioning: the leader did not accept the petition
     if (state == OT_COMMISSIONER_STATE_DISABLED && s_state == OT_COMMISSIONER_STATE_PETITION) {
         s_error = ERROR_PETITION_REJECTED;
@@ -82,8 +82,8 @@ static void commissioner_state_cb(otCommissionerState state, void *context) {
     }
 }
 
-static void commissioner_joiner_cb(otCommissionerJoinerEvent event, const otJoinerInfo *info,
-                                   const otExtAddress *joiner_id, void *context) {
+static void thread_commissioner_joiner_cb(otCommissionerJoinerEvent event, const otJoinerInfo *info,
+                                          const otExtAddress *joiner_id, void *context) {
     static const char *const names[] = {"start", "connected", "finalize", "end", "entry removed"};
 
     // The joiner ID is there only while a session is on, not for an entry that just ran out
@@ -114,7 +114,8 @@ void thread_commissioner_handler(const char *args_json_str) {
     if (args) {
         const cJSON *pskd_item = cJSON_GetObjectItemCaseSensitive(args, "pskd");
         const cJSON *timeout_item = cJSON_GetObjectItemCaseSensitive(args, "timeout");
-        bool valid = cJSON_IsString(pskd_item) && pskd_valid(pskd_item->valuestring) &&
+        bool valid = cJSON_IsString(pskd_item) &&
+                     thread_commissioner_pskd_valid(pskd_item->valuestring) &&
                      cJSON_IsNumber(timeout_item) && timeout_item->valueint > 0;
 
         if (valid) {
@@ -155,9 +156,9 @@ void thread_commissioner_handler(const char *args_json_str) {
     }
 
     s_error = ERROR_NONE;
-    otError err =
-        start ? otCommissionerStart(instance, commissioner_state_cb, commissioner_joiner_cb, NULL)
-              : otCommissionerStop(instance);
+    otError err = start ? otCommissionerStart(instance, thread_commissioner_state_cb,
+                                              thread_commissioner_joiner_cb, NULL)
+                        : otCommissionerStop(instance);
 
     // Before the lock is released: the state callback that adds the joiner entry reads these
     if (start && err == OT_ERROR_NONE) {

@@ -1,4 +1,4 @@
-set(srcs "thread_common.c" "thread_tele.c")
+set(srcs "thread_common.c" "thread_tele.c" "thread_coap_server.c" "thread_coap_client.c")
 
 # A Thread service is built only when OpenThread has it
 if(CONFIG_OPENTHREAD_COMMISSIONER)
@@ -15,6 +15,7 @@ idf_component_register(
     REQUIRES
         openthread
         lwip
+        nvs_flash
 )
 
 # The Thread page goes where Thread runs and the HTTP component is built: staged into the shared

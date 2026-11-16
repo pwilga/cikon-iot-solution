@@ -8,6 +8,7 @@
 #include "openthread/dataset.h"
 #include "openthread/srp_client.h"
 #include "openthread/thread.h"
+#include "thread_coap_client.h"
 #include "thread_commissioner.h" // IWYU pragma: keep
 #include <string.h>
 
@@ -34,9 +35,9 @@ bool thread_dataset_parse_hex(const char *hex, otOperationalDatasetTlvs *out) {
 #if CONFIG_OPENTHREAD_SRP_CLIENT
 static otSrpClientService s_srp_service;
 
-static void srp_client_callback(otError error, const otSrpClientHostInfo *hostInfo,
-                                const otSrpClientService *services,
-                                const otSrpClientService *removedServices, void *context) {
+static void thread_srp_client_callback(otError error, const otSrpClientHostInfo *hostInfo,
+                                       const otSrpClientService *services,
+                                       const otSrpClientService *removedServices, void *context) {
     (void)hostInfo;
     (void)services;
     (void)removedServices;
@@ -55,7 +56,7 @@ static void srp_client_callback(otError error, const otSrpClientHostInfo *hostIn
 void thread_srp_host_init(const char *hostname) {
     esp_openthread_lock_acquire(portMAX_DELAY);
     otInstance *instance = esp_openthread_get_instance();
-    otSrpClientSetCallback(instance, srp_client_callback, (void *)hostname);
+    otSrpClientSetCallback(instance, thread_srp_client_callback, (void *)hostname);
     otError err = otSrpClientSetHostName(instance, hostname);
     if (err != OT_ERROR_NONE) {
         ESP_LOGE(TAG, "SRP set hostname: %s", otThreadErrorToString(err));
@@ -105,4 +106,6 @@ const command_entry_t thread_commands[] = {
     {"commissioner", "Let joiners that know the PSKd join the Thread network (on/off)",
      thread_commissioner_handler},
 #endif
+    {"send", "Send a command to another Thread device by name ({\"to\":\"<name>\",\"cmnd\":{...}})",
+     thread_coap_client_send_handler},
     {NULL, NULL, NULL}};
