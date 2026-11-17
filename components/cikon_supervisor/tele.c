@@ -21,7 +21,7 @@ void tele_init(void) {
     tele_count = 0;
     tele_initialized = true;
 
-    ESP_LOGI(TAG, "Telemetry system initialized: %zu sources", tele_count);
+    ESP_LOGI(TAG, "Telemetry system initialized");
 }
 
 void tele_register(const char *tele_id, tele_appender_t fn) {

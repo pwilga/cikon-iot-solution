@@ -293,6 +293,14 @@ static void supervisor_task(void *args) {
                     registered_adapters[i]->on_event(bits);
                 }
             }
+
+            if (bits & SUPERVISOR_EVENT_PLATFORM_INITIALIZED) {
+                size_t command_count = 0, tele_count = 0;
+                cmnd_get_registry(&command_count);
+                tele_get_registry(&tele_count);
+                ESP_LOGI(TAG, "Platform initialized: %zu commands, %zu telemetry sources",
+                         command_count, tele_count);
+            }
         }
 
         // Execute cyclic intervals for all registered adapters

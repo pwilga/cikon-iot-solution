@@ -138,7 +138,7 @@ void cmnd_init(QueueHandle_t queue) {
 
     cmnd_initialized = true;
 
-    ESP_LOGI(TAG, "Command system initialized: %zu commands, mode: %s%s", command_count,
+    ESP_LOGI(TAG, "Command system initialized, mode: %s%s",
              use_immediate_execution ? "immediate execution" : "async queue",
              use_immediate_execution ? "" : (command_queue ? "" : " (NULL queue!)"));
 }
