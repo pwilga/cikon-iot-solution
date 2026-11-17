@@ -233,9 +233,6 @@ static const ha_metadata_t network_ha_metadata = {
 static const command_entry_t network_commands[] = {
     {"service", "Start or stop services, e.g. {\"ota\":\"on\",\"mdns\":\"off\"}",
      network_services_service_handler},
-#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
-    {"ha", "Trigger Home Assistant MQTT discovery", network_services_ha_discovery_handler},
-#endif
     {NULL, NULL, NULL}};
 
 supervisor_platform_adapter_t network_adapter = {

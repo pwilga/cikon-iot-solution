@@ -20,7 +20,7 @@
 #define SEND_JSON_MAX 256
 #define SEND_HOST_SUFFIX ".default.service.arpa"
 
-// The server answers {"ok":true,"ml_eid":"<address>"}, about 60 characters
+// The server answers {"ml_eid":"<address>"}, about 55 characters
 #define COAP_RESPONSE_MAX 80
 
 #define DNS_RESPONSE_TIMEOUT_MS 1500
@@ -97,7 +97,7 @@ static void thread_coap_client_response(void *context, otMessage *message,
         return;
     }
 
-    // {"ok":true,"ml_eid":"fd.."}
+    // {"ml_eid":"fd.."}
     uint16_t offset = otMessageGetOffset(message);
     uint16_t length = otMessageGetLength(message) - offset;
     char payload[COAP_RESPONSE_MAX];

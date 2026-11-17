@@ -37,6 +37,7 @@ void mqtt_shutdown(void);
 
 void mqtt_publish(const char *topic, const char *payload, int qos, bool retain);
 void mqtt_publish_offline_state(void);
+bool mqtt_is_connected(void);
 void mqtt_trigger_telemetry(void);
 const mqtt_config_t *mqtt_get_config(void);
 

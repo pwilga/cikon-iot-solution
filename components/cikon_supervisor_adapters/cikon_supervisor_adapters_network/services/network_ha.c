@@ -3,6 +3,7 @@
 #include "ha.h"
 #include "json_parser.h"
 #include "metadata.h"
+#include "mqtt.h"
 #include "network_services.h"
 #include "platform_services.h"
 #include "supervisor.h"
@@ -202,6 +203,11 @@ void network_services_register_all_ha_entities(void) {
 }
 
 void network_services_ha_discovery_handler(const char *args_json_str) {
+    if (!mqtt_is_connected()) {
+        ESP_LOGW(TAG, "MQTT is not connected, discovery not sent");
+        return;
+    }
+
     logic_state_t force_empty_payload = json_str_as_logic_state(args_json_str);
     if (force_empty_payload == STATE_TOGGLE) {
         ESP_LOGE(TAG, "Toggling is not permitted for HA discovery");

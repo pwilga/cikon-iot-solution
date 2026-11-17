@@ -67,9 +67,13 @@ void mqtt_publish_telemetry(void) {
     cJSON_Delete(json);
 }
 
+bool mqtt_is_connected(void) {
+    return mqtt_event_group && (xEventGroupGetBits(mqtt_event_group) & MQTT_CONNECTED_BIT);
+}
+
 void mqtt_publish_offline_state(void) {
 
-    if (!mqtt_event_group || !(xEventGroupGetBits(mqtt_event_group) & MQTT_CONNECTED_BIT)) {
+    if (!mqtt_is_connected()) {
 
         // ESP_LOGW(TAG, "Client not connected, skipping offline state publish");
         return;

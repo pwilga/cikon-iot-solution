@@ -72,6 +72,18 @@ void network_services_mqtt_init(void) {
 
     mqtt_configure(&mqtt_cfg);
     mqtt_init();
+
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    cmnd_register("ha", "Trigger Home Assistant MQTT discovery",
+                  network_services_ha_discovery_handler);
+#endif
+}
+
+void network_services_mqtt_shutdown(void) {
+#ifdef CONFIG_MQTT_ENABLE_HA_DISCOVERY
+    cmnd_unregister("ha");
+#endif
+    mqtt_shutdown();
 }
 
 bool network_services_get_netif_ip(const char *if_key, char *buf, size_t buflen) {

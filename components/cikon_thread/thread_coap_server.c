@@ -19,6 +19,9 @@
 // A command is a short JSON object; a longer request is refused
 #define COAP_PAYLOAD_MAX 256
 
+// The answer is {"ml_eid":"<address>"}, about 55 characters
+#define COAP_RESPONSE_MAX 80
+
 static otCoapResource s_cmnd_resource;
 
 static void thread_coap_server_send_response(otMessage *request, const otMessageInfo *info,
@@ -77,8 +80,8 @@ static void thread_coap_server_cmnd_handler(void *context, otMessage *message,
         otIp6AddressToString(otThreadGetMeshLocalEid(esp_openthread_get_instance()), ml_eid,
                              sizeof(ml_eid));
 
-        char response[sizeof("{\"ok\":true,\"ml_eid\":\"\"}") + OT_IP6_ADDRESS_STRING_SIZE];
-        snprintf(response, sizeof(response), "{\"ok\":true,\"ml_eid\":\"%s\"}", ml_eid);
+        char response[COAP_RESPONSE_MAX];
+        snprintf(response, sizeof(response), "{\"ml_eid\":\"%s\"}", ml_eid);
         thread_coap_server_send_response(message, info, OT_COAP_CODE_CHANGED, response);
     }
 }

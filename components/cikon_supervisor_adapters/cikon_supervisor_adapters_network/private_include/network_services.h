@@ -48,10 +48,7 @@ static inline void network_services_sntp_shutdown(void) {
 }
 
 void network_services_mqtt_init(void);
-static inline void network_services_mqtt_shutdown(void) {
-    extern void mqtt_shutdown(void);
-    mqtt_shutdown();
-}
+void network_services_mqtt_shutdown(void);
 
 void network_services_http_init(bool secure);
 void network_services_http_start(void);
