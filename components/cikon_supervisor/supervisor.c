@@ -1,4 +1,5 @@
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
@@ -7,6 +8,7 @@
 #include "freertos/task.h"
 
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "bits_helper.h"
@@ -395,8 +397,17 @@ static void tele_tasks_dict_appender(const char *tele_id, cJSON *json_root) {
 }
 #endif
 
+// cJSON memory goes to PSRAM where there is some, as a plain malloc of these sizes stays in
+// internal RAM. Without PSRAM it is internal RAM, as before
+static void *supervisor_json_malloc(size_t size) {
+    return heap_caps_malloc_prefer(size, 2, MALLOC_CAP_SPIRAM, MALLOC_CAP_INTERNAL);
+}
+
 void supervisor_init(void) {
     ESP_LOGI(TAG, "Initializing supervisor core");
+
+    // Set once, before anything uses cJSON: the hooks are global and not guarded
+    cJSON_InitHooks(&(cJSON_Hooks){.malloc_fn = supervisor_json_malloc, .free_fn = free});
 
     core_system_init();
     config_manager_init();

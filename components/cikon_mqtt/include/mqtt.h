@@ -1,16 +1,17 @@
 #pragma once
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
+#include "stdbool.h"
 #include "stdint.h"
-
-#include "cJSON.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef void (*mqtt_command_callback_t)(const char *payload);
-typedef void (*mqtt_telemetry_callback_t)(cJSON *json_root);
+// Returns the telemetry as a JSON string on the heap, which is freed after it is published. NULL
+// when it could not be built
+typedef char *(*mqtt_telemetry_callback_t)(void);
 
 typedef struct {
     const char *client_id;

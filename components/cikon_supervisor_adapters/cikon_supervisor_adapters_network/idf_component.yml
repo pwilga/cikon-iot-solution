@@ -12,7 +12,7 @@ dependencies:
   espressif/mdns:
     version: "*"
     matches:
-      - if: "$CONFIG{NETWORK_UPLINK_THREAD} == False"
+      - if: "$CONFIG{ENABLE_SUPERVISOR_NETWORK} == True && $CONFIG{NETWORK_UPLINK_THREAD} == False"
   cikon_supervisor:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_supervisor
@@ -35,18 +35,18 @@ dependencies:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_wifi
     matches:
-      - if: "$CONFIG{NETWORK_UPLINK_WIFI} == True"
+      - if: "$CONFIG{ENABLE_SUPERVISOR_NETWORK} == True && $CONFIG{NETWORK_UPLINK_WIFI} == True"
   # Ethernet drivers come from the component registry - pulled only with the Ethernet uplink
   cikon_ethernet:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_ethernet
     matches:
-      - if: "$CONFIG{NETWORK_UPLINK_ETHERNET} == True"
+      - if: "$CONFIG{ENABLE_SUPERVISOR_NETWORK} == True && $CONFIG{NETWORK_UPLINK_ETHERNET} == True"
   cikon_thread:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_thread
     matches:
-      - if: "$CONFIG{NETWORK_UPLINK_THREAD} == True"
+      - if: "$CONFIG{ENABLE_SUPERVISOR_NETWORK} == True && $CONFIG{NETWORK_UPLINK_THREAD} == True"
   cikon_tcp_ota:
     git: "https://github.com/pwilga/cikon-iot-solution.git"
     path: components/cikon_tcp_ota

@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "cJSON.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
@@ -67,7 +68,7 @@ const command_entry_t network_ap_commands[] = {
 
 // GET /scan for the WiFi setup portal: {"saved": "<ssid>", "aps": [{"ssid", "rssi", "auth"}]}
 // Only networks STA can join (WPA2 or better). The portal itself sorts by rssi
-static void network_ap_scan_json(cJSON *root) {
+static char *network_ap_scan_json(void) {
     int64_t now_us = esp_timer_get_time();
     int64_t age_s = (now_us - scan_time_us) / 1000000;
 
@@ -91,6 +92,10 @@ static void network_ap_scan_json(cJSON *root) {
         ESP_LOGI(TAG, "Scan skipped, returning results from %llds ago", age_s);
     }
 
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        return NULL;
+    }
     cJSON_AddStringToObject(root, "saved", config_get()->wifi_ssid);
 
     cJSON *aps = cJSON_AddArrayToObject(root, "aps");
@@ -101,6 +106,10 @@ static void network_ap_scan_json(cJSON *root) {
         cJSON_AddNumberToObject(ap, "auth", scan_entries[i].auth);
         cJSON_AddItemToArray(aps, ap);
     }
+
+    char *body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return body;
 }
 
 void network_ap_http_register(void) { http_register_json_get("/scan", network_ap_scan_json); }

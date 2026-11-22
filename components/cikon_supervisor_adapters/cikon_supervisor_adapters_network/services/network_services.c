@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "cJSON.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
@@ -67,7 +68,7 @@ void network_services_mqtt_init(void) {
         .mqtt_max_retry = config_get()->mqtt_max_retry,
         .mqtt_disc_pref = config_get()->mqtt_disc_pref,
         .command_cb = cmnd_process_json,
-        .telemetry_cb = tele_append_all,
+        .telemetry_cb = tele_print_all,
     };
 
     mqtt_configure(&mqtt_cfg);
@@ -209,7 +210,7 @@ void network_services_http_init(bool secure) {
         .max_open_sockets = secure ? CONFIG_HTTPS_MAX_OPEN_SOCKETS : CONFIG_HTTP_MAX_OPEN_SOCKETS,
         .secure = secure,
     });
-    http_register_json_get("/tele", tele_append_all);
+    http_register_json_get("/tele", tele_print_all);
     http_register_json_post("/cmnd", cmnd_process_json);
 }
 

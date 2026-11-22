@@ -5,8 +5,6 @@
 #include "esp_log.h"
 #include "mqtt_client.h"
 
-#include "cJSON.h"
-
 #include "certs.h"
 #include "mqtt.h"
 
@@ -53,10 +51,11 @@ void mqtt_publish_telemetry(void) {
     if (!mqtt_config.telemetry_cb)
         return;
 
-    cJSON *json = cJSON_CreateObject();
-    mqtt_config.telemetry_cb(json);
-
-    char *json_str = cJSON_PrintUnformatted(json);
+    char *json_str = mqtt_config.telemetry_cb();
+    if (!json_str) {
+        ESP_LOGW(TAG, "Telemetry not built, skipping the publish");
+        return;
+    }
 
     char topic[TOPIC_BUF_SIZE];
     mqtt_telemetry_topic(topic, sizeof(topic));
@@ -64,7 +63,6 @@ void mqtt_publish_telemetry(void) {
     esp_mqtt_client_publish(mqtt_client, topic, json_str, 0, CONFIG_MQTT_QOS, false);
 
     free(json_str);
-    cJSON_Delete(json);
 }
 
 bool mqtt_is_connected(void) {

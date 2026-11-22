@@ -1,5 +1,4 @@
 #include "http_server.h"
-#include "cJSON.h"
 #include "certs.h"
 #include "esp_http_server.h"
 #include "esp_https_server.h"
@@ -136,11 +135,7 @@ static esp_err_t static_file_handler(httpd_req_t *req, httpd_err_code_t err) {
 
 static esp_err_t json_get_handler(httpd_req_t *req) {
     http_json_get_fn_t fn = req->user_ctx;
-    cJSON *root = cJSON_CreateObject();
-    if (fn)
-        fn(root);
-    char *body = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
+    char *body = fn ? fn() : NULL;
     if (!body) {
         http_log("GET", 500, req->uri, 0);
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, NULL);

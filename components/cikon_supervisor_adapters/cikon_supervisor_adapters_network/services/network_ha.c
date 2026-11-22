@@ -1,3 +1,4 @@
+#include "cJSON.h"
 #include "esp_log.h"
 
 #include "ha.h"

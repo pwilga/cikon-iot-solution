@@ -1,6 +1,5 @@
 #pragma once
 
-#include "cJSON.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -15,7 +14,9 @@ typedef struct {
     bool secure;
 } http_config_t;
 
-typedef void (*http_json_get_fn_t)(cJSON *json);
+// Returns the JSON as a string on the heap, which the server frees after it is sent. NULL answers
+// with 500
+typedef char *(*http_json_get_fn_t)(void);
 typedef void (*http_json_post_fn_t)(const char *json_str);
 
 void http_init(const http_config_t *cfg);

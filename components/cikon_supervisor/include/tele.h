@@ -26,8 +26,9 @@ void tele_unregister_group(const tele_entry_t *appenders);
 const tele_t *tele_get_registry(size_t *out_count);
 const tele_t *tele_find(const char *tele_id);
 
-void tele_append_all(cJSON *json_root);
-void tele_append_one(cJSON *json_root, const char *tele_id);
+// All the telemetry as one JSON string on the heap, to be freed by the caller. NULL when there is
+// no memory for it
+char *tele_print_all(void);
 
 #ifdef __cplusplus
 }
