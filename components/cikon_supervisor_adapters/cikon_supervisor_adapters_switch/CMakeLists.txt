@@ -28,8 +28,8 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
 
 # X-Macro Pattern for Dynamic HA Entity Generation
 # =================================================
-# Same approach as cikon_supervisor_adapters_led/CMakeLists.txt, adapted for the
-# gpio:active_level:name (3-field) shape of SWITCH_GPIO_LIST instead of led's gpio:name (2-field).
+# SWITCH_GPIO_LIST (gpio:active_level:name) becomes the HA_ENTITY_LIST macro, one
+# HA_ENTITY_ENTRY(gpio,"name") per switch, so the HA entities are known at compile time.
 if(CONFIG_MQTT_ENABLE_HA_DISCOVERY)
     string(REPLACE "," ";" SWITCH_LIST_ITEMS "${CONFIG_SWITCH_GPIO_LIST}")
 

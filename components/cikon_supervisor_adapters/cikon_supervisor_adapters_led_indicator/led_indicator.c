@@ -121,7 +121,7 @@ static esp_err_t led_indicator_adapter_init(void) {
 #if CONFIG_LED_INDICATOR_RGB
     // Configure analog 3-pin RGB LED driven over LEDC/PWM.
     // Timer/channels kept off LEDC_TIMER_0 + channels 0.. to avoid clashing
-    // with the separate cikon_supervisor_adapters_led adapter.
+    // with the light adapter.
     led_indicator_rgb_config_t rgb_config = {
     // A Kconfig bool set to 'n' emits no #define, so test with #ifdef.
 #ifdef CONFIG_LED_INDICATOR_RGB_ACTIVE_HIGH
