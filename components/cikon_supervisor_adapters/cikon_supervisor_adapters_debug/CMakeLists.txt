@@ -13,6 +13,7 @@ idf_component_register(
         "private_include"
     PRIV_REQUIRES
         console
+        esp_stdio
         spi_flash
         app_update
         espcoredump
