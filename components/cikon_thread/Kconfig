@@ -32,4 +32,13 @@ menu "Cikon IoT Thread Radio Configuration"
             checks, the message buffer pool. Building the tele takes a few KB of heap for a moment,
             so a device short on memory can leave it out.
 
+    config THREAD_SCAN_MAX
+        int "Networks a scan keeps"
+        default 4
+        range 1 16
+        help
+            A scan lists each network once, however many of its devices answered. The list takes
+            32 bytes per network, always, and stays in the tele until the next scan. Networks above
+            this number are left out.
+
 endmenu

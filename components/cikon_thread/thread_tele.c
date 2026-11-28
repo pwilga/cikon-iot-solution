@@ -18,6 +18,7 @@
 #include "openthread/thread.h"
 
 #include "thread_commissioner.h" // IWYU pragma: keep
+#include "thread_scan.h"
 #include "thread_tele.h"
 
 #define TAG "cikon:thread:tele"
@@ -451,6 +452,7 @@ void thread_tele_appender(const char *tele_id, cJSON *json_root) {
 #endif
 
     thread_commissioner_tele(thread);
+    thread_scan_tele(thread);
 
     xSemaphoreGive(s_data_mutex);
 }

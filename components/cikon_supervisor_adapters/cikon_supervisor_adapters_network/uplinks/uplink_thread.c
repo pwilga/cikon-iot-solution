@@ -12,7 +12,6 @@
 #include "esp_openthread_lock.h"
 #include "esp_openthread_netif_glue.h" // IWYU pragma: keep
 #include "esp_openthread_types.h"
-#include "openthread/dataset.h"
 #include "openthread/error.h"
 #include "openthread/link.h" // IWYU pragma: keep
 #include "openthread/thread.h"
@@ -23,7 +22,7 @@
 #include "tele.h"
 #include "thread_coap_server.h"
 #include "thread_common.h"
-#include "thread_joiner.h"
+#include "thread_network.h"
 #include "thread_radio_config.h"
 #include "thread_tele.h"
 #include "uplink.h"
@@ -34,42 +33,6 @@ static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
 
 static esp_event_handler_instance_t ot_event_instance = NULL;
 static bool dns_known = false; // the border router has advertised its way out (NAT64 DNS)
-
-static void uplink_thread_start_task(void *arg) {
-    esp_openthread_lock_acquire(portMAX_DELAY);
-
-    otOperationalDatasetTlvs dataset;
-    bool dataset_ready = false;
-    bool join_pending = false;
-
-    if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
-        ESP_LOGI(TAG, "Using dataset from NVS");
-        dataset_ready = true;
-    } else {
-        ESP_LOGW(TAG, "No dataset, joining through a commissioner with the device id as PSKd");
-        join_pending = true;
-    }
-
-#if CONFIG_OPENTHREAD_FTD
-    otLinkModeConfig mode = {.mRxOnWhenIdle = true, .mDeviceType = true, .mNetworkData = true};
-    otError err = otThreadSetLinkMode(esp_openthread_get_instance(), mode);
-    if (err != OT_ERROR_NONE) {
-        ESP_LOGE(TAG, "otThreadSetLinkMode: %s", otThreadErrorToString(err));
-    }
-#endif
-
-    if (dataset_ready) {
-        esp_openthread_auto_start(&dataset);
-    } else if (join_pending) {
-        thread_joiner_start(get_device_info()->id);
-    }
-
-    esp_openthread_lock_release();
-
-    ESP_LOGI(TAG, "Thread device started");
-
-    vTaskDelete(NULL);
-}
 
 static void uplink_thread_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
                                         void *event_data) {
@@ -119,7 +82,7 @@ static esp_err_t uplink_thread_start(void) {
                                                         &uplink_thread_event_handler, NULL,
                                                         &ot_event_instance));
 
-    xTaskCreate(uplink_thread_start_task, "td_start", 4096, NULL, 5, NULL);
+    thread_network_start(get_device_info()->id);
     return ESP_OK;
 }
 

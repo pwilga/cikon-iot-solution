@@ -9,6 +9,8 @@
 #include "openthread/srp_client.h"
 #include "thread_coap_client.h"
 #include "thread_commissioner.h" // IWYU pragma: keep
+#include "thread_network.h"
+#include "thread_scan.h"
 #include <string.h>
 
 #define TAG "cikon:thread:common"
@@ -37,10 +39,11 @@ static otSrpClientService s_srp_service;
 static void thread_srp_client_callback(otError error, const otSrpClientHostInfo *hostInfo,
                                        const otSrpClientService *services,
                                        const otSrpClientService *removedServices, void *context) {
-    (void)hostInfo;
     (void)services;
     (void)removedServices;
-    if (error == OT_ERROR_NONE) {
+    if (error == OT_ERROR_NONE && hostInfo->mState == OT_SRP_CLIENT_ITEM_STATE_REMOVED) {
+        ESP_LOGI(TAG, "SRP: removed from the server");
+    } else if (error == OT_ERROR_NONE) {
         ESP_LOGI(TAG, "SRP: registered OK");
     } else if (error == OT_ERROR_DUPLICATED) {
         // SRP key mismatch — NVS was likely erased. Remove the stale host entry on the OBR.
@@ -105,6 +108,14 @@ const command_entry_t thread_commands[] = {
     {"commissioner", "Let joiners that know the PSKd join the Thread network (on/off)",
      thread_commissioner_handler},
 #endif
+    {"thread_scan", "Scan for Thread networks in range, the result goes to the tele",
+     thread_scan_handler},
+#if CONFIG_OPENTHREAD_FTD
+    {"thread_create", "Create a Thread network ({\"name\":\"...\",\"channel\":15})",
+     thread_network_create_handler},
+#endif
+    {"thread_forget", "Leave the Thread network, erase its dataset and restart",
+     thread_network_forget_handler},
     {"send", "Send a command to another Thread device by name ({\"to\":\"<name>\",\"cmnd\":{...}})",
      thread_coap_client_send_handler},
     {NULL, NULL, NULL}};

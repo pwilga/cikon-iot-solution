@@ -1,7 +1,6 @@
 #include "thread_border_router_adapter.h"
 
 #include <stdio.h>
-#include <string.h>
 
 #include "freertos/FreeRTOS.h" // IWYU pragma: keep
 #include "freertos/task.h"
@@ -20,14 +19,15 @@
 #include "lwip/netif.h"
 #include "lwip/tcpip.h"
 #include "openthread/border_routing.h"
-#include "openthread/dataset_ftd.h"
 #include "openthread/error.h"
 #include "openthread/thread.h"
 
 #include "bits_helper.h"
+#include "platform_services.h"
 #include "supervisor.h"
 #include "tele.h"
 #include "thread_common.h"
+#include "thread_network.h"
 #include "thread_radio_config.h"
 #include "thread_tele.h"
 
@@ -46,49 +46,6 @@ static bool s_ot_started = false;
 
 static const esp_openthread_config_t s_ot_config = THREAD_DEFAULT_OT_CONFIG();
 
-// Thread starts without waiting for the backbone, border routing joins later
-static void thread_start_task(void *arg) {
-
-    esp_openthread_lock_acquire(portMAX_DELAY);
-
-    otOperationalDatasetTlvs dataset;
-
-    if (otDatasetGetActiveTlvs(esp_openthread_get_instance(), &dataset) == OT_ERROR_NONE) {
-        ESP_LOGI(TAG, "Using dataset from NVS");
-    } else {
-        otOperationalDataset config_dataset;
-        if (otDatasetCreateNewNetwork(esp_openthread_get_instance(), &config_dataset) !=
-            OT_ERROR_NONE) {
-            ESP_LOGE(TAG, "Failed to create new Thread dataset");
-            esp_openthread_lock_release();
-            goto done;
-        }
-
-        memcpy(config_dataset.mNetworkName.m8, CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME,
-               strlen(CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME) + 1);
-        config_dataset.mComponents.mIsNetworkNamePresent = true;
-
-        config_dataset.mChannel = CONFIG_THREAD_BORDER_ROUTER_CHANNEL;
-        config_dataset.mComponents.mIsChannelPresent = true;
-
-#if CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL > 0
-        config_dataset.mWakeupChannel = CONFIG_THREAD_BORDER_ROUTER_WAKEUP_CHANNEL;
-        config_dataset.mComponents.mIsWakeupChannelPresent = true;
-#endif
-
-        otDatasetConvertToTlvs(&config_dataset, &dataset);
-        ESP_LOGI(TAG, "Created new Thread dataset: %s ch%d",
-                 CONFIG_THREAD_BORDER_ROUTER_NETWORK_NAME, CONFIG_THREAD_BORDER_ROUTER_CHANNEL);
-    }
-
-    esp_openthread_auto_start(&dataset);
-    esp_openthread_lock_release();
-    ESP_LOGI(TAG, "Thread network started");
-
-done:
-    vTaskDelete(NULL);
-}
-
 static esp_err_t thread_border_router_adapter_init(void) {
     if (initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -103,7 +60,8 @@ static esp_err_t thread_border_router_adapter_init(void) {
     }
     s_ot_started = true;
 
-    xTaskCreate(thread_start_task, "thread_start", 6144, NULL, 5, NULL);
+    // Thread starts without waiting for the backbone, border routing joins later
+    thread_network_start(get_device_info()->id);
 
     ESP_LOGI(TAG, "OpenThread stack started, waiting for backbone IP");
     return ESP_OK;
